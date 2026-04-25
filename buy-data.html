@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Buy Data - Ghana Data & Airtime Hub</title>
     <link rel="stylesheet" href="css/style.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body onload="checkAuth()">
     <header>
@@ -35,7 +34,6 @@
                 <label for="phone">Phone Number:</label>
                 <input type="tel" id="phone" required>
                 <button type="submit">Buy Now</button>
-                <button type="button" onclick="testLoadAllBundles()">Test Load All Bundles</button>
             </form>
         </section>
     </main>
@@ -46,15 +44,12 @@
     <script>
         async function loadBundles() {
             const network = document.getElementById('network').value;
-            console.log('Loading bundles for network:', network);
             const bundles = await getAllBundles(network);
-            console.log('Bundles received:', bundles);
             const select = document.getElementById('bundle');
             select.innerHTML = '<option value="">Select a bundle...</option>';
             
             if (!bundles || bundles.length === 0) {
                 select.innerHTML += '<option>No bundles available</option>';
-                console.log('No bundles found for network:', network);
                 return;
             }
             
@@ -64,14 +59,6 @@
                 option.textContent = `${bundle.name} - GHS ${bundle.price}`;
                 select.appendChild(option);
             });
-            console.log('Bundles loaded successfully');
-        }
-
-        // Test function to load all bundles
-        async function testLoadAllBundles() {
-            console.log('Testing all bundles...');
-            const allBundles = await getAllBundles();
-            console.log('All bundles:', allBundles);
         }
 
         document.addEventListener('DOMContentLoaded', loadBundles);
