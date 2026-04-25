@@ -44,25 +44,40 @@
     <script src="js/app.js"></script>
     <script>
         async function loadBundles() {
-            const bundles = await getAllBundles();
+            const network = document.getElementById('network').value;
+            const bundles = await getAllBundles(network);
             const select = document.getElementById('bundle');
+            select.innerHTML = '<option value="">Select a bundle...</option>';
+            
+            if (!bundles || bundles.length === 0) {
+                select.innerHTML += '<option>No bundles available</option>';
+                return;
+            }
+            
             bundles.forEach(bundle => {
                 const option = document.createElement('option');
                 option.value = bundle.id;
-                option.textContent = `${bundle.name} - ${bundle.price}`;
+                option.textContent = `${bundle.name} - GHS ${bundle.price}`;
                 select.appendChild(option);
             });
         }
+
+        document.addEventListener('DOMContentLoaded', loadBundles);
+        document.getElementById('network').addEventListener('change', loadBundles);
 
         document.getElementById('buy-data-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const bundleId = document.getElementById('bundle').value;
             const phone = document.getElementById('phone').value;
+            
+            if (!bundleId) {
+                alert('Please select a bundle');
+                return;
+            }
+            
             await purchase(bundleId, phone);
             alert('Purchase initiated! Payment via Momo.');
         });
-
-        loadBundles();
     </script>
 </body>
 </html>

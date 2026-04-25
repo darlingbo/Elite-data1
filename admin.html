@@ -55,9 +55,16 @@
         async function loadBundles() {
             const bundles = await getAllBundles();
             const list = document.getElementById('bundles-list');
+            list.innerHTML = '';
+            
+            if (!bundles || bundles.length === 0) {
+                list.innerHTML = '<li>No bundles found</li>';
+                return;
+            }
+            
             bundles.forEach(bundle => {
                 const li = document.createElement('li');
-                li.textContent = `${bundle.name}: ${bundle.price} - ${bundle.details}`;
+                li.textContent = `${bundle.name}: GHS ${bundle.price} - ${bundle.details}`;
                 list.appendChild(li);
             });
         }
@@ -65,6 +72,13 @@
         async function loadOrders() {
             const orders = await getAllOrders();
             const list = document.getElementById('orders-list');
+            list.innerHTML = '';
+            
+            if (!orders || orders.length === 0) {
+                list.innerHTML = '<li>No orders found</li>';
+                return;
+            }
+            
             orders.forEach(order => {
                 const li = document.createElement('li');
                 li.textContent = `Order ${order.id}: ${order.status} - ${order.phone}`;
@@ -77,6 +91,12 @@
             const id = document.getElementById('bundle-id').value;
             const price = document.getElementById('price').value;
             const details = document.getElementById('details').value;
+            
+            if (!id || !price) {
+                alert('Please fill in all fields');
+                return;
+            }
+            
             await updateBundle(id, price, details);
             alert('Bundle updated!');
             loadBundles();
@@ -86,13 +106,22 @@
             e.preventDefault();
             const id = document.getElementById('order-id').value;
             const status = document.getElementById('status').value;
+            
+            if (!id) {
+                alert('Please enter an order ID');
+                return;
+            }
+            
             await updateOrderStatus(id, status);
             alert('Order updated!');
             loadOrders();
         });
 
-        loadBundles();
-        loadOrders();
+        // Load data when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            loadBundles();
+            loadOrders();
+        });
     </script>
 </body>
 </html>

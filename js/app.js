@@ -114,12 +114,22 @@ async function updateBundle(id, price, details) {
     return data;
 }
 
-async function getAllBundles() {
-    const { data, error } = await supabase
-        .from('bundles')
-        .select('*');
-    if (error) console.error('Error fetching bundles:', error);
-    return data;
+async function getAllBundles(network = null) {
+    try {
+        let query = supabase.from('bundles').select('*');
+        if (network) {
+            query = query.eq('network', network);
+        }
+        const { data, error } = await query;
+        if (error) {
+            console.error('Error fetching bundles:', error);
+            return [];
+        }
+        return data || [];
+    } catch (err) {
+        console.error('Bundle fetch error:', err);
+        return [];
+    }
 }
 
 async function getAllOrders() {
