@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Ghana Data & Airtime Hub</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body onload="checkAuth()">
+    <header>
+        <h1>Admin Panel</h1>
+        <nav>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="#" onclick="logout()">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section id="manage-bundles">
+            <h2>Manage Data Bundles</h2>
+            <ul id="bundles-list"></ul>
+            <form id="update-bundle-form">
+                <label for="bundle-id">Bundle ID:</label>
+                <input type="text" id="bundle-id" required>
+                <label for="price">Price:</label>
+                <input type="number" id="price" required>
+                <label for="details">Details:</label>
+                <textarea id="details"></textarea>
+                <button type="submit">Update Bundle</button>
+            </form>
+        </section>
+        <section id="manage-orders">
+            <h2>Manage Orders</h2>
+            <ul id="orders-list"></ul>
+            <form id="update-order-form">
+                <label for="order-id">Order ID:</label>
+                <input type="text" id="order-id" required>
+                <label for="status">Status:</label>
+                <select id="status">
+                    <option value="pending">Pending</option>
+                    <option value="completed">Completed</option>
+                    <option value="failed">Failed</option>
+                </select>
+                <button type="submit">Update Status</button>
+            </form>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2026 Ghana Data & Airtime Hub</p>
+    </footer>
+    <script src="js/app.js"></script>
+    <script>
+        async function loadBundles() {
+            const bundles = await getAllBundles();
+            const list = document.getElementById('bundles-list');
+            bundles.forEach(bundle => {
+                const li = document.createElement('li');
+                li.textContent = `${bundle.name}: ${bundle.price} - ${bundle.details}`;
+                list.appendChild(li);
+            });
+        }
+
+        async function loadOrders() {
+            const orders = await getAllOrders();
+            const list = document.getElementById('orders-list');
+            orders.forEach(order => {
+                const li = document.createElement('li');
+                li.textContent = `Order ${order.id}: ${order.status} - ${order.phone}`;
+                list.appendChild(li);
+            });
+        }
+
+        document.getElementById('update-bundle-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('bundle-id').value;
+            const price = document.getElementById('price').value;
+            const details = document.getElementById('details').value;
+            await updateBundle(id, price, details);
+            alert('Bundle updated!');
+            loadBundles();
+        });
+
+        document.getElementById('update-order-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('order-id').value;
+            const status = document.getElementById('status').value;
+            await updateOrderStatus(id, status);
+            alert('Order updated!');
+            loadOrders();
+        });
+
+        loadBundles();
+        loadOrders();
+    </script>
+</body>
+</html>

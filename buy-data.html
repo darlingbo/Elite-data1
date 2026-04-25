@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buy Data - Ghana Data & Airtime Hub</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body onload="checkAuth()">
+    <header>
+        <h1>Ghana Data & Airtime Hub</h1>
+        <nav>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="dashboard.html">Dashboard</a></li>
+                <li><a href="#" onclick="logout()">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section id="buy-data">
+            <h2>Buy Data Bundle</h2>
+            <form id="buy-data-form">
+                <label for="network">Network:</label>
+                <select id="network" required>
+                    <option value="mtn">MTN</option>
+                    <option value="telecel">Telecel</option>
+                    <option value="airtel">Airtel Tigo</option>
+                </select>
+                <label for="bundle">Bundle:</label>
+                <select id="bundle" required>
+                    <!-- Populate dynamically -->
+                </select>
+                <label for="phone">Phone Number:</label>
+                <input type="tel" id="phone" required>
+                <button type="submit">Buy Now</button>
+            </form>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2026 Ghana Data & Airtime Hub</p>
+    </footer>
+    <script src="js/app.js"></script>
+    <script>
+        async function loadBundles() {
+            const bundles = await getAllBundles();
+            const select = document.getElementById('bundle');
+            bundles.forEach(bundle => {
+                const option = document.createElement('option');
+                option.value = bundle.id;
+                option.textContent = `${bundle.name} - ${bundle.price}`;
+                select.appendChild(option);
+            });
+        }
+
+        document.getElementById('buy-data-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const bundleId = document.getElementById('bundle').value;
+            const phone = document.getElementById('phone').value;
+            await purchase(bundleId, phone);
+            alert('Purchase initiated! Payment via Momo.');
+        });
+
+        loadBundles();
+    </script>
+</body>
+</html>

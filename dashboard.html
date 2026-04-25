@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Ghana Data & Airtime Hub</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body onload="checkAuth()">
+    <header>
+        <h1>Ghana Data & Airtime Hub</h1>
+        <nav>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="buy-data.html">Buy Data</a></li>
+                <li><a href="buy-airtime.html">Buy Airtime</a></li>
+                <li><a href="profile.html">Profile</a></li>
+                <li><a href="#" onclick="logout()">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section id="dashboard">
+            <h2>Dashboard</h2>
+            <p id="user-info"></p>
+            <h3>Transaction History</h3>
+            <ul id="history-list"></ul>
+            <h3>Referral Link</h3>
+            <p id="referral-link"></p>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2026 Ghana Data & Airtime Hub</p>
+    </footer>
+    <script src="js/app.js"></script>
+    <script>
+        async function loadDashboard() {
+            const user = supabase.auth.user();
+            document.getElementById('user-info').innerText = `Welcome, ${user.email}`;
+            document.getElementById('referral-link').innerText = `https://darlingbo.github.io?ref=${user.id}`;
+
+            const { data, error } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('user_id', user.id);
+            if (error) console.error('Error fetching history:', error);
+            const list = document.getElementById('history-list');
+            data.forEach(order => {
+                const li = document.createElement('li');
+                li.textContent = `Order ${order.id}: ${order.bundle_id} - ${order.status}`;
+                list.appendChild(li);
+            });
+        }
+
+        loadDashboard();
+    </script>
+</body>
+</html>

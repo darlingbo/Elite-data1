@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile - Ghana Data & Airtime Hub</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body onload="checkAuth()">
+    <header>
+        <h1>Ghana Data & Airtime Hub</h1>
+        <nav>
+            <ul>
+                <li><a href="dashboard.html">Dashboard</a></li>
+                <li><a href="#" onclick="logout()">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section id="profile">
+            <h2>User Profile</h2>
+            <form id="profile-form">
+                <label for="phone">Phone Number:</label>
+                <input type="tel" id="phone" required>
+                <label for="new-password">New Password:</label>
+                <input type="password" id="new-password">
+                <button type="submit">Update Profile</button>
+            </form>
+        </section>
+        <section id="notifications">
+            <h3>Notifications</h3>
+            <ul id="notif-list"></ul>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2026 Ghana Data & Airtime Hub</p>
+    </footer>
+    <script src="js/app.js"></script>
+    <script>
+        async function loadProfile() {
+            const user = supabase.auth.user();
+            document.getElementById('phone').value = user.phone || '';
+        }
+
+        document.getElementById('profile-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const phone = document.getElementById('phone').value;
+            const password = document.getElementById('new-password').value;
+            await updateProfile(phone, password);
+            alert('Profile updated!');
+        });
+
+        async function loadNotifications() {
+            const notifs = await getNotifications();
+            const list = document.getElementById('notif-list');
+            notifs.forEach(notif => {
+                const li = document.createElement('li');
+                li.textContent = notif.message;
+                list.appendChild(li);
+            });
+        }
+
+        loadProfile();
+        loadNotifications();
+    </script>
+</body>
+</html>
