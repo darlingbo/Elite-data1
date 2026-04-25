@@ -1,6 +1,6 @@
 // Supabase configuration
-const supabaseUrl = 'YOUR_SUPABASE_URL'; // Replace with your Supabase URL
-const supabaseKey = 'YOUR_SUPABASE_ANON_KEY'; // Replace with your Supabase anon key
+const supabaseUrl = 'https://wlyobxfsphgrlumzhdlk.supabase.co';
+const supabaseKey = '1e49b887918302a18e20efc393cdb932';
 const supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
 // Function to check if user is logged in
