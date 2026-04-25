@@ -24,9 +24,9 @@
             <form id="buy-data-form">
                 <label for="network">Network:</label>
                 <select id="network" required>
-                    <option value="mtn">MTN</option>
-                    <option value="telecel">Telecel</option>
-                    <option value="airtel">Airtel Tigo</option>
+                    <option value="MTN">MTN</option>
+                    <option value="Telecel">Telecel</option>
+                    <option value="Airtel Tigo">Airtel Tigo</option>
                 </select>
                 <label for="bundle">Bundle:</label>
                 <select id="bundle" required>
@@ -35,6 +35,7 @@
                 <label for="phone">Phone Number:</label>
                 <input type="tel" id="phone" required>
                 <button type="submit">Buy Now</button>
+                <button type="button" onclick="testLoadAllBundles()">Test Load All Bundles</button>
             </form>
         </section>
     </main>
@@ -45,12 +46,15 @@
     <script>
         async function loadBundles() {
             const network = document.getElementById('network').value;
+            console.log('Loading bundles for network:', network);
             const bundles = await getAllBundles(network);
+            console.log('Bundles received:', bundles);
             const select = document.getElementById('bundle');
             select.innerHTML = '<option value="">Select a bundle...</option>';
             
             if (!bundles || bundles.length === 0) {
                 select.innerHTML += '<option>No bundles available</option>';
+                console.log('No bundles found for network:', network);
                 return;
             }
             
@@ -60,6 +64,14 @@
                 option.textContent = `${bundle.name} - GHS ${bundle.price}`;
                 select.appendChild(option);
             });
+            console.log('Bundles loaded successfully');
+        }
+
+        // Test function to load all bundles
+        async function testLoadAllBundles() {
+            console.log('Testing all bundles...');
+            const allBundles = await getAllBundles();
+            console.log('All bundles:', allBundles);
         }
 
         document.addEventListener('DOMContentLoaded', loadBundles);
