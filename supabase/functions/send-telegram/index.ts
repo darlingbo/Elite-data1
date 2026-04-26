@@ -3,8 +3,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 serve(async (req) => {
   const { message } = await req.json()
 
-  const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN')
-  const TELEGRAM_CHAT_ID = Deno.env.get('TELEGRAM_CHAT_ID')
+  const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN') || '8540751934:AAHJ1RDcUjk8hT9eq7vneeLoodOXE87KTTo'
+  const TELEGRAM_CHAT_ID = Deno.env.get('TELEGRAM_CHAT_ID') || '8329279766'
 
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`
   const response = await fetch(url, {
