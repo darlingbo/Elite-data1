@@ -68,14 +68,30 @@
             e.preventDefault();
             const bundleId = document.getElementById('bundle').value;
             const phone = document.getElementById('phone').value;
+            const bundleOption = document.getElementById('bundle').selectedOptions[0];
             
             if (!bundleId) {
                 alert('Please select a bundle');
                 return;
             }
             
-            await purchase(bundleId, phone);
-            alert('Purchase initiated! Payment via Momo.');
+            if (!phone) {
+                alert('Please enter a phone number');
+                return;
+            }
+
+            // Get bundle details
+            const bundles = await getAllBundles();
+            const bundle = bundles.find(b => b.id == bundleId);
+            
+            if (!bundle) {
+                alert('Bundle not found');
+                return;
+            }
+
+            // Redirect to checkout with order details
+            const checkoutUrl = `checkout.html?bundle=${bundleId}&phone=${encodeURIComponent(phone)}&amount=${bundle.price}&product=${encodeURIComponent(bundle.name)}`;
+            window.location.href = checkoutUrl;
         });
     </script>
 </body>

@@ -55,10 +55,11 @@
                 alert('Please enter a phone number');
                 return;
             }
-            
-            // Create a virtual bundle for airtime
-            await purchase(`airtime-${network}-${amount}`, phone);
-            alert('Purchase initiated! Redirecting to payment...');
+
+            // Redirect to checkout with airtime details
+            const productName = `${network} Airtime - GHS ${amount}`;
+            const checkoutUrl = `checkout.html?bundle=airtime-${network}&phone=${encodeURIComponent(phone)}&amount=${amount}&product=${encodeURIComponent(productName)}`;
+            window.location.href = checkoutUrl;
         });
     </script>
         });

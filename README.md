@@ -28,7 +28,10 @@ A website for selling data bundles and airtime in Ghana using MTN, Telecel, Airt
    - TELEGRAM_BOT_TOKEN
    - TELEGRAM_CHAT_ID
 6. Update `js/app.js` with your Supabase URL and key.
-7. For payments, integrate with a payment gateway like Flutterwave for Momo.
+7. **Set up Flutterwave for payments**:
+   - Create an account at https://dashboard.flutterwave.com
+   - Get your public key and secret key
+   - Update `checkout.html` line 67: Replace `"FLUTTERWAVE_PUBLIC_KEY"` with your Flutterwave public key
 8. Deploy to GitHub Pages or a hosting service that supports dynamic features.
 
 ## Database Schema
@@ -66,3 +69,37 @@ CREATE TABLE notifications (
 - HTML, CSS, JavaScript
 - Supabase for backend
 - Telegram API for alerts
+- Flutterwave for Mobile Money payments
+
+## Flutterwave Integration Details
+
+### Getting Flutterwave Keys:
+1. Sign up at https://dashboard.flutterwave.com
+2. Go to **Settings** → **API** 
+3. Copy your **Public Key** and **Secret Key**
+4. In `checkout.html`, replace `"FLUTTERWAVE_PUBLIC_KEY"` with your public key on line 67
+
+### Testing Payments:
+- Use test card: `5531886652142950`
+- Test Momo: Use any mobile number with Flutterwave test data
+- In Flutterwave dashboard, enable Mobile Money for Ghana
+
+### Payment Flow:
+1. User selects data/airtime bundle
+2. Enters their phone number
+3. Clicks "Buy Now" → Redirected to `checkout.html`
+4. Clicks "Pay with Mobile Money"
+5. Flutterwave popup opens for payment
+6. On successful payment:
+   - Order created in database with status "completed"
+   - Telegram alert sent to admin
+   - User redirected to dashboard
+   - Data/airtime delivered (integrate with carrier API or manual process)
+
+## Deployment
+
+Deploy to:
+- GitHub Pages (for static files)
+- Netlify (supports functions)
+- Vercel (supports edge functions)
+- AWS Lambda (for serverless backend)
