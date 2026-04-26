@@ -18,26 +18,44 @@
     </header>
     <main>
         <section id="checkout">
-            <h2>Complete Your Purchase</h2>
+            <h2>Complete Your Order</h2>
             <div id="order-details">
                 <p><strong>Product:</strong> <span id="product-name"></span></p>
                 <p><strong>Amount:</strong> GHS <span id="amount"></span></p>
-                <p><strong>Phone:</strong> <span id="phone"></span></p>
+                <p><strong>Phone Number:</strong> <span id="phone"></span></p>
+                <p><strong>Order Reference:</strong> <span id="order-ref"></span></p>
             </div>
-            <button id="pay-btn" onclick="initiatePayment()">Pay with Mobile Money</button>
-            <button onclick="goBack()">Cancel</button>
+            
+            <div id="payment-instructions">
+                <h3>Payment Instructions</h3>
+                <p>Please send the amount below to confirm your order:</p>
+                <div style="background: #f0f8ff; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                    <p><strong>Amount to Pay:</strong> GHS <span id="pay-amount"></span></p>
+                    <p><strong>Reference Code:</strong> <span id="ref-code"></span></p>
+                    <p style="color: #666; font-size: 14px;">Please use this reference code in your payment description/message</p>
+                </div>
+                
+                <h4>Payment Methods:</h4>
+                <ul>
+                    <li>📱 <strong>MTN Mobile Money:</strong> *170# or 0244123456</li>
+                    <li>📱 <strong>Telecel/Vodafone Mobile Money:</strong> *110# or 0550123456</li>
+                    <li>📱 <strong>Airtel Tigo Mobile Money:</strong> #121# or 0265123456</li>
+                    <li>💳 <strong>Bank Transfer:</strong> Contact support for bank details</li>
+                </ul>
+            </div>
+
+            <button id="confirm-btn" onclick="confirmOrder()">Confirm Order</button>
+            <button onclick="goBack()" style="background-color: #666;">Cancel</button>
         </section>
     </main>
     <footer>
-        <p>&copy; 2026 Elite-data1</p>
+        <p>&copy; 2026 Elite-data1. All rights reserved.</p>
     </footer>
-    <script src="https://checkout.flutterwave.com/v3.js"></script>
     <script src="js/app.js"></script>
     <script>
         let orderData = {};
 
         function initCheckout() {
-            // Get order data from URL parameters
             const params = new URLSearchParams(window.location.search);
             orderData = {
                 bundleId: params.get('bundle'),
@@ -46,10 +64,15 @@
                 productName: params.get('product')
             };
 
-            // Display order details
+            // Generate order reference
+            const orderRef = 'ORD-' + Date.now();
+
             document.getElementById('product-name').innerText = orderData.productName || 'Data Bundle';
             document.getElementById('amount').innerText = orderData.amount || '0.00';
             document.getElementById('phone').innerText = orderData.phone || 'N/A';
+            document.getElementById('order-ref').innerText = orderRef;
+            document.getElementById('pay-amount').innerText = orderData.amount || '0.00';
+            document.getElementById('ref-code').innerText = orderRef;
 
             if (!orderData.amount || !orderData.phone) {
                 alert('Invalid order data');
@@ -57,7 +80,7 @@
             }
         }
 
-        function initiatePayment() {
+        async function confirmOrder() {
             const user = supabase.auth.user();
             if (!user) {
                 alert('Please login first');
@@ -65,66 +88,38 @@
                 return;
             }
 
-            // Flutterwave payment configuration
-            FlutterWaveCheckout({
-                public_key: "FLUTTERWAVE_PUBLIC_KEY",  // Replace with your Flutterwave public key
-                tx_ref: "TXN-" + Date.now(),
-                amount: parseFloat(orderData.amount),
-                currency: "GHS",
-                payment_options: "mobilemoney,card",
-                customer: {
-                    email: user.email,
-                    phonenumber: orderData.phone,
-                    name: user.email.split('@')[0]
-                },
-                customizations: {
-                    title: "Elite-data1",
-                    description: orderData.productName,
-                    logo: ""
-                },
-                callback: onPaymentSuccess,
-                onclose: onPaymentClose
-            });
-        }
+            const orderRef = document.getElementById('order-ref').innerText;
 
-        async function onPaymentSuccess(response) {
-            console.log('Payment successful:', response);
-            
-            if (response.status === "successful") {
-                // Create order in database
-                const user = supabase.auth.user();
+            try {
+                // Create order with pending status
                 const { data, error } = await supabase
                     .from('orders')
                     .insert([{
                         user_id: user.id,
                         bundle_id: orderData.bundleId,
                         phone: orderData.phone,
-                        status: 'completed',
+                        status: 'pending',
                         created_at: new Date().toISOString()
                     }]);
 
                 if (error) {
                     console.error('Error creating order:', error);
-                    alert('Error saving order. Contact support.');
+                    alert('Error creating order. Please try again.');
                     return;
                 }
 
-                // Send Telegram alert
-                const alertMessage = `✅ PAYMENT SUCCESSFUL\n💰 Amount: GHS ${orderData.amount}\n📦 Product: ${orderData.productName}\n📱 Phone: ${orderData.phone}\n👤 User: ${user.email}\n⏰ Time: ${new Date().toLocaleString()}\nTransaction ID: ${response.transaction_id}`;
+                // Send Telegram alert to admin
+                const alertMessage = `📋 NEW ORDER - AWAITING PAYMENT\n💰 Amount: GHS ${orderData.amount}\n📦 Product: ${orderData.productName}\n📱 Phone: ${orderData.phone}\n👤 User: ${user.email}\n⏰ Time: ${new Date().toLocaleString()}\n🔑 Reference: ${orderRef}`;
                 await sendTelegramAlert(alertMessage);
 
                 // Show success message
-                alert('Payment successful! Your data/airtime will be delivered shortly.');
+                alert(`Order confirmed!\n\nReference: ${orderRef}\n\nWe're waiting for your payment. Once received, your data/airtime will be delivered instantly.\n\nCheck your dashboard for order status.`);
+                
                 window.location.href = 'dashboard.html';
-            } else {
-                alert('Payment failed. Please try again.');
-                window.location.href = 'buy-data.html';
+            } catch (err) {
+                console.error('Order error:', err);
+                alert('Order failed. Please try again.');
             }
-        }
-
-        function onPaymentClose() {
-            alert('Payment cancelled');
-            window.location.href = 'buy-data.html';
         }
 
         function goBack() {
