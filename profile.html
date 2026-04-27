@@ -39,7 +39,7 @@
     <script src="js/app.js"></script>
     <script>
         async function loadProfile() {
-            const user = supabase.auth.user();
+            const user = supabaseClient.auth.user();
             document.getElementById('phone').value = user.phone || '';
         }
 

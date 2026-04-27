@@ -1,11 +1,11 @@
 // Supabase configuration
 const supabaseUrl = 'https://wlyobxfsphgrlumzhdlk.supabase.co';
 const supabaseKey = '1e49b887918302a18e20efc393cdb932';
-const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
 
 // Function to check if user is logged in
 function checkAuth() {
-    const user = supabase.auth.user();
+    const user = supabaseClient.auth.user();
     if (user) {
         // User is logged in
         document.getElementById('user-info').innerText = `Welcome, ${user.email}`;
@@ -17,14 +17,14 @@ function checkAuth() {
 
 // Function to logout
 function logout() {
-    supabase.auth.signOut();
+    supabaseClient.auth.signOut();
     window.location.href = 'index.html';
 }
 
 // Function to send Telegram alert (via edge function)
 async function sendTelegramAlert(message) {
     try {
-        const response = await supabase.functions.invoke('telegram-alert', {
+        const response = await supabaseClient.functions.invoke('telegram-alert', {
             body: { message }
         });
         console.log('Telegram alert sent:', response);
@@ -36,17 +36,17 @@ async function sendTelegramAlert(message) {
 
 // Function to get notifications
 async function getNotifications() {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
         .from('notifications')
         .select('*')
-        .eq('user_id', supabase.auth.user().id);
+        .eq('user_id', supabaseClient.auth.user().id);
     if (error) console.error('Error fetching notifications:', error);
     return data;
 }
 
 // Function to update profile
 async function updateProfile(phone, password) {
-    const { data, error } = await supabase.auth.update({
+    const { data, error } = await supabaseClient.auth.update({
         phone: phone,
         password: password
     });
@@ -56,7 +56,7 @@ async function updateProfile(phone, password) {
 
 // Function to reset password
 async function resetPassword(email) {
-    const { data, error } = await supabase.auth.resetPasswordForEmail(email);
+    const { data, error } = await supabaseClient.auth.resetPasswordForEmail(email);
     if (error) console.error('Error resetting password:', error);
     return data;
 }
@@ -64,17 +64,17 @@ async function resetPassword(email) {
 // Function to buy data/airtime
 async function purchase(bundleId, phoneNumber) {
     try {
-        const user = supabase.auth.user();
+        const user = supabaseClient.auth.user();
         
         // Get bundle details
-        const { data: bundle, error: bundleError } = await supabase
+        const { data: bundle, error: bundleError } = await supabaseClient
             .from('bundles')
             .select('*')
             .eq('id', bundleId)
             .single();
         
         // Create order
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('orders')
             .insert([
                 { 
@@ -106,7 +106,7 @@ async function purchase(bundleId, phoneNumber) {
 
 // Admin functions
 async function addBundle(name, price, details, network) {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
         .from('bundles')
         .insert([{ name, price, details, network }]);
     if (error) console.error('Error adding bundle:', error);
@@ -114,7 +114,7 @@ async function addBundle(name, price, details, network) {
 }
 
 async function updateBundle(id, price, details) {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
         .from('bundles')
         .update({ price, details })
         .eq('id', id);
@@ -124,7 +124,7 @@ async function updateBundle(id, price, details) {
 
 async function getAllBundles(network = null) {
     try {
-        let query = supabase.from('bundles').select('*');
+        let query = supabaseClient.from('bundles').select('*');
         if (network) {
             query = query.eq('network', network);
         }
@@ -141,7 +141,7 @@ async function getAllBundles(network = null) {
 }
 
 async function getAllOrders() {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
         .from('orders')
         .select('*');
     if (error) console.error('Error fetching orders:', error);
@@ -151,7 +151,7 @@ async function getAllOrders() {
 async function updateOrderStatus(id, status) {
     try {
         // Update the order status
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('orders')
             .update({ status })
             .eq('id', id);
@@ -162,21 +162,21 @@ async function updateOrderStatus(id, status) {
         }
         
         // Get order details
-        const { data: order } = await supabase
+        const { data: order } = await supabaseClient
             .from('orders')
             .select('*')
             .eq('id', id)
             .single();
         
         // Get bundle details for the alert
-        const { data: bundle } = await supabase
+        const { data: bundle } = await supabaseClient
             .from('bundles')
             .select('name, price')
             .eq('id', order.bundle_id)
             .single();
         
         // Notify user in database
-        await supabase
+        await supabaseClient
             .from('notifications')
             .insert([
                 { 

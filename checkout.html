@@ -82,7 +82,7 @@
         }
 
         async function confirmOrder() {
-            const user = supabase.auth.user();
+            const user = supabaseClient.auth.user();
             if (!user) {
                 alert('Please login first');
                 window.location.href = 'login.html';
@@ -93,7 +93,7 @@
 
             try {
                 // Create order with pending status
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('orders')
                     .insert([{
                         user_id: user.id,

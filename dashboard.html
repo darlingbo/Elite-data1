@@ -36,11 +36,11 @@
     <script src="js/app.js"></script>
     <script>
         async function loadDashboard() {
-            const user = supabase.auth.user();
+            const user = supabaseClient.auth.user();
             document.getElementById('user-info').innerText = `Welcome, ${user.email}`;
             document.getElementById('referral-link').innerText = `https://darlingbo.github.io?ref=${user.id}`;
 
-            const { data, error } = await supabase
+            const { data, error } = await supabaseClient
                 .from('orders')
                 .select('*')
                 .eq('user_id', user.id);
