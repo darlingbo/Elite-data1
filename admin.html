@@ -19,6 +19,7 @@
     <main>
         <section id="manage-bundles">
             <h2>Manage Data Bundles</h2>
+            <button id="add-sample-bundles">Add Sample Bundles</button>
             <ul id="bundles-list"></ul>
             <h3>Add New Bundle</h3>
             <form id="add-bundle-form">
@@ -84,6 +85,29 @@
                 li.textContent = `${bundle.name}: GHS ${bundle.price} - ${bundle.details}`;
                 list.appendChild(li);
             });
+        }
+
+        async function addSampleBundles() {
+            const bundles = [
+                { name: '1GB Data Bundle', price: 5.23, details: 'MTN 1GB Data Bundle', network: 'MTN' },
+                { name: '2GB Data Bundle', price: 10.00, details: 'MTN 2GB Data Bundle', network: 'MTN' },
+                { name: '5GB Data Bundle', price: 25.00, details: 'MTN 5GB Data Bundle', network: 'MTN' },
+                { name: '10GB Data Bundle', price: 50.00, details: 'MTN 10GB Data Bundle', network: 'MTN' },
+                { name: '1GB Data Bundle', price: 5.50, details: 'Telecel 1GB Data Bundle', network: 'Telecel' },
+                { name: '2GB Data Bundle', price: 10.50, details: 'Telecel 2GB Data Bundle', network: 'Telecel' },
+                { name: '5GB Data Bundle', price: 26.00, details: 'Telecel 5GB Data Bundle', network: 'Telecel' },
+                { name: '10GB Data Bundle', price: 52.00, details: 'Telecel 10GB Data Bundle', network: 'Telecel' },
+                { name: '1GB Data Bundle', price: 5.00, details: 'Airtel Tigo 1GB Data Bundle', network: 'Airtel Tigo' },
+                { name: '2GB Data Bundle', price: 9.50, details: 'Airtel Tigo 2GB Data Bundle', network: 'Airtel Tigo' },
+                { name: '5GB Data Bundle', price: 24.00, details: 'Airtel Tigo 5GB Data Bundle', network: 'Airtel Tigo' },
+                { name: '10GB Data Bundle', price: 48.00, details: 'Airtel Tigo 10GB Data Bundle', network: 'Airtel Tigo' },
+            ];
+
+            for (const bundle of bundles) {
+                await addBundle(bundle.name, bundle.price, bundle.details, bundle.network);
+            }
+            alert('Sample bundles added!');
+            loadBundles();
         }
 
         async function loadOrders() {
@@ -152,6 +176,8 @@
             alert('Order updated!');
             loadOrders();
         });
+
+        document.getElementById('add-sample-bundles').addEventListener('click', addSampleBundles);
 
         // Load data when page loads
         document.addEventListener('DOMContentLoaded', () => {
