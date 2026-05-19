@@ -8,31 +8,33 @@ async function isAdmin(): Promise<boolean> {
   return cookieStore.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
 }
 
+type DbBundle = {
+  id: string; price: number; cost_price: number; active: boolean;
+  size_label?: string; size_gb?: number; validity?: string; network?: string;
+};
+
 export async function GET() {
   if (!(await isAdmin())) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Try fetching with metadata columns first; fall back if they don't exist yet
-  let overrides: { id: string; price: number; cost_price: number; active: boolean; size_label?: string; size_gb?: number; validity?: string }[] = [];
+  let overrides: DbBundle[] = [];
 
   const fullRes = await supabase
     .from("bundle_prices")
-    .select("id, price, cost_price, active, size_label, size_gb, validity");
+    .select("id, price, cost_price, active, size_label, size_gb, validity, network");
 
   if (!fullRes.error) {
     overrides = fullRes.data ?? [];
   } else {
-    // Columns don't exist yet — fall back to base columns only
-    const baseRes = await supabase
-      .from("bundle_prices")
-      .select("id, price, cost_price, active");
+    const baseRes = await supabase.from("bundle_prices").select("id, price, cost_price, active");
     overrides = baseRes.data ?? [];
   }
 
   const overrideMap = new Map(overrides.map((o) => [o.id, o]));
+  const defaultIds = new Set(defaultBundles.map((b) => b.id));
 
-  const bundles = defaultBundles.map((b) => {
+  const defaultRows = defaultBundles.map((b) => {
     const ov = overrideMap.get(b.id);
     return {
       id: b.id,
@@ -44,10 +46,73 @@ export async function GET() {
       costPrice: ov ? ov.cost_price : b.costPrice,
       active: ov ? ov.active !== false : true,
       hasOverride: !!ov,
+      isCustom: false,
     };
   });
 
-  return Response.json({ bundles });
+  const customRows = overrides
+    .filter((o) => !defaultIds.has(o.id) && o.network)
+    .map((o) => ({
+      id: o.id,
+      network: o.network!,
+      size: o.size_label ?? o.id,
+      sizeGB: o.size_gb ?? 1,
+      validity: o.validity ?? "30 days",
+      price: o.price,
+      costPrice: o.cost_price,
+      active: o.active !== false,
+      hasOverride: true,
+      isCustom: true,
+    }));
+
+  return Response.json({ bundles: [...defaultRows, ...customRows] });
+}
+
+export async function POST(request: NextRequest) {
+  if (!(await isAdmin())) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await request.json();
+  const { network, sizeLabel, sizeGB, validity, price, costPrice } = body;
+
+  if (!network || !["mtn", "telecel", "airteltigo"].includes(network)) {
+    return Response.json({ error: "Valid network required (MTN, Telecel, or AirtelTigo)." }, { status: 400 });
+  }
+  if (!sizeLabel?.trim()) return Response.json({ error: "Size label is required (e.g. 2GB)." }, { status: 400 });
+  if (!sizeGB || isNaN(Number(sizeGB)) || Number(sizeGB) <= 0) {
+    return Response.json({ error: "Valid GB size required." }, { status: 400 });
+  }
+  if (!validity?.trim()) return Response.json({ error: "Validity is required (e.g. 30 days)." }, { status: 400 });
+  if (!price || isNaN(Number(price)) || Number(price) <= 0) {
+    return Response.json({ error: "Valid selling price required." }, { status: 400 });
+  }
+  if (!costPrice || isNaN(Number(costPrice)) || Number(costPrice) <= 0) {
+    return Response.json({ error: "Valid cost price required." }, { status: 400 });
+  }
+  if (Number(costPrice) >= Number(price)) {
+    return Response.json({ error: "Cost price must be less than selling price." }, { status: 400 });
+  }
+
+  const bundleId = `custom-${network}-${Date.now()}`;
+
+  const { error } = await supabase.from("bundle_prices").insert({
+    id: bundleId,
+    network,
+    price: Number(price),
+    cost_price: Number(costPrice),
+    size_label: sizeLabel.trim(),
+    size_gb: Number(sizeGB),
+    validity: validity.trim(),
+    active: true,
+    updated_at: new Date().toISOString(),
+  });
+
+  if (error) {
+    return Response.json({ error: `Failed to add bundle: ${error.message} (code: ${error.code})` }, { status: 500 });
+  }
+
+  return Response.json({ success: true, bundleId });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -62,23 +127,29 @@ export async function PATCH(request: NextRequest) {
     return Response.json({ error: "bundleId is required." }, { status: 400 });
   }
 
-  const valid = defaultBundles.find((b) => b.id === bundleId);
-  if (!valid) {
-    return Response.json({ error: "Invalid bundle ID." }, { status: 400 });
+  // Allow default bundles OR custom bundles from DB
+  const defaultBundle = defaultBundles.find((b) => b.id === bundleId);
+  if (!defaultBundle) {
+    // Check it's a valid custom bundle in the DB
+    const { data: existing } = await supabase
+      .from("bundle_prices").select("id").eq("id", bundleId).maybeSingle();
+    if (!existing) {
+      return Response.json({ error: "Invalid bundle ID." }, { status: 400 });
+    }
   }
 
-  // Toggle active only — never include metadata columns here
+  // Toggle active only
   if (typeof active === "boolean" && price === undefined) {
     const { data: existing } = await supabase
-      .from("bundle_prices")
-      .select("price, cost_price")
-      .eq("id", bundleId)
-      .maybeSingle();
+      .from("bundle_prices").select("price, cost_price").eq("id", bundleId).maybeSingle();
+
+    const fallbackPrice = existing?.price ?? defaultBundle?.price ?? 0;
+    const fallbackCost = existing?.cost_price ?? defaultBundle?.costPrice ?? 0;
 
     const { error } = await supabase.from("bundle_prices").upsert({
       id: bundleId,
-      price: existing?.price ?? valid.price,
-      cost_price: existing?.cost_price ?? valid.costPrice,
+      price: fallbackPrice,
+      cost_price: fallbackCost,
       active,
       updated_at: new Date().toISOString(),
     });
@@ -96,25 +167,19 @@ export async function PATCH(request: NextRequest) {
   if (costPrice >= price) {
     return Response.json({ error: "Cost price must be less than selling price." }, { status: 400 });
   }
-
   if (sizeGB !== undefined && (typeof sizeGB !== "number" || isNaN(sizeGB) || sizeGB <= 0)) {
     return Response.json({ error: "sizeGB must be a positive number." }, { status: 400 });
   }
 
-  // Preserve existing active state if not explicitly provided
   let resolvedActive: boolean;
   if (typeof active === "boolean") {
     resolvedActive = active;
   } else {
     const { data: existing } = await supabase
-      .from("bundle_prices")
-      .select("active")
-      .eq("id", bundleId)
-      .maybeSingle();
+      .from("bundle_prices").select("active").eq("id", bundleId).maybeSingle();
     resolvedActive = existing ? existing.active !== false : true;
   }
 
-  // Build upsert — always include price fields; only include metadata if provided
   const upsertData: Record<string, unknown> = {
     id: bundleId,
     price,
@@ -126,28 +191,22 @@ export async function PATCH(request: NextRequest) {
   const hasMetadata = sizeLabel !== undefined || sizeGB !== undefined || validity !== undefined;
 
   if (hasMetadata) {
-    // Try with metadata columns; if they don't exist, fall back to price-only
     if (sizeLabel !== undefined) upsertData.size_label = sizeLabel || null;
     if (sizeGB !== undefined) upsertData.size_gb = sizeGB;
     if (validity !== undefined) upsertData.validity = validity || null;
 
     const { error } = await supabase.from("bundle_prices").upsert(upsertData);
     if (error) {
-      // Metadata columns don't exist yet — save price/active only and warn
       const { error: fallbackError } = await supabase.from("bundle_prices").upsert({
-        id: bundleId,
-        price,
-        cost_price: costPrice,
-        active: resolvedActive,
+        id: bundleId, price, cost_price: costPrice, active: resolvedActive,
         updated_at: new Date().toISOString(),
       });
       if (fallbackError) return Response.json({ error: "Failed to update price." }, { status: 500 });
-      return Response.json({ success: true, warning: "Prices saved. Run the Supabase SQL migration to enable size/validity editing." });
+      return Response.json({ success: true, warning: "Prices saved. Run the Supabase SQL setup to enable size/validity editing." });
     }
     return Response.json({ success: true });
   }
 
-  // No metadata — straightforward price update
   const { error } = await supabase.from("bundle_prices").upsert(upsertData);
   if (error) return Response.json({ error: "Failed to update price." }, { status: 500 });
   return Response.json({ success: true });

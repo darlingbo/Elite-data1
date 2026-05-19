@@ -811,6 +811,10 @@ function PricesView() {
   const [search, setSearch] = useState("");
   const [networkFilter, setNetworkFilter] = useState<"all" | "mtn" | "telecel" | "airteltigo">("all");
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState({ network: "mtn", sizeLabel: "", sizeGB: "", validity: "30 days", price: "", costPrice: "" });
+  const [addLoading, setAddLoading] = useState(false);
+  const [addMsg, setAddMsg] = useState("");
 
   const fetch_ = useCallback(async () => {
     setLoading(true);
@@ -820,6 +824,39 @@ function PricesView() {
     setLoading(false);
   }, []);
   useEffect(() => { fetch_(); }, [fetch_]);
+
+  async function handleAddBundle() {
+    setAddMsg("");
+    if (!addForm.sizeLabel.trim()) return setAddMsg("Size label is required.");
+    if (!addForm.sizeGB || isNaN(Number(addForm.sizeGB)) || Number(addForm.sizeGB) <= 0) return setAddMsg("Valid GB size required.");
+    if (!addForm.validity.trim()) return setAddMsg("Validity is required.");
+    if (!addForm.price || isNaN(Number(addForm.price)) || Number(addForm.price) <= 0) return setAddMsg("Valid selling price required.");
+    if (!addForm.costPrice || isNaN(Number(addForm.costPrice)) || Number(addForm.costPrice) <= 0) return setAddMsg("Valid cost price required.");
+    if (Number(addForm.costPrice) >= Number(addForm.price)) return setAddMsg("Cost price must be less than selling price.");
+    setAddLoading(true);
+    const res = await fetch("/api/admin/bundles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        network: addForm.network,
+        sizeLabel: addForm.sizeLabel.trim(),
+        sizeGB: Number(addForm.sizeGB),
+        validity: addForm.validity.trim(),
+        price: Number(addForm.price),
+        costPrice: Number(addForm.costPrice),
+      }),
+    });
+    const data = await res.json();
+    setAddLoading(false);
+    if (data.success) {
+      setAddMsg("Bundle added!");
+      setAddForm({ network: "mtn", sizeLabel: "", sizeGB: "", validity: "30 days", price: "", costPrice: "" });
+      fetch_();
+      setTimeout(() => { setAddOpen(false); setAddMsg(""); }, 1800);
+    } else {
+      setAddMsg(data.error || "Failed to add bundle.");
+    }
+  }
 
   async function handleSave() {
     if (!editing) return;
@@ -893,6 +930,14 @@ function PricesView() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => { setAddOpen((v) => !v); setAddMsg(""); }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all"
+            style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            Add New Bundle
+          </button>
           {/* Network filter */}
           <div className="flex gap-1 rounded-xl p-1 border border-[#1e3050]" style={{ background: "#0e1928" }}>
             {(["all", "mtn", "telecel", "airteltigo"] as const).map((n) => (
@@ -911,6 +956,89 @@ function PricesView() {
           </div>
         </div>
       </div>
+
+      {/* Quick Add Bundle Panel */}
+      {addOpen && (
+        <div className="rounded-2xl border border-blue-500/30 p-5" style={{ background: "#0e1928" }}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="font-black text-white text-base">Add New Bundle</p>
+              <p className="text-xs text-slate-500 mt-0.5">Fill in all details and click Save to add a new bundle to the store</p>
+            </div>
+            <button onClick={() => { setAddOpen(false); setAddMsg(""); }} className="text-slate-500 hover:text-white transition-colors">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1">Network</label>
+              <select value={addForm.network} onChange={(e) => setAddForm((f) => ({ ...f, network: e.target.value }))}
+                className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
+                style={{ background: "#162032" }}>
+                <option value="mtn">MTN</option>
+                <option value="telecel">Telecel</option>
+                <option value="airteltigo">AirtelTigo</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1">Size Label</label>
+              <input type="text" placeholder="e.g. 3GB" value={addForm.sizeLabel}
+                onChange={(e) => setAddForm((f) => ({ ...f, sizeLabel: e.target.value }))}
+                className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
+                style={{ background: "#162032" }} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1">GB (for API)</label>
+              <input type="number" step="0.01" min="0.01" placeholder="e.g. 3" value={addForm.sizeGB}
+                onChange={(e) => setAddForm((f) => ({ ...f, sizeGB: e.target.value }))}
+                className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
+                style={{ background: "#162032" }} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1">Validity</label>
+              <input type="text" placeholder="30 days" value={addForm.validity}
+                onChange={(e) => setAddForm((f) => ({ ...f, validity: e.target.value }))}
+                className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
+                style={{ background: "#162032" }} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1">Sell Price (GH₵)</label>
+              <input type="number" step="0.01" min="0.01" placeholder="e.g. 15" value={addForm.price}
+                onChange={(e) => setAddForm((f) => ({ ...f, price: e.target.value }))}
+                className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
+                style={{ background: "#162032" }} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1">Cost Price (GH₵)</label>
+              <input type="number" step="0.01" min="0.01" placeholder="e.g. 11" value={addForm.costPrice}
+                onChange={(e) => setAddForm((f) => ({ ...f, costPrice: e.target.value }))}
+                className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
+                style={{ background: "#162032" }} />
+            </div>
+          </div>
+          {addForm.price && addForm.costPrice && !isNaN(Number(addForm.price)) && !isNaN(Number(addForm.costPrice)) && Number(addForm.price) > Number(addForm.costPrice) && (
+            <div className="mt-3 text-xs font-semibold" style={{ color: "#4ade80" }}>
+              Margin: GH₵{(Number(addForm.price) - Number(addForm.costPrice)).toFixed(2)} ({(((Number(addForm.price) - Number(addForm.costPrice)) / Number(addForm.price)) * 100).toFixed(0)}%)
+            </div>
+          )}
+          {addMsg && (
+            <p className={`mt-3 text-xs font-semibold ${addMsg === "Bundle added!" ? "text-green-400" : "text-red-400"}`}>{addMsg}</p>
+          )}
+          <div className="mt-4 flex gap-3">
+            <button onClick={() => { setAddOpen(false); setAddMsg(""); }}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-400 border border-[#1e3050] hover:text-white transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleAddBundle} disabled={addLoading}
+              className="px-6 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-60 transition-all"
+              style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
+              {addLoading ? "Saving…" : "Save Bundle"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-[#1e3050] overflow-hidden" style={{ background: "#162032" }}>
         {loading ? <p className="text-center text-slate-500 py-16">Loading…</p> : (

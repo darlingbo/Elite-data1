@@ -1,9 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Server-side: use service role key (bypasses RLS — safe because this file is server-only)
+// Client-side fallback: anon key (NEXT_PUBLIC_ vars only)
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+export const supabase = createClient(supabaseUrl, supabaseKey);
 
 export type OrderStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
 

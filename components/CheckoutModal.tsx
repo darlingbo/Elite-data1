@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Bundle, networkConfig } from "@/lib/bundles";
 
 interface Props {
@@ -17,6 +17,30 @@ declare global {
 
 const PLATFORM_FEE_RATE = 0.02;
 
+function usePaystackReady() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (window.PaystackPop) { setReady(true); return; }
+
+    const existing = document.querySelector('script[src*="paystack"]');
+    if (!existing) {
+      const script = document.createElement("script");
+      script.src = "https://js.paystack.co/v1/inline.js";
+      script.async = true;
+      script.onload = () => setReady(true);
+      document.body.appendChild(script);
+    } else {
+      const check = setInterval(() => {
+        if (window.PaystackPop) { setReady(true); clearInterval(check); }
+      }, 100);
+      return () => clearInterval(check);
+    }
+  }, []);
+
+  return ready;
+}
+
 export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -24,6 +48,7 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<{ reference: string } | null>(null);
+  const paystackReady = usePaystackReady();
 
   const net = networkConfig[bundle.network];
   const feeAmount = parseFloat((bundle.price * PLATFORM_FEE_RATE).toFixed(2));
@@ -38,11 +63,19 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
     if (!name.trim()) return setError("Please enter your name.");
     if (!email.trim() || !email.includes("@")) return setError("Please enter a valid email.");
     if (!validatePhone(phone)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
+    if (!paystackReady) return setError("Payment is still loading. Please try again in a moment.");
+
+    const key = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
+    if (!key) {
+      setError("Paystack key is missing. Add NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY to Vercel environment variables.");
+      return;
+    }
 
     setLoading(true);
 
+    try {
     const handler = window.PaystackPop.setup({
-      key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
+      key,
       email,
       amount: Math.round(totalAmount * 100),
       currency: "GHS",
@@ -54,31 +87,32 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
           { display_name: "Bundle", variable_name: "bundle", value: `${net.name} ${bundle.size}` },
         ],
       },
-      callback: async (response: { reference: string }) => {
-        try {
-          const res = await fetch("/api/orders/create", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name,
-              email,
-              phone,
-              bundleId: bundle.id,
-              paystackRef: response.reference,
-              agentCode: agentCode ?? null,
-            }),
+      callback: function(response: { reference: string }) {
+        fetch("/api/orders/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            email,
+            phone,
+            bundleId: bundle.id,
+            paystackRef: response.reference,
+            agentCode: agentCode ?? null,
+          }),
+        })
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+            setLoading(false);
+            if (data.success) {
+              setSuccess({ reference: data.reference });
+            } else {
+              setError(data.error || "Something went wrong. Please contact support.");
+            }
+          })
+          .catch(function() {
+            setLoading(false);
+            setError("Network error. Please contact support on WhatsApp.");
           });
-          const data = await res.json();
-          setLoading(false);
-          if (data.success) {
-            setSuccess({ reference: data.reference });
-          } else {
-            setError(data.error || "Something went wrong. Please contact support.");
-          }
-        } catch {
-          setLoading(false);
-          setError("Network error. Please contact support on WhatsApp.");
-        }
       },
       onClose: () => {
         setLoading(false);
@@ -86,6 +120,10 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
     });
 
     handler.openIframe();
+    } catch (err) {
+      setLoading(false);
+      setError(`Paystack error: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   if (success) {
@@ -132,7 +170,7 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
                 <span className="font-semibold text-gray-700">GH₵{bundle.price.toFixed(2)}</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-400">
-                <span>Payment processing fee</span>
+                <span>Payment processing fee (2%)</span>
                 <span>GH₵{feeAmount.toFixed(2)}</span>
               </div>
               <div className={`flex items-center gap-2 text-base font-black ${net.textColor}`}>
@@ -176,9 +214,9 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
             Bundle delivered instantly after payment · Validity: {bundle.validity}
           </div>
 
-          <button onClick={handlePay} disabled={loading}
+          <button onClick={handlePay} disabled={loading || !paystackReady}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl transition-colors text-sm">
-            {loading ? "Processing..." : `Pay GH₵ ${totalAmount.toFixed(2)}`}
+            {loading ? "Processing..." : !paystackReady ? "Initializing payment…" : `Pay GH₵ ${totalAmount.toFixed(2)} via Paystack`}
           </button>
 
           <button onClick={onClose} className="w-full text-gray-500 hover:text-gray-700 text-sm py-1 transition-colors">

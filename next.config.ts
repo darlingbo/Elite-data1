@@ -18,8 +18,8 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob:",
-      "connect-src 'self' https://*.supabase.co https://api.paystack.co https://api.telegram.org https://agent.inventor-datahub.com",
-      "frame-src https://js.paystack.co",
+      "connect-src 'self' https://*.supabase.co https://api.paystack.co https://checkout.paystack.com https://api.telegram.org https://agent.inventor-datahub.com",
+      "frame-src https://js.paystack.co https://checkout.paystack.com",
     ].join("; "),
   },
 ];

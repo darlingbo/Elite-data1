@@ -18,11 +18,16 @@ export async function POST(request: NextRequest) {
   }
 
   // Check duplicate
-  const { data: existing } = await supabase
+  const { data: existing, error: checkErr } = await supabase
     .from("agents")
     .select("id, status")
     .eq("email", email.toLowerCase().trim())
     .maybeSingle();
+
+  // If the table doesn't exist at all, checkErr will tell us
+  if (checkErr && checkErr.code === "42P01") {
+    return Response.json({ error: "Database not set up yet. Admin must run the Supabase SQL setup first. Error: table 'agents' does not exist." }, { status: 500 });
+  }
 
   if (existing) {
     const msg =
@@ -36,7 +41,7 @@ export async function POST(request: NextRequest) {
 
   const password_hash = await bcrypt.hash(password, 10);
 
-  // Try full insert (all columns)
+  // Tier 1: full insert
   const { error: err1 } = await supabase.from("agents").insert({
     name: name.trim(),
     email: email.toLowerCase().trim(),
@@ -55,7 +60,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true });
   }
 
-  // Fallback: without password_hash (column may not exist yet)
+  // Tier 2: without password_hash
   const { error: err2 } = await supabase.from("agents").insert({
     name: name.trim(),
     email: email.toLowerCase().trim(),
@@ -73,7 +78,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true });
   }
 
-  // Fallback: without whatsapp + total_revenue
+  // Tier 3: without whatsapp + total_revenue
   const { error: err3 } = await supabase.from("agents").insert({
     name: name.trim(),
     email: email.toLowerCase().trim(),
@@ -89,7 +94,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true });
   }
 
-  // Minimal fallback: absolute bare minimum
+  // Tier 4: absolute minimum
   const { error: err4 } = await supabase.from("agents").insert({
     name: name.trim(),
     email: email.toLowerCase().trim(),
@@ -99,10 +104,13 @@ export async function POST(request: NextRequest) {
     total_sales: 0,
   });
 
-  if (err4) {
-    return Response.json({ error: "Failed to submit application. Please try again." }, { status: 500 });
+  if (!err4) {
+    await sendAdminAlert(fmtAgentApplied(name.trim(), email.trim(), phone.trim(), business_name?.trim()));
+    return Response.json({ success: true });
   }
 
-  await sendAdminAlert(fmtAgentApplied(name.trim(), email.trim(), phone.trim(), business_name?.trim()));
-  return Response.json({ success: true });
+  // Return actual Supabase error so we can diagnose
+  return Response.json({
+    error: `Failed to submit application. Database error: ${err4.message} (code: ${err4.code})`,
+  }, { status: 500 });
 }
