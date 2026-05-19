@@ -15,6 +15,8 @@ declare global {
   }
 }
 
+const PLATFORM_FEE_RATE = 0.02;
+
 export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -24,6 +26,8 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
   const [success, setSuccess] = useState<{ reference: string } | null>(null);
 
   const net = networkConfig[bundle.network];
+  const feeAmount = parseFloat((bundle.price * PLATFORM_FEE_RATE).toFixed(2));
+  const totalAmount = parseFloat((bundle.price + feeAmount).toFixed(2));
 
   function validatePhone(p: string) {
     return /^0[2-5][0-9]{8}$/.test(p.replace(/\s/g, ""));
@@ -40,7 +44,7 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
     const handler = window.PaystackPop.setup({
       key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
       email,
-      amount: Math.round(bundle.price * 100),
+      amount: Math.round(totalAmount * 100),
       currency: "GHS",
       ref: `elite-${Date.now()}`,
       metadata: {
@@ -122,7 +126,20 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
           <div>
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{net.name} Bundle</p>
             <h2 className="text-2xl font-black text-gray-800">{bundle.size}</h2>
-            <p className={`text-lg font-bold ${net.textColor}`}>GH₵ {bundle.price.toFixed(2)}</p>
+            <div className="mt-1 space-y-0.5">
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <span>Bundle price</span>
+                <span className="font-semibold text-gray-700">GH₵{bundle.price.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <span>Payment processing fee</span>
+                <span>GH₵{feeAmount.toFixed(2)}</span>
+              </div>
+              <div className={`flex items-center gap-2 text-base font-black ${net.textColor}`}>
+                <span>Total</span>
+                <span>GH₵{totalAmount.toFixed(2)}</span>
+              </div>
+            </div>
           </div>
           <div className={`w-14 h-14 rounded-full ${net.bgColor} flex items-center justify-center text-white font-black text-sm`}>
             {net.logo}
@@ -161,7 +178,7 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
 
           <button onClick={handlePay} disabled={loading}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl transition-colors text-sm">
-            {loading ? "Processing..." : `Pay GH₵ ${bundle.price.toFixed(2)}`}
+            {loading ? "Processing..." : `Pay GH₵ ${totalAmount.toFixed(2)}`}
           </button>
 
           <button onClick={onClose} className="w-full text-gray-500 hover:text-gray-700 text-sm py-1 transition-colors">

@@ -11,7 +11,7 @@ interface Order {
   bundle_size: string; created_at: string; agent_id: string | null;
 }
 interface Agent {
-  id: string; name: string; email: string; phone: string; business_name: string;
+  id: string; name: string; email: string; phone: string; whatsapp?: string; business_name: string;
   referral_code: string; status: string; commission_balance: number; total_sales: number;
   total_revenue: number; created_at: string;
 }
@@ -22,7 +22,8 @@ interface StatsData {
   agents: { all: Agent[]; total: number; pending: number; approved: number; rejected: number; };
 }
 interface BundleRow {
-  id: string; network: string; size: string; price: number; costPrice: number; hasOverride: boolean;
+  id: string; network: string; size: string; sizeGB: number; validity: string;
+  price: number; costPrice: number; hasOverride: boolean; active: boolean;
 }
 
 const PAGE_SIZE = 50;
@@ -128,17 +129,25 @@ const IconWhatsApp = () => (
 );
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-function Sidebar({ tab, setTab, pendingAgents, onLogout }: {
+function Sidebar({ tab, setTab, pendingAgents, onLogout, mobileOpen, onMobileClose }: {
   tab: Tab; setTab: (t: Tab) => void; pendingAgents: number; onLogout: () => void;
+  mobileOpen: boolean; onMobileClose: () => void;
 }) {
   const nav = [
     { id: "overview" as Tab, label: "Dashboard", icon: <IconHome /> },
     { id: "orders" as Tab, label: "Orders", icon: <IconOrders /> },
     { id: "agents" as Tab, label: "Agents", icon: <IconAgents />, badge: pendingAgents || undefined },
-    { id: "prices" as Tab, label: "Bundle Prices", icon: <IconPrices /> },
+    { id: "prices" as Tab, label: "Bundles", icon: <IconPrices /> },
   ];
   return (
-    <aside className="w-60 shrink-0 flex flex-col border-r border-[#1e3050]" style={{ background: "#0b1120", minHeight: "100vh" }}>
+    <aside className={`fixed inset-y-0 left-0 z-50 w-60 flex flex-col border-r border-[#1e3050] transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`} style={{ background: "#0b1120" }}>
+      {/* Mobile close button */}
+      <button onClick={onMobileClose} className="md:hidden absolute top-4 right-4 text-slate-400 hover:text-white transition-colors">
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+
       {/* Logo */}
       <div className="px-5 pt-6 pb-5 border-b border-[#1e3050]">
         <div className="flex items-center gap-2.5">
@@ -171,7 +180,7 @@ function Sidebar({ tab, setTab, pendingAgents, onLogout }: {
         {nav.map((n) => {
           const active = tab === n.id;
           return (
-            <button key={n.id} onClick={() => setTab(n.id)}
+            <button key={n.id} onClick={() => { setTab(n.id); onMobileClose(); }}
               className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left"
               style={active ? { background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", color: "#fff" } : { color: "#94a3b8" }}
               onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = "#162032"; }}
@@ -192,7 +201,7 @@ function Sidebar({ tab, setTab, pendingAgents, onLogout }: {
 
       {/* Bottom links */}
       <div className="px-3 pb-5 space-y-0.5 border-t border-[#1e3050] pt-4">
-        <a href="https://wa.me/233556631260" target="_blank" rel="noreferrer"
+        <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer"
           className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 transition-all"
           style={{ color: "#4ade80" }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#162032"; }}
@@ -204,7 +213,7 @@ function Sidebar({ tab, setTab, pendingAgents, onLogout }: {
           <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
           </svg>
-          +233 556 631 260
+          +233 509 794 503
         </div>
         <button onClick={onLogout}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 transition-all"
@@ -225,6 +234,14 @@ function Overview({ stats, animated, onNavigate }: { stats: StatsData; animated:
   const totalOrders = useCountUp(stats.orders.total, 900, animated);
   const profit = useCountUp(Math.round(stats.profit.admin), 1200, animated);
   const thisMonth = useCountUp(getThisMonthOrders(stats.orders.all), 800, animated);
+  const [apiBalance, setApiBalance] = useState<{ balance: number | null; error?: string }>({ balance: null });
+
+  useEffect(() => {
+    fetch("/api/admin/inventor-balance")
+      .then((r) => r.json())
+      .then((d) => setApiBalance(d))
+      .catch(() => setApiBalance({ balance: null, error: "Could not fetch balance" }));
+  }, []);
 
   const monthly = getMonthly(stats.orders.all);
   const maxRev = Math.max(...monthly.map((m) => m.revenue), 1);
@@ -327,6 +344,19 @@ function Overview({ stats, animated, onNavigate }: { stats: StatsData; animated:
             <p className="text-xs text-slate-500 mt-1">{c.sub}</p>
           </div>
         ))}
+        {/* API Balance card */}
+        <div className="rounded-2xl p-5 border border-[#1e3050]" style={{ background: "#162032", animation: `slideUp .35s ease both`, animationDelay: `${4 * 60}ms` }}>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">API Balance</p>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#0a2a1f", color: "#34d399" }}>
+              <IconWallet />
+            </div>
+          </div>
+          <p className="text-2xl font-black text-white">
+            {apiBalance.balance !== null ? `GH₵${Number(apiBalance.balance).toLocaleString()}` : "—"}
+          </p>
+          <p className="text-xs text-slate-500 mt-1">Inventor DataHub</p>
+        </div>
       </div>
 
       {/* Row 3 — Monthly chart + status breakdown */}
@@ -631,9 +661,8 @@ function OrdersView({ orders, onRefresh }: { orders: Order[]; onRefresh: () => v
 
 // ─── Agents View ──────────────────────────────────────────────────────────────
 function AgentsView({ stats, onRefresh }: { stats: StatsData; onRefresh: () => void }) {
-  const [agentTab, setAgentTab] = useState<"pending" | "approved" | "rejected">("pending");
-  const [agentAction, setAgentAction] = useState<{ id: string; action: "approve" | "reject" } | null>(null);
-  const [rejectReason, setRejectReason] = useState("");
+  const [agentTab, setAgentTab] = useState<"pending" | "approved">("pending");
+  const [agentAction, setAgentAction] = useState<{ id: string; name: string; action: "approve" | "reject" } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   async function handleAction() {
@@ -641,9 +670,9 @@ function AgentsView({ stats, onRefresh }: { stats: StatsData; onRefresh: () => v
     setActionLoading(true);
     await fetch(`/api/agents/${agentAction.id}/status`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: agentAction.action, rejection_reason: rejectReason || undefined }),
+      body: JSON.stringify({ action: agentAction.action }),
     });
-    setAgentAction(null); setRejectReason(""); setActionLoading(false); onRefresh();
+    setAgentAction(null); setActionLoading(false); onRefresh();
   }
 
   const shown = stats.agents.all.filter((a) => a.status === agentTab);
@@ -652,18 +681,19 @@ function AgentsView({ stats, onRefresh }: { stats: StatsData; onRefresh: () => v
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-black text-white">Agents</h1>
-        <p className="text-sm text-slate-500">{stats.agents.approved} active · {stats.agents.pending} pending · {stats.agents.rejected} rejected</p>
+        <p className="text-sm text-slate-500">{stats.agents.approved} active · {stats.agents.pending} awaiting approval</p>
       </div>
 
       <div className="flex gap-1">
-        {(["pending", "approved", "rejected"] as const).map((s) => {
+        {(["pending", "approved"] as const).map((s) => {
           const active = agentTab === s;
-          const color = s === "approved" ? "#10b981" : s === "pending" ? "#f59e0b" : "#f87171";
+          const color = s === "approved" ? "#10b981" : "#f59e0b";
+          const count = stats.agents.all.filter((a) => a.status === s).length;
           return (
             <button key={s} onClick={() => setAgentTab(s)}
               className="px-4 py-2 rounded-xl text-sm font-semibold capitalize border transition-all"
               style={active ? { background: `${color}20`, color, borderColor: `${color}50` } : { background: "#162032", color: "#64748b", borderColor: "#1e3050" }}>
-              {s} ({stats.agents.all.filter((a) => a.status === s).length})
+              {s === "pending" ? "Pending Approval" : "Approved"} ({count})
             </button>
           );
         })}
@@ -674,9 +704,18 @@ function AgentsView({ stats, onRefresh }: { stats: StatsData; onRefresh: () => v
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#1e3050] text-xs text-slate-500 uppercase tracking-wider" style={{ background: "#0e1928" }}>
-                {["Name", "Email", "Phone", "Business", "Sales", "Balance", agentTab === "approved" ? "Ref Code" : "Applied", ""].map((h, i) => (
-                  <th key={i} className="px-4 py-3 text-left font-semibold">{h}</th>
-                ))}
+                <th className="px-4 py-3 text-left font-semibold">Name</th>
+                <th className="px-4 py-3 text-left font-semibold">Email</th>
+                <th className="px-4 py-3 text-left font-semibold">Phone</th>
+                <th className="px-4 py-3 text-left font-semibold">WhatsApp</th>
+                <th className="px-4 py-3 text-left font-semibold">Business</th>
+                {agentTab === "approved" && <>
+                  <th className="px-4 py-3 text-left font-semibold">Sales</th>
+                  <th className="px-4 py-3 text-left font-semibold">Balance</th>
+                  <th className="px-4 py-3 text-left font-semibold">Ref Code</th>
+                </>}
+                {agentTab === "pending" && <th className="px-4 py-3 text-left font-semibold">Applied</th>}
+                <th className="px-4 py-3 text-left font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -685,59 +724,72 @@ function AgentsView({ stats, onRefresh }: { stats: StatsData; onRefresh: () => v
                   <td className="px-4 py-3.5 font-semibold text-white">{a.name}</td>
                   <td className="px-4 py-3.5 text-slate-400 text-xs">{a.email}</td>
                   <td className="px-4 py-3.5 font-mono text-xs text-slate-400">{a.phone}</td>
-                  <td className="px-4 py-3.5 text-slate-500 text-xs">{a.business_name || "—"}</td>
-                  <td className="px-4 py-3.5 font-bold text-white">{a.total_sales}</td>
-                  <td className="px-4 py-3.5 font-black" style={{ color: "#4ade80" }}>GH₵{(a.commission_balance ?? 0).toFixed(2)}</td>
-                  <td className="px-4 py-3.5 font-mono text-xs text-slate-400">
-                    {agentTab === "approved" ? a.referral_code : new Date(a.created_at).toLocaleDateString("en-GH")}
+                  <td className="px-4 py-3.5 text-xs">
+                    {a.whatsapp ? (
+                      <a href={`https://wa.me/${a.whatsapp.replace(/^0/, "233")}`}
+                        target="_blank" rel="noreferrer" className="text-green-400 hover:text-green-300 font-mono">
+                        {a.whatsapp}
+                      </a>
+                    ) : <span className="text-slate-600">—</span>}
                   </td>
+                  <td className="px-4 py-3.5 text-slate-500 text-xs">{a.business_name || "—"}</td>
+                  {agentTab === "approved" && <>
+                    <td className="px-4 py-3.5 font-bold text-white">{a.total_sales}</td>
+                    <td className="px-4 py-3.5 font-black" style={{ color: "#4ade80" }}>GH₵{(a.commission_balance ?? 0).toFixed(2)}</td>
+                    <td className="px-4 py-3.5 font-mono text-xs font-bold" style={{ color: "#60a5fa" }}>{a.referral_code}</td>
+                  </>}
+                  {agentTab === "pending" && (
+                    <td className="px-4 py-3.5 text-slate-500 text-xs">{new Date(a.created_at).toLocaleDateString("en-GH")}</td>
+                  )}
                   <td className="px-4 py-3.5">
                     {agentTab === "pending" && (
                       <div className="flex gap-2">
-                        <button onClick={() => setAgentAction({ id: a.id, action: "approve" })}
+                        <button onClick={() => setAgentAction({ id: a.id, name: a.name, action: "approve" })}
                           className="text-xs font-bold px-3 py-1.5 rounded-lg text-white transition-colors"
                           style={{ background: "linear-gradient(90deg,#059669,#10b981)" }}>Approve</button>
-                        <button onClick={() => setAgentAction({ id: a.id, action: "reject" })}
+                        <button onClick={() => setAgentAction({ id: a.id, name: a.name, action: "reject" })}
                           className="text-xs font-bold px-3 py-1.5 rounded-lg text-white transition-colors"
-                          style={{ background: "linear-gradient(90deg,#dc2626,#f87171)" }}>Reject</button>
+                          style={{ background: "linear-gradient(90deg,#dc2626,#f87171)" }}>Decline</button>
                       </div>
                     )}
                     {agentTab === "approved" && (
-                      <button onClick={() => setAgentAction({ id: a.id, action: "reject" })}
-                        className="text-xs font-semibold transition-colors" style={{ color: "#f87171" }}>Revoke</button>
+                      <button onClick={() => setAgentAction({ id: a.id, name: a.name, action: "reject" })}
+                        className="text-xs font-semibold transition-colors" style={{ color: "#f87171" }}>Remove</button>
                     )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {shown.length === 0 && <p className="text-center text-slate-500 py-12 capitalize">No {agentTab} agents.</p>}
+          {shown.length === 0 && (
+            <div className="py-16 text-center">
+              <p className="text-4xl mb-3">{agentTab === "pending" ? "📭" : "👥"}</p>
+              <p className="text-slate-500 font-semibold">
+                {agentTab === "pending" ? "No pending applications" : "No approved agents yet"}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
       {agentAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-[#1e3050]" style={{ background: "#162032" }}>
-            <h3 className="font-black text-white text-lg mb-2">{agentAction.action === "approve" ? "Approve Agent" : "Reject Agent"}</h3>
-            {agentAction.action === "reject" && (
-              <div className="mb-4">
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Reason (optional)</label>
-                <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={3}
-                  placeholder="Reason for rejection…"
-                  className="w-full rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 border border-[#1e3050] resize-none"
-                  style={{ background: "#0e1928" }} />
-              </div>
-            )}
-            {agentAction.action === "approve" && (
-              <p className="text-sm text-slate-400 mb-4">A unique referral code will be generated automatically.</p>
-            )}
+            <h3 className="font-black text-white text-lg mb-2">
+              {agentAction.action === "approve" ? "Approve Agent" : "Decline & Remove Agent"}
+            </h3>
+            <p className="text-sm text-slate-400 mb-5">
+              {agentAction.action === "approve"
+                ? `Approve ${agentAction.name}? A unique referral code will be generated and they can start selling.`
+                : `Remove ${agentAction.name}'s application? They will be permanently deleted and can re-apply.`}
+            </p>
             <div className="flex gap-3">
-              <button onClick={() => { setAgentAction(null); setRejectReason(""); }}
+              <button onClick={() => setAgentAction(null)}
                 className="flex-1 border border-[#1e3050] text-slate-400 font-semibold py-2.5 rounded-xl text-sm hover:text-white transition-colors">Cancel</button>
               <button onClick={handleAction} disabled={actionLoading}
                 className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60"
                 style={{ background: agentAction.action === "approve" ? "linear-gradient(90deg,#059669,#10b981)" : "linear-gradient(90deg,#dc2626,#f87171)" }}>
-                {actionLoading ? "…" : agentAction.action === "approve" ? "Approve" : "Reject"}
+                {actionLoading ? "…" : agentAction.action === "approve" ? "Approve" : "Decline & Remove"}
               </button>
             </div>
           </div>
@@ -747,15 +799,18 @@ function AgentsView({ stats, onRefresh }: { stats: StatsData; onRefresh: () => v
   );
 }
 
-// ─── Prices View ──────────────────────────────────────────────────────────────
+// ─── Bundle Management View ───────────────────────────────────────────────────
 function PricesView() {
   const [bundles, setBundles] = useState<BundleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<BundleRow | null>(null);
   const [editPrice, setEditPrice] = useState({ price: "", costPrice: "" });
+  const [editMeta, setEditMeta] = useState({ sizeLabel: "", sizeGB: "", validity: "" });
   const [editLoading, setEditLoading] = useState(false);
   const [editMsg, setEditMsg] = useState("");
   const [search, setSearch] = useState("");
+  const [networkFilter, setNetworkFilter] = useState<"all" | "mtn" | "telecel" | "airteltigo">("all");
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const fetch_ = useCallback(async () => {
     setLoading(true);
@@ -768,10 +823,27 @@ function PricesView() {
 
   async function handleSave() {
     if (!editing) return;
+    if (!editPrice.price || !editPrice.costPrice || isNaN(parseFloat(editPrice.price)) || isNaN(parseFloat(editPrice.costPrice))) {
+      setEditMsg("Enter valid numbers for both prices.");
+      return;
+    }
+    if (editMeta.sizeGB && (isNaN(parseFloat(editMeta.sizeGB)) || parseFloat(editMeta.sizeGB) <= 0)) {
+      setEditMsg("Size (GB) must be a positive number.");
+      return;
+    }
     setEditLoading(true); setEditMsg("");
+    const body: Record<string, unknown> = {
+      bundleId: editing.id,
+      price: parseFloat(editPrice.price),
+      costPrice: parseFloat(editPrice.costPrice),
+      active: editing.active,
+    };
+    if (editMeta.sizeLabel.trim()) body.sizeLabel = editMeta.sizeLabel.trim();
+    if (editMeta.sizeGB) body.sizeGB = parseFloat(editMeta.sizeGB);
+    if (editMeta.validity.trim()) body.validity = editMeta.validity.trim();
     const res = await fetch("/api/admin/bundles", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bundleId: editing.id, price: parseFloat(editPrice.price), costPrice: parseFloat(editPrice.costPrice) }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (data.success) { setEditMsg("Saved!"); fetch_(); setTimeout(() => { setEditing(null); setEditMsg(""); }, 900); }
@@ -779,9 +851,20 @@ function PricesView() {
     setEditLoading(false);
   }
 
+  async function handleToggleActive(b: BundleRow) {
+    setTogglingId(b.id);
+    await fetch("/api/admin/bundles", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bundleId: b.id, active: !b.active }),
+    });
+    setBundles((prev) => prev.map((x) => x.id === b.id ? { ...x, active: !b.active } : x));
+    setTogglingId(null);
+  }
+
   const shown = bundles.filter((b) => {
     const q = search.toLowerCase();
-    return !q || b.network.toLowerCase().includes(q) || b.size.toLowerCase().includes(q);
+    const matchNet = networkFilter === "all" || b.network.toLowerCase() === networkFilter;
+    return matchNet && (!q || b.size.toLowerCase().includes(q));
   });
 
   const netBadge: Record<string, { bg: string; color: string }> = {
@@ -790,18 +873,38 @@ function PricesView() {
     airteltigo: { bg: "#881337", color: "#fda4af" },
   };
 
+  const totals = {
+    active: bundles.filter((b) => b.active).length,
+    inactive: bundles.filter((b) => !b.active).length,
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-black text-white">Bundle Prices</h1>
-          <p className="text-sm text-slate-500">Edit sell or cost price — changes apply instantly</p>
+          <h1 className="text-xl font-black text-white">Bundle Management</h1>
+          <p className="text-sm text-slate-500">
+            Edit prices, toggle visibility — {totals.active} active, {totals.inactive} hidden
+          </p>
         </div>
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">🔍</span>
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter bundles…"
-            className="pl-9 pr-4 py-2 text-sm rounded-xl border border-[#1e3050] focus:outline-none focus:border-blue-500 w-48 text-white placeholder-slate-600"
-            style={{ background: "#162032" }} />
+        <div className="flex items-center gap-2">
+          {/* Network filter */}
+          <div className="flex gap-1 rounded-xl p-1 border border-[#1e3050]" style={{ background: "#0e1928" }}>
+            {(["all", "mtn", "telecel", "airteltigo"] as const).map((n) => (
+              <button key={n} onClick={() => setNetworkFilter(n)}
+                className="text-[11px] font-bold px-2.5 py-1 rounded-lg capitalize transition-all"
+                style={networkFilter === n ? { background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", color: "#fff" } : { color: "#64748b" }}>
+                {n === "all" ? "All" : n === "airteltigo" ? "AT" : n.charAt(0).toUpperCase() + n.slice(1)}
+              </button>
+            ))}
+          </div>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">🔍</span>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…"
+              className="pl-9 pr-4 py-2 text-sm rounded-xl border border-[#1e3050] focus:outline-none focus:border-blue-500 w-36 text-white placeholder-slate-600"
+              style={{ background: "#162032" }} />
+          </div>
         </div>
       </div>
 
@@ -811,37 +914,56 @@ function PricesView() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#1e3050] text-xs text-slate-500 uppercase tracking-wider" style={{ background: "#0e1928" }}>
-                  {["Network", "Bundle", "Sell Price", "Cost", "Margin", ""].map((h, i) => (
-                    <th key={i} className="px-4 py-3 text-left font-semibold">{h}</th>
-                  ))}
+                  <th className="px-4 py-3 text-left font-semibold">Network</th>
+                  <th className="px-4 py-3 text-left font-semibold">Bundle</th>
+                  <th className="px-4 py-3 text-left font-semibold">Validity</th>
+                  <th className="px-4 py-3 text-left font-semibold">Sell Price</th>
+                  <th className="px-4 py-3 text-left font-semibold">Cost</th>
+                  <th className="px-4 py-3 text-left font-semibold">Margin</th>
+                  <th className="px-4 py-3 text-left font-semibold">Status</th>
+                  <th className="px-4 py-3 text-left font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {shown.map((b) => {
                   const nb = netBadge[b.network.toLowerCase()] ?? { bg: "#1e293b", color: "#94a3b8" };
                   const margin = b.price - b.costPrice;
+                  const marginPct = ((margin / b.price) * 100).toFixed(0);
                   return (
-                    <tr key={b.id} className="border-b border-[#1e3050]/50 last:border-0 hover:bg-[#1e3050]/30 transition-colors">
+                    <tr key={b.id} className={`border-b border-[#1e3050]/50 last:border-0 transition-colors ${b.active ? "hover:bg-[#1e3050]/30" : "opacity-50 hover:opacity-70"}`}>
                       <td className="px-4 py-3.5">
                         <span className="text-[10px] font-black px-2 py-0.5 rounded" style={{ background: nb.bg, color: nb.color }}>
                           {b.network.toUpperCase()}
                         </span>
                       </td>
-                      <td className="px-4 py-3.5 font-medium text-slate-300">{b.size}</td>
-                      <td className="px-4 py-3.5 font-black text-white">
-                        GH₵{b.price.toFixed(2)}
+                      <td className="px-4 py-3.5 font-semibold text-slate-300">
+                        {b.size}
                         {b.hasOverride && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa" }}>custom</span>}
                       </td>
+                      <td className="px-4 py-3.5 text-slate-500 text-xs">{b.validity}</td>
+                      <td className="px-4 py-3.5 font-black text-white">GH₵{b.price.toFixed(2)}</td>
                       <td className="px-4 py-3.5 text-slate-500">GH₵{b.costPrice.toFixed(2)}</td>
                       <td className="px-4 py-3.5">
                         <span className="font-black" style={{ color: "#4ade80" }}>GH₵{margin.toFixed(2)}</span>
-                        <span className="text-slate-600 text-xs ml-1">({((margin / b.price) * 100).toFixed(0)}%)</span>
+                        <span className="text-slate-600 text-xs ml-1">({marginPct}%)</span>
                       </td>
                       <td className="px-4 py-3.5">
-                        <button onClick={() => { setEditing(b); setEditPrice({ price: String(b.price), costPrice: String(b.costPrice) }); setEditMsg(""); }}
+                        <button
+                          onClick={() => handleToggleActive(b)}
+                          disabled={togglingId === b.id}
+                          className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-40"
+                          style={{ background: b.active ? "#10b981" : "#374151" }}
+                          title={b.active ? "Click to hide from store" : "Click to show in store"}
+                        >
+                          <span className="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ease-in-out"
+                            style={{ transform: b.active ? "translateX(16px)" : "translateX(0)" }} />
+                        </button>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <button onClick={() => { setEditing(b); setEditPrice({ price: String(b.price), costPrice: String(b.costPrice) }); setEditMeta({ sizeLabel: b.size, sizeGB: String(b.sizeGB), validity: b.validity }); setEditMsg(""); }}
                           className="text-xs font-bold px-3 py-1.5 rounded-lg transition-colors text-blue-400 border border-blue-500/30 hover:border-blue-400"
                           style={{ background: "rgba(59,130,246,0.1)" }}>
-                          Edit
+                          Edit Price
                         </button>
                       </td>
                     </tr>
@@ -849,34 +971,73 @@ function PricesView() {
                 })}
               </tbody>
             </table>
+            {shown.length === 0 && <p className="text-center text-slate-500 py-10">No bundles match your filter.</p>}
           </div>
         )}
       </div>
 
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-[#1e3050]" style={{ background: "#162032" }}>
-            <h3 className="font-black text-white mb-1">Edit Price</h3>
-            <p className="text-sm text-slate-500 mb-4">{editing.network.toUpperCase()} — {editing.size}</p>
+          <div className="rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-[#1e3050] max-h-[90vh] overflow-y-auto" style={{ background: "#162032" }}>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-[11px] font-black px-2 py-0.5 rounded" style={netBadge[editing.network.toLowerCase()] ? { background: netBadge[editing.network.toLowerCase()].bg, color: netBadge[editing.network.toLowerCase()].color } : {}}>
+                {editing.network.toUpperCase()}
+              </span>
+              <h3 className="font-black text-white text-lg">Edit Bundle</h3>
+            </div>
+
+            <p className="text-xs text-slate-500 mb-4">Changes override the defaults. Leave size/validity blank to reset to default.</p>
+
             <div className="space-y-3">
-              {[{ label: "Selling Price (GH₵)", key: "price" }, { label: "Cost / Fulfillment (GH₵)", key: "costPrice" }].map(({ label, key }) => (
+              {/* Prices */}
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pricing</p>
+              {[{ label: "Selling Price (GH₵)", key: "price" as const }, { label: "Cost / Fulfillment (GH₵)", key: "costPrice" as const }].map(({ label, key }) => (
                 <div key={key}>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">{label}</label>
                   <input type="number" step="0.01" min="0.01"
-                    value={editPrice[key as "price" | "costPrice"]}
+                    value={editPrice[key]}
                     onChange={(e) => setEditPrice((p) => ({ ...p, [key]: e.target.value }))}
                     className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
                     style={{ background: "#0e1928" }} />
                 </div>
               ))}
-              {editPrice.price && editPrice.costPrice && (
-                <div className="rounded-lg px-3 py-2 text-xs font-semibold" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80" }}>
-                  Margin: GH₵{(parseFloat(editPrice.price) - parseFloat(editPrice.costPrice)).toFixed(2)} ({(((parseFloat(editPrice.price) - parseFloat(editPrice.costPrice)) / parseFloat(editPrice.price)) * 100).toFixed(0)}%)
+              {editPrice.price && editPrice.costPrice && !isNaN(parseFloat(editPrice.price)) && !isNaN(parseFloat(editPrice.costPrice)) && (
+                <div className="rounded-lg px-3 py-2 text-xs" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80" }}>
+                  <span className="font-black">Margin: GH₵{(parseFloat(editPrice.price) - parseFloat(editPrice.costPrice)).toFixed(2)}</span>
+                  <span className="opacity-60 ml-1">({(((parseFloat(editPrice.price) - parseFloat(editPrice.costPrice)) / parseFloat(editPrice.price)) * 100).toFixed(0)}% of sale)</span>
                 </div>
               )}
+
+              {/* Bundle Metadata */}
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider pt-2">Bundle Details</p>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Display Size Label <span className="text-slate-600">(e.g. 2GB, 500MB)</span></label>
+                <input type="text" placeholder={editing.size}
+                  value={editMeta.sizeLabel}
+                  onChange={(e) => setEditMeta((m) => ({ ...m, sizeLabel: e.target.value }))}
+                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
+                  style={{ background: "#0e1928" }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Data Size in GB <span className="text-slate-600">(for Inventor API — e.g. 2, 0.5)</span></label>
+                <input type="number" step="0.01" min="0.01" placeholder={String(editing.sizeGB)}
+                  value={editMeta.sizeGB}
+                  onChange={(e) => setEditMeta((m) => ({ ...m, sizeGB: e.target.value }))}
+                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
+                  style={{ background: "#0e1928" }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Validity <span className="text-slate-600">(e.g. 30 days, 7 days)</span></label>
+                <input type="text" placeholder={editing.validity}
+                  value={editMeta.validity}
+                  onChange={(e) => setEditMeta((m) => ({ ...m, validity: e.target.value }))}
+                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
+                  style={{ background: "#0e1928" }} />
+              </div>
+
               {editMsg && <p className={`text-xs font-semibold ${editMsg === "Saved!" ? "text-green-400" : "text-red-400"}`}>{editMsg}</p>}
             </div>
-            <div className="flex gap-3 mt-4">
+            <div className="flex gap-3 mt-5">
               <button onClick={() => { setEditing(null); setEditMsg(""); }}
                 className="flex-1 border border-[#1e3050] text-slate-400 font-semibold py-2.5 rounded-xl text-sm hover:text-white transition-colors">Cancel</button>
               <button onClick={handleSave} disabled={editLoading}
@@ -899,6 +1060,7 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [animated, setAnimated] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const fetchStats = useCallback(async () => {
     setLoadingStats(true);
@@ -925,15 +1087,29 @@ export default function AdminDashboard() {
   function handleNavigate(t: Tab) { setTab(t); }
 
   return (
-    <div className="flex" style={{ minHeight: "100vh", background: "#0d1424" }}>
-      <Sidebar tab={tab} setTab={setTab} pendingAgents={stats?.agents.pending ?? 0} onLogout={handleLogout} />
+    <div style={{ minHeight: "100vh", background: "#0d1424" }}>
+      <Sidebar tab={tab} setTab={setTab} pendingAgents={stats?.agents.pending ?? 0} onLogout={handleLogout} mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} />
+      {mobileSidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={() => setMobileSidebarOpen(false)} />
+      )}
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="md:ml-60 flex flex-col min-h-screen">
         {/* Top bar */}
         <header className="px-6 py-4 flex items-center justify-between sticky top-0 z-30 border-b border-[#1e3050]" style={{ background: "#0d1424" }}>
-          <div>
-            <h2 className="font-black text-white text-lg">{getGreeting()}</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Elite Data Admin Console</p>
+          <div className="flex items-center">
+            <button
+              onClick={() => setMobileSidebarOpen(true)}
+              className="md:hidden mr-3 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-[#1e3050] transition-colors"
+              aria-label="Open menu"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <div>
+              <h2 className="font-black text-white text-lg">{getGreeting()}</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Elite Data Admin Console</p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             {stats && (
@@ -954,7 +1130,7 @@ export default function AdminDashboard() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 px-6 py-6">
+        <main className="flex-1 px-3 sm:px-6 py-4 sm:py-6">
           {loadingStats && tab !== "prices" ? (
             <div className="flex flex-col items-center justify-center py-40 gap-4">
               <div className="w-10 h-10 border-4 border-[#3b82f6] border-t-transparent rounded-full animate-spin" />

@@ -63,15 +63,8 @@ export async function PATCH(
 
     return Response.json({ success: true, referral_code });
   } else {
-    await supabase
-      .from("agents")
-      .update({
-        status: "rejected",
-        rejection_reason: rejection_reason ?? null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id);
-
+    // Delete entirely so the applicant can re-apply from scratch
+    await supabase.from("agents").delete().eq("id", id);
     return Response.json({ success: true });
   }
 }

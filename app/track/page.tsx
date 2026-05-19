@@ -130,7 +130,7 @@ export default function TrackPage() {
       <div className="mt-6 text-center text-sm text-gray-500">
         Need help?{" "}
         <a
-          href="https://wa.me/233000000000"
+          href="https://wa.me/233509794503"
           target="_blank"
           rel="noreferrer"
           className="text-blue-600 font-semibold hover:underline"

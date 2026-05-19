@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AgentAwareSection from "@/components/AgentAwareSection";
 
 const networks = [
   { name: "MTN", border: "border-yellow-300", desc: "MTN data bundles from GH₵4", logo: "MTN", logoColor: "bg-yellow-400", textColor: "text-yellow-700", btnColor: "bg-yellow-400" },
@@ -199,7 +200,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Agent banner */}
+      {/* Agent banner — hidden when visitor came via referral link */}
+      <AgentAwareSection>
       <section className="py-14 px-4 bg-gradient-to-r from-blue-800 to-blue-600 text-white">
         <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div>
@@ -212,6 +214,7 @@ export default function Home() {
           </Link>
         </div>
       </section>
+      </AgentAwareSection>
 
       {/* FAQ */}
       <section className="py-16 px-4 bg-gray-50">
@@ -243,7 +246,7 @@ export default function Home() {
             <Link href="/buy" className="bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-10 py-4 rounded-xl text-lg transition-colors shadow-lg inline-block">
               Buy Data Now ⚡
             </Link>
-            <a href="https://wa.me/233556631260" target="_blank" rel="noreferrer"
+            <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer"
               className="bg-green-500 hover:bg-green-600 text-white font-bold px-8 py-4 rounded-xl text-lg transition-colors inline-block">
               WhatsApp Support
             </a>

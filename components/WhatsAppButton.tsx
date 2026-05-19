@@ -1,9 +1,9 @@
 "use client";
 
-export default function WhatsAppButton() {
+export default function WhatsAppButton({ phone = "233509794503" }: { phone?: string }) {
   return (
     <a
-      href="https://wa.me/233556631260"
+      href={`https://wa.me/${phone}`}
       target="_blank"
       rel="noreferrer"
       aria-label="Chat on WhatsApp"

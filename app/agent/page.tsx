@@ -23,10 +23,14 @@ export default function AgentPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!form.name.trim() || !form.email.trim() || !form.phone.trim()) {
-      return setError("Name, email, and phone number are required.");
+    if (!form.name.trim() || !form.email.trim() || !form.phone.trim() || !form.whatsapp.trim()) {
+      return setError("Name, email, phone, and WhatsApp number are all required.");
     }
     if (!form.email.includes("@")) return setError("Enter a valid email address.");
+
+    if (!form.whatsapp.trim()) {
+      return setError("WhatsApp number is required — it becomes your customer helpline.");
+    }
 
     setLoading(true);
     try {
@@ -57,11 +61,22 @@ export default function AgentPage() {
           </svg>
         </div>
         <h2 className="text-2xl font-black text-gray-800 mb-3">Application Submitted!</h2>
-        <p className="text-gray-500 mb-6">
-          Thank you <span className="font-bold">{form.name}</span>! We have received your application and will review it within 24 hours.
-          You will be contacted at <span className="font-bold">{form.email}</span>.
+        <p className="text-gray-500 mb-4">
+          Thank you <span className="font-bold">{form.name}</span>! Your application is being processed.
         </p>
-        <Link href="/" className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl transition-colors inline-block text-sm">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-4 mb-6 text-left">
+          <p className="text-sm font-bold text-blue-800 mb-1">Next step — Contact the admin for approval:</p>
+          <p className="text-sm text-blue-700 mb-3">Send a WhatsApp message to introduce yourself and confirm your application.</p>
+          <a
+            href={`https://wa.me/233509794503?text=${encodeURIComponent(`Hi, I just applied to become an Elite Data agent. My name is ${form.name}.`)}`}
+            target="_blank" rel="noreferrer"
+            className="inline-flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-colors shadow"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zM12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.526 5.845L.057 23.882l6.174-1.447A11.944 11.944 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.797 9.797 0 01-5.003-1.372l-.36-.213-3.664.86.902-3.559-.234-.375A9.797 9.797 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/></svg>
+            Chat with Admin on WhatsApp
+          </a>
+        </div>
+        <Link href="/" className="text-blue-600 hover:underline text-sm font-semibold">
           Back to Home
         </Link>
       </div>
@@ -149,9 +164,10 @@ export default function AgentPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">WhatsApp Number <span className="text-gray-400">(optional)</span></label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">WhatsApp Number <span className="text-red-400">*</span></label>
                 <input type="tel" placeholder="0241234567" value={form.whatsapp} onChange={(e) => set("whatsapp", e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <p className="text-xs text-gray-400 mt-1">This becomes your customers&apos; helpline when they buy through your link.</p>
               </div>
 
               <div>

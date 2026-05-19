@@ -29,23 +29,27 @@ function DashboardContent() {
   const [data, setData] = useState<AgentStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [inputCode, setInputCode] = useState(code);
+  const [inputValue, setInputValue] = useState(code);
+  const [byEmail, setByEmail] = useState(false);
 
   useEffect(() => {
-    if (code) load(code);
+    if (code) load(code, false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-  async function load(c: string) {
+  async function load(value: string, isEmail: boolean) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/agents/dashboard?code=${encodeURIComponent(c.toUpperCase())}`);
+      const param = isEmail
+        ? `email=${encodeURIComponent(value.trim().toLowerCase())}`
+        : `code=${encodeURIComponent(value.trim().toUpperCase())}`;
+      const res = await fetch(`/api/agents/dashboard?${param}`);
       const json = await res.json();
       if (json.success) {
         setData(json.agent);
       } else {
-        setError(json.error || "Agent not found. Check your referral code.");
+        setError(json.error || "Not found. Check your details and try again.");
       }
     } catch {
       setError("Network error. Please try again.");
@@ -61,22 +65,45 @@ function DashboardContent() {
     return (
       <div className="max-w-sm mx-auto">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <h2 className="font-black text-gray-800 mb-4">Enter Your Referral Code</h2>
-          {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
+          <h2 className="font-black text-gray-800 mb-1">Agent Login</h2>
+          <p className="text-gray-400 text-xs mb-4">
+            Enter your referral code (sent when approved) or your email address.
+          </p>
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2 rounded-lg mb-3">
+              {error}
+            </div>
+          )}
+          {/* Toggle */}
+          <div className="flex bg-gray-100 rounded-lg p-1 mb-3 gap-1">
+            <button onClick={() => { setByEmail(false); setInputValue(""); setError(""); }}
+              className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-all ${!byEmail ? "bg-white text-blue-700 shadow-sm" : "text-gray-500"}`}>
+              Referral Code
+            </button>
+            <button onClick={() => { setByEmail(true); setInputValue(""); setError(""); }}
+              className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-all ${byEmail ? "bg-white text-blue-700 shadow-sm" : "text-gray-500"}`}>
+              Email Address
+            </button>
+          </div>
           <input
-            type="text"
-            placeholder="e.g. KWA5ABC"
-            value={inputCode}
-            onChange={(e) => setInputCode(e.target.value.toUpperCase())}
+            type={byEmail ? "email" : "text"}
+            placeholder={byEmail ? "you@example.com" : "e.g. KWA5ABC"}
+            value={inputValue}
+            onChange={(e) => setInputValue(byEmail ? e.target.value : e.target.value.toUpperCase())}
+            onKeyDown={(e) => e.key === "Enter" && inputValue.trim() && load(inputValue, byEmail)}
             className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
           />
           <button
-            onClick={() => load(inputCode)}
-            disabled={loading || !inputCode.trim()}
+            onClick={() => load(inputValue, byEmail)}
+            disabled={loading || !inputValue.trim()}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl text-sm transition-colors"
           >
             {loading ? "Loading..." : "View Dashboard"}
           </button>
+          <p className="text-xs text-gray-400 text-center mt-3">
+            Not yet an agent?{" "}
+            <Link href="/agent" className="text-blue-600 font-semibold hover:underline">Apply here</Link>
+          </p>
         </div>
       </div>
     );
@@ -166,7 +193,7 @@ function DashboardContent() {
 
       <div className="text-center text-sm text-gray-500">
         Need help?{" "}
-        <a href="https://wa.me/233000000000" target="_blank" rel="noreferrer" className="text-blue-600 font-semibold hover:underline">
+        <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer" className="text-blue-600 font-semibold hover:underline">
           WhatsApp Support
         </a>
       </div>

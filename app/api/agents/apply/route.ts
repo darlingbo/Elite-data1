@@ -6,8 +6,8 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { name, email, phone, whatsapp, business_name } = body;
 
-  if (!name?.trim() || !email?.trim() || !phone?.trim()) {
-    return Response.json({ error: "Name, email, and phone are required." }, { status: 400 });
+  if (!name?.trim() || !email?.trim() || !phone?.trim() || !whatsapp?.trim()) {
+    return Response.json({ error: "Name, email, phone number, and WhatsApp number are all required." }, { status: 400 });
   }
   if (!email.includes("@")) {
     return Response.json({ error: "Please enter a valid email address." }, { status: 400 });
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     whatsapp: whatsapp?.trim() || null,
     business_name: business_name?.trim() || null,
     status: "pending",
-    balance: 0,
+    commission_balance: 0,
     total_sales: 0,
     total_revenue: 0,
   });

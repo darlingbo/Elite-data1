@@ -39,7 +39,7 @@ export default function Footer() {
             <h4 className="text-white font-semibold mb-3 text-sm uppercase tracking-wider">Support</h4>
             <ul className="space-y-2 text-sm">
               <li>
-                <a href="https://wa.me/233000000000" target="_blank" rel="noreferrer" className="hover:text-blue-400 transition-colors">
+                <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer" className="hover:text-blue-400 transition-colors">
                   WhatsApp Support
                 </a>
               </li>

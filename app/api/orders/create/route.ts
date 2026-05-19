@@ -1,20 +1,23 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName } from "@/lib/bundles";
+
+const PLATFORM_FEE_RATE = 0.02;
 import { sendAdminAlert, sendAdminBotMessage, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
 
-async function getEffectivePrice(bundleId: string): Promise<{ price: number; costPrice: number } | null> {
+async function getEffectiveBundle(bundleId: string): Promise<{ price: number; costPrice: number; sizeGB: number } | null> {
   const { data } = await supabase
     .from("bundle_prices")
-    .select("price, cost_price")
+    .select("price, cost_price, size_gb")
     .eq("id", bundleId)
     .eq("active", true)
     .maybeSingle();
 
-  if (data) return { price: data.price, costPrice: data.cost_price };
-
   const b = bundles.find((b) => b.id === bundleId);
-  return b ? { price: b.price, costPrice: b.costPrice } : null;
+  if (!b) return null;
+
+  if (data) return { price: data.price, costPrice: data.cost_price, sizeGB: data.size_gb ?? b.sizeGB };
+  return { price: b.price, costPrice: b.costPrice, sizeGB: b.sizeGB };
 }
 
 export async function POST(request: NextRequest) {
@@ -41,8 +44,8 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: existing.reference, status: existing.status });
   }
 
-  // Get current prices (admin may have overridden them)
-  const pricing = await getEffectivePrice(bundleId);
+  // Get current prices + sizeGB (admin may have overridden them)
+  const pricing = await getEffectiveBundle(bundleId);
   if (!pricing) {
     return Response.json({ error: "Bundle pricing not found" }, { status: 400 });
   }
@@ -54,10 +57,11 @@ export async function POST(request: NextRequest) {
   );
   const psData = await psRes.json();
 
+  const expectedKobo = Math.round(pricing.price * (1 + PLATFORM_FEE_RATE) * 100);
   const paid =
     psData.status === true &&
     psData.data?.status === "success" &&
-    psData.data?.amount === Math.round(pricing.price * 100);
+    psData.data?.amount >= expectedKobo; // >= tolerates minor float rounding
 
   if (!paid) {
     return Response.json({ error: "Payment verification failed" }, { status: 400 });
@@ -81,14 +85,15 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Commission calculation
+  // Commission calculation — based on bundle margin only; platform fee is separate revenue
+  const chargedAmount = parseFloat((pricing.price * (1 + PLATFORM_FEE_RATE)).toFixed(2));
   const profit = pricing.price - pricing.costPrice;
   const agentCommission = agentId ? parseFloat((profit * 0.8).toFixed(2)) : 0;
   const adminCommission = agentId
     ? parseFloat((profit * 0.2).toFixed(2))
     : parseFloat(profit.toFixed(2));
 
-  // Save order as PENDING
+  // Save order as PENDING — store what the customer actually paid
   const { error: insertError } = await supabase.from("orders").insert({
     reference: paystackRef,
     paystack_reference: paystackRef,
@@ -98,7 +103,7 @@ export async function POST(request: NextRequest) {
     network: bundleMeta.network,
     bundle_size: bundleMeta.size,
     bundle_size_gb: bundleMeta.sizeGB,
-    amount: pricing.price,
+    amount: chargedAmount,
     cost_price: pricing.costPrice,
     admin_commission: adminCommission,
     agent_commission: agentCommission,
@@ -116,7 +121,7 @@ export async function POST(request: NextRequest) {
     network: bundleMeta.network,
     size: bundleMeta.size,
     phone,
-    amount: pricing.price,
+    amount: chargedAmount,
     profit,
     agentName,
   }));
@@ -136,7 +141,7 @@ export async function POST(request: NextRequest) {
         body: JSON.stringify({
           network: networkApiName[bundleMeta.network],
           Phone: phone,
-          Datasize: bundleMeta.sizeGB,
+          Datasize: pricing.sizeGB,
           reference: paystackRef,
         }),
       }

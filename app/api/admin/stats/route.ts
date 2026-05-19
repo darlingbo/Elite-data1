@@ -13,7 +13,7 @@ export async function GET() {
 
   const [ordersRes, agentsRes] = await Promise.all([
     supabase.from("orders").select("status, amount, cost_price, admin_commission, agent_commission, agent_id, created_at, network, bundle_size, phone, reference, customer_name"),
-    supabase.from("agents").select("id, name, email, phone, business_name, referral_code, status, commission_balance, total_sales, total_revenue, created_at"),
+    supabase.from("agents").select("id, name, email, phone, whatsapp, business_name, referral_code, status, commission_balance, total_sales, total_revenue, created_at"),
   ]);
 
   const orders = ordersRes.data ?? [];
