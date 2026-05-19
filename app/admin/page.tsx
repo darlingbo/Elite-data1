@@ -846,7 +846,11 @@ function PricesView() {
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (data.success) { setEditMsg("Saved!"); fetch_(); setTimeout(() => { setEditing(null); setEditMsg(""); }, 900); }
+    if (data.success) {
+      setEditMsg(data.warning ? `Saved! Note: ${data.warning}` : "Saved!");
+      fetch_();
+      setTimeout(() => { setEditing(null); setEditMsg(""); }, 1500);
+    }
     else setEditMsg(data.error || "Error");
     setEditLoading(false);
   }
@@ -960,7 +964,7 @@ function PricesView() {
                         </button>
                       </td>
                       <td className="px-4 py-3.5">
-                        <button onClick={() => { setEditing(b); setEditPrice({ price: String(b.price), costPrice: String(b.costPrice) }); setEditMeta({ sizeLabel: b.size, sizeGB: String(b.sizeGB), validity: b.validity }); setEditMsg(""); }}
+                        <button onClick={() => { setEditing(b); setEditPrice({ price: String(b.price), costPrice: String(b.costPrice) }); setEditMeta({ sizeLabel: "", sizeGB: "", validity: "" }); setEditMsg(""); }}
                           className="text-xs font-bold px-3 py-1.5 rounded-lg transition-colors text-blue-400 border border-blue-500/30 hover:border-blue-400"
                           style={{ background: "rgba(59,130,246,0.1)" }}>
                           Edit Price

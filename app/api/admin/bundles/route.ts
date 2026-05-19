@@ -13,13 +13,24 @@ export async function GET() {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: overrides } = await supabase
+  // Try fetching with metadata columns first; fall back if they don't exist yet
+  let overrides: { id: string; price: number; cost_price: number; active: boolean; size_label?: string; size_gb?: number; validity?: string }[] = [];
+
+  const fullRes = await supabase
     .from("bundle_prices")
     .select("id, price, cost_price, active, size_label, size_gb, validity");
 
-  const overrideMap = new Map(
-    (overrides ?? []).map((o: { id: string; price: number; cost_price: number; active: boolean; size_label?: string; size_gb?: number; validity?: string }) => [o.id, o])
-  );
+  if (!fullRes.error) {
+    overrides = fullRes.data ?? [];
+  } else {
+    // Columns don't exist yet — fall back to base columns only
+    const baseRes = await supabase
+      .from("bundle_prices")
+      .select("id, price, cost_price, active");
+    overrides = baseRes.data ?? [];
+  }
+
+  const overrideMap = new Map(overrides.map((o) => [o.id, o]));
 
   const bundles = defaultBundles.map((b) => {
     const ov = overrideMap.get(b.id);
@@ -56,18 +67,19 @@ export async function PATCH(request: NextRequest) {
     return Response.json({ error: "Invalid bundle ID." }, { status: 400 });
   }
 
-  // Toggle active only
+  // Toggle active only — never include metadata columns here
   if (typeof active === "boolean" && price === undefined) {
     const { data: existing } = await supabase
-      .from("bundle_prices").select("price, cost_price, size_label, size_gb, validity").eq("id", bundleId).maybeSingle();
+      .from("bundle_prices")
+      .select("price, cost_price")
+      .eq("id", bundleId)
+      .maybeSingle();
+
     const { error } = await supabase.from("bundle_prices").upsert({
       id: bundleId,
       price: existing?.price ?? valid.price,
       cost_price: existing?.cost_price ?? valid.costPrice,
       active,
-      size_label: existing?.size_label ?? null,
-      size_gb: existing?.size_gb ?? null,
-      validity: existing?.validity ?? null,
       updated_at: new Date().toISOString(),
     });
     if (error) return Response.json({ error: "Failed to update." }, { status: 500 });
@@ -85,7 +97,6 @@ export async function PATCH(request: NextRequest) {
     return Response.json({ error: "Cost price must be less than selling price." }, { status: 400 });
   }
 
-  // Validate optional metadata
   if (sizeGB !== undefined && (typeof sizeGB !== "number" || isNaN(sizeGB) || sizeGB <= 0)) {
     return Response.json({ error: "sizeGB must be a positive number." }, { status: 400 });
   }
@@ -96,21 +107,48 @@ export async function PATCH(request: NextRequest) {
     resolvedActive = active;
   } else {
     const { data: existing } = await supabase
-      .from("bundle_prices").select("active").eq("id", bundleId).maybeSingle();
+      .from("bundle_prices")
+      .select("active")
+      .eq("id", bundleId)
+      .maybeSingle();
     resolvedActive = existing ? existing.active !== false : true;
   }
 
-  const { error } = await supabase.from("bundle_prices").upsert({
+  // Build upsert — always include price fields; only include metadata if provided
+  const upsertData: Record<string, unknown> = {
     id: bundleId,
     price,
     cost_price: costPrice,
     active: resolvedActive,
-    size_label: sizeLabel !== undefined ? (sizeLabel || null) : undefined,
-    size_gb: sizeGB !== undefined ? sizeGB : undefined,
-    validity: validity !== undefined ? (validity || null) : undefined,
     updated_at: new Date().toISOString(),
-  });
+  };
 
+  const hasMetadata = sizeLabel !== undefined || sizeGB !== undefined || validity !== undefined;
+
+  if (hasMetadata) {
+    // Try with metadata columns; if they don't exist, fall back to price-only
+    if (sizeLabel !== undefined) upsertData.size_label = sizeLabel || null;
+    if (sizeGB !== undefined) upsertData.size_gb = sizeGB;
+    if (validity !== undefined) upsertData.validity = validity || null;
+
+    const { error } = await supabase.from("bundle_prices").upsert(upsertData);
+    if (error) {
+      // Metadata columns don't exist yet — save price/active only and warn
+      const { error: fallbackError } = await supabase.from("bundle_prices").upsert({
+        id: bundleId,
+        price,
+        cost_price: costPrice,
+        active: resolvedActive,
+        updated_at: new Date().toISOString(),
+      });
+      if (fallbackError) return Response.json({ error: "Failed to update price." }, { status: 500 });
+      return Response.json({ success: true, warning: "Prices saved. Run the Supabase SQL migration to enable size/validity editing." });
+    }
+    return Response.json({ success: true });
+  }
+
+  // No metadata — straightforward price update
+  const { error } = await supabase.from("bundle_prices").upsert(upsertData);
   if (error) return Response.json({ error: "Failed to update price." }, { status: 500 });
   return Response.json({ success: true });
 }
