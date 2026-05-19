@@ -22,6 +22,7 @@ export default function Navbar() {
           <Link href="/" className="hover:text-blue-600 transition-colors">Home</Link>
           <Link href="/buy" className="hover:text-blue-600 transition-colors">Buy Data</Link>
           <Link href="/track" className="hover:text-blue-600 transition-colors">Track Order</Link>
+          <Link href="/agent" className="hover:text-blue-600 transition-colors">Become Agent</Link>
           <Link href="/buy" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
             Buy Now
           </Link>
@@ -49,6 +50,7 @@ export default function Navbar() {
           <Link href="/" onClick={() => setOpen(false)} className="hover:text-blue-600">Home</Link>
           <Link href="/buy" onClick={() => setOpen(false)} className="hover:text-blue-600">Buy Data</Link>
           <Link href="/track" onClick={() => setOpen(false)} className="hover:text-blue-600">Track Order</Link>
+          <Link href="/agent" onClick={() => setOpen(false)} className="hover:text-blue-600">Become Agent</Link>
           <Link href="/buy" onClick={() => setOpen(false)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-center">
             Buy Now
           </Link>
