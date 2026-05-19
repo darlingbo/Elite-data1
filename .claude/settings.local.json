@@ -9,7 +9,13 @@
       "Bash(curl -s \"https://ycgtybmkqrmmlkelwtvq.supabase.co/rest/v1/bundle_prices?limit=1\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InljZ3R5Ym1rcXJtbWxrZWx3dHZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNjQwMzUsImV4cCI6MjA5Mzk0MDAzNX0.wsXy1HHebZTMV8l2UAc16QuhIQMfRkVVk0ZOkgfOem0\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InljZ3R5Ym1rcXJtbWxrZWx3dHZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNjQwMzUsImV4cCI6MjA5Mzk0MDAzNX0.wsXy1HHebZTMV8l2UAc16QuhIQMfRkVVk0ZOkgfOem0\")",
       "Bash(curl -s \"https://ycgtybmkqrmmlkelwtvq.supabase.co/rest/v1/agents\" -X POST -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InljZ3R5Ym1rcXJtbWxrZWx3dHZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNjQwMzUsImV4cCI6MjA5Mzk0MDAzNX0.wsXy1HHebZTMV8l2UAc16QuhIQMfRkVVk0ZOkgfOem0\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InljZ3R5Ym1rcXJtbWxrZWx3dHZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNjQwMzUsImV4cCI6MjA5Mzk0MDAzNX0.wsXy1HHebZTMV8l2UAc16QuhIQMfRkVVk0ZOkgfOem0\" -H \"Content-Type: application/json\" -H \"Prefer: return=representation\" -d '{\"_probe\":true}')",
       "Bash(curl -s \"https://ycgtybmkqrmmlkelwtvq.supabase.co/rest/v1/orders\" -X POST -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InljZ3R5Ym1rcXJtbWxrZWx3dHZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNjQwMzUsImV4cCI6MjA5Mzk0MDAzNX0.wsXy1HHebZTMV8l2UAc16QuhIQMfRkVVk0ZOkgfOem0\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InljZ3R5Ym1rcXJtbWxrZWx3dHZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNjQwMzUsImV4cCI6MjA5Mzk0MDAzNX0.wsXy1HHebZTMV8l2UAc16QuhIQMfRkVVk0ZOkgfOem0\" -H \"Content-Type: application/json\" -H \"Prefer: return=representation\" -d '{\"_probe\":true}')",
-      "WebFetch(domain:console-inventor.vercel.app)"
+      "WebFetch(domain:console-inventor.vercel.app)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(findstr -i \"bcrypt\")",
+      "Bash(npx vercel *)",
+      "Bash(npm install *)",
+      "Bash(npx next *)"
     ]
   }
 }

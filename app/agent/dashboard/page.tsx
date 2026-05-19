@@ -36,27 +36,34 @@ const EyeIcon = ({ open }: { open: boolean }) =>
   );
 
 function LoginForm({ onLogin }: { onLogin: (stats: AgentStats) => void }) {
-  const [byEmail, setByEmail] = useState(false);
-  const [inputValue, setInputValue] = useState("");
+  const [tab, setTab] = useState<"code" | "password">("password");
+  const [code, setCode] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showCode, setShowCode] = useState(false);
+  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [forgotMode, setForgotMode] = useState(false);
 
   async function handleLogin() {
-    if (!inputValue.trim()) return;
     setLoading(true);
     setError("");
     try {
-      const param = byEmail
-        ? `email=${encodeURIComponent(inputValue.trim().toLowerCase())}`
-        : `code=${encodeURIComponent(inputValue.trim().toUpperCase())}`;
+      let param = "";
+      if (tab === "code") {
+        if (!code.trim()) { setError("Enter your referral code."); setLoading(false); return; }
+        param = `code=${encodeURIComponent(code.trim().toUpperCase())}`;
+      } else {
+        if (!email.trim() || !password) { setError("Enter your email and password."); setLoading(false); return; }
+        param = `email=${encodeURIComponent(email.trim().toLowerCase())}&password=${encodeURIComponent(password)}`;
+      }
       const res = await fetch(`/api/agents/dashboard?${param}`);
       const json = await res.json();
       if (json.success) {
         onLogin(json.agent);
       } else {
-        setError(json.error || "Not found. Check your details and try again.");
+        setError(json.error || "Check your details and try again.");
       }
     } catch {
       setError("Network error. Please try again.");
@@ -79,7 +86,7 @@ function LoginForm({ onLogin }: { onLogin: (stats: AgentStats) => void }) {
             <p className="text-sm font-bold text-blue-800 mb-1">Option 1 — Log in with your email</p>
             <p className="text-sm text-blue-700 mb-3">If you remember the email you registered with, switch to the Email tab and log in without your referral code.</p>
             <button
-              onClick={() => { setForgotMode(false); setByEmail(true); setInputValue(""); }}
+              onClick={() => { setForgotMode(false); setTab("password"); setEmail(""); setPassword(""); }}
               className="text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors"
             >
               Log in with Email →
@@ -121,59 +128,79 @@ function LoginForm({ onLogin }: { onLogin: (stats: AgentStats) => void }) {
       {/* Tab toggle */}
       <div className="flex bg-gray-100 rounded-lg p-1 mb-4 gap-1">
         <button
-          onClick={() => { setByEmail(false); setInputValue(""); setError(""); setShowCode(false); }}
-          className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-all ${!byEmail ? "bg-white text-blue-700 shadow-sm" : "text-gray-500"}`}
+          onClick={() => { setTab("password"); setError(""); }}
+          className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-all ${tab === "password" ? "bg-white text-blue-700 shadow-sm" : "text-gray-500"}`}
+        >
+          Email &amp; Password
+        </button>
+        <button
+          onClick={() => { setTab("code"); setError(""); }}
+          className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-all ${tab === "code" ? "bg-white text-blue-700 shadow-sm" : "text-gray-500"}`}
         >
           Referral Code
         </button>
-        <button
-          onClick={() => { setByEmail(true); setInputValue(""); setError(""); }}
-          className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-all ${byEmail ? "bg-white text-blue-700 shadow-sm" : "text-gray-500"}`}
-        >
-          Email Address
-        </button>
       </div>
 
-      {/* Input with show/hide toggle for referral code */}
-      <div className="relative mb-1">
-        <input
-          type={!byEmail && !showCode ? "password" : byEmail ? "email" : "text"}
-          placeholder={byEmail ? "you@example.com" : "e.g. KWA5ABC"}
-          value={inputValue}
-          onChange={(e) => setInputValue(byEmail ? e.target.value : e.target.value.toUpperCase())}
-          onKeyDown={(e) => e.key === "Enter" && inputValue.trim() && handleLogin()}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono pr-10"
-        />
-        {!byEmail && (
-          <button
-            type="button"
-            onClick={() => setShowCode((s) => !s)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-            tabIndex={-1}
-          >
-            <EyeIcon open={showCode} />
-          </button>
-        )}
-      </div>
-
-      {/* Forgot code link */}
-      {!byEmail && (
-        <div className="mb-3 text-right">
-          <button
-            onClick={() => setForgotMode(true)}
-            className="text-xs text-blue-600 hover:underline font-medium"
-          >
-            Forgot your referral code?
-          </button>
+      {tab === "password" ? (
+        <div className="space-y-3 mb-3">
+          <input
+            type="email"
+            placeholder="your@email.com"
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); setError(""); }}
+            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <div className="relative">
+            <input
+              type={showPw ? "text" : "password"}
+              placeholder="Your password"
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); setError(""); }}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+            />
+            <button type="button" onClick={() => setShowPw((s) => !s)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" tabIndex={-1}>
+              <EyeIcon open={showPw} />
+            </button>
+          </div>
+          <div className="text-right">
+            <button onClick={() => setForgotMode(true)} className="text-xs text-blue-600 hover:underline font-medium">
+              Forgot password?
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-3">
+          <div className="relative mb-1">
+            <input
+              type={showCode ? "text" : "password"}
+              placeholder="e.g. KWA5ABC"
+              value={code}
+              onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(""); }}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono pr-10"
+            />
+            <button type="button" onClick={() => setShowCode((s) => !s)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" tabIndex={-1}>
+              <EyeIcon open={showCode} />
+            </button>
+          </div>
+          <div className="text-right mt-1">
+            <button onClick={() => setForgotMode(true)} className="text-xs text-blue-600 hover:underline font-medium">
+              Forgot your referral code?
+            </button>
+          </div>
         </div>
       )}
 
       <button
         onClick={handleLogin}
-        disabled={loading || !inputValue.trim()}
-        className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl text-sm transition-colors mt-1"
+        disabled={loading}
+        className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl text-sm transition-colors"
       >
-        {loading ? "Loading..." : "View Dashboard"}
+        {loading ? "Loading..." : "Log In to Dashboard"}
       </button>
 
       <p className="text-xs text-gray-400 text-center mt-3">
