@@ -20,7 +20,7 @@ export default function AgentPage() {
     setError("");
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
     if (!form.name.trim() || !form.email.trim() || !form.phone.trim() || !form.whatsapp.trim()) {
@@ -54,31 +54,50 @@ export default function AgentPage() {
 
   if (success) {
     return (
-      <div className="max-w-lg mx-auto px-4 py-20 text-center">
-        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
-          <svg className="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-        </div>
-        <h2 className="text-2xl font-black text-gray-800 mb-3">Application Submitted!</h2>
-        <p className="text-gray-500 mb-4">
-          Thank you <span className="font-bold">{form.name}</span>! Your application is being processed.
-        </p>
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-4 mb-6 text-left">
-          <p className="text-sm font-bold text-blue-800 mb-1">Next step — Contact the admin for approval:</p>
-          <p className="text-sm text-blue-700 mb-3">Send a WhatsApp message to introduce yourself and confirm your application.</p>
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center px-4 py-12">
+        <div className="max-w-md w-full text-center">
+          {/* Big checkmark */}
+          <div className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
+            <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+
+          {/* Title */}
+          <h1 className="text-3xl font-black text-gray-900 mb-2">Successful Registration!</h1>
+          <p className="text-lg font-semibold text-green-600 mb-6">Your application has been received.</p>
+
+          {/* Info box */}
+          <div className="bg-white rounded-2xl shadow-md border border-gray-100 px-6 py-6 mb-6 text-left space-y-3">
+            <p className="text-gray-700 text-sm leading-relaxed">
+              Hello <span className="font-bold text-gray-900">{form.name}</span>, your agent application has been submitted successfully.
+            </p>
+            <p className="text-gray-700 text-sm leading-relaxed">
+              Please contact the <span className="font-bold text-blue-700">Admin</span> on WhatsApp to discuss your application and get approved. The admin will review your details and activate your account.
+            </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <p className="text-amber-800 text-xs font-bold uppercase tracking-wide mb-1">Important</p>
+              <p className="text-amber-700 text-sm">You must message the admin before your account can be activated. Do not wait — message now!</p>
+            </div>
+          </div>
+
+          {/* WhatsApp CTA */}
           <a
-            href={`https://wa.me/233509794503?text=${encodeURIComponent(`Hi, I just applied to become an Elite Data agent. My name is ${form.name}.`)}`}
+            href={`https://wa.me/233509794503?text=${encodeURIComponent(`Hello Admin, I just registered as an Elite Data agent. My name is ${form.name} and my email is ${form.email}. Please review my application. Thank you.`)}`}
             target="_blank" rel="noreferrer"
-            className="inline-flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-colors shadow"
+            className="flex items-center justify-center gap-3 w-full bg-green-500 hover:bg-green-600 text-white font-black px-6 py-4 rounded-2xl text-base transition-colors shadow-lg mb-4"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zM12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.526 5.845L.057 23.882l6.174-1.447A11.944 11.944 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.797 9.797 0 01-5.003-1.372l-.36-.213-3.664.86.902-3.559-.234-.375A9.797 9.797 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/></svg>
-            Chat with Admin on WhatsApp
+            <svg className="w-6 h-6 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zM12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.526 5.845L.057 23.882l6.174-1.447A11.944 11.944 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.797 9.797 0 01-5.003-1.372l-.36-.213-3.664.86.902-3.559-.234-.375A9.797 9.797 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/>
+            </svg>
+            Contact Admin on WhatsApp Now
           </a>
+          <p className="text-xs text-gray-400 mb-6">+233 509 794 503 &nbsp;·&nbsp; Tap the button above to message directly</p>
+
+          <Link href="/" className="text-blue-600 hover:underline text-sm font-semibold">
+            Back to Home
+          </Link>
         </div>
-        <Link href="/" className="text-blue-600 hover:underline text-sm font-semibold">
-          Back to Home
-        </Link>
       </div>
     );
   }
