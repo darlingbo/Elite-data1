@@ -7,55 +7,50 @@ const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
 const LOYALTY_REQUIRED = 4;
 
-type BundleMeta = { id: string; network: Network; size: string; sizeGB: number };
+// Timeout for Inventor API calls (ms)
+const INVENTOR_TIMEOUT_MS = 20_000;
 
-async function resolveBundleMeta(bundleId: string): Promise<BundleMeta | null> {
+type BundleMeta = { id: string; network: Network; size: string; sizeGB: number };
+type BundlePricing = { price: number; costPrice: number; sizeGB: number };
+type BundleInfo = { meta: BundleMeta; pricing: BundlePricing } | null;
+
+// ─── OPTIMISATION 1: single DB round-trip for both meta + pricing ────────────
+async function getBundleInfo(bundleId: string): Promise<BundleInfo> {
+  // Check static bundles first (no DB needed)
   const staticBundle = bundles.find((b) => b.id === bundleId);
-  if (staticBundle) return staticBundle;
 
   const { data } = await supabase
     .from("bundle_prices")
-    .select("id, network, size_label, size_gb")
+    .select("id, network, size_label, size_gb, price, cost_price")
     .eq("id", bundleId)
     .eq("active", true)
     .maybeSingle();
 
-  if (!data?.network) return null;
-
-  return {
-    id: data.id,
-    network: data.network as Network,
-    size: data.size_label ?? bundleId,
-    sizeGB: data.size_gb ?? 1,
-  };
-}
-
-async function getEffectiveBundle(bundleId: string): Promise<{ price: number; costPrice: number; sizeGB: number } | null> {
-  const b = bundles.find((b) => b.id === bundleId);
-
-  const { data, error } = await supabase
-    .from("bundle_prices")
-    .select("price, cost_price, size_gb")
-    .eq("id", bundleId)
-    .eq("active", true)
-    .maybeSingle();
-
-  if (!error && data) {
-    return { price: data.price, costPrice: data.cost_price, sizeGB: data.size_gb ?? (b?.sizeGB ?? 1) };
+  if (data?.network) {
+    const sizeGB = data.size_gb ?? staticBundle?.sizeGB ?? 1;
+    return {
+      meta: {
+        id: data.id,
+        network: data.network as Network,
+        size: data.size_label ?? bundleId,
+        sizeGB,
+      },
+      pricing: {
+        price: data.price,
+        costPrice: data.cost_price,
+        sizeGB,
+      },
+    };
   }
 
-  const { data: data2 } = await supabase
-    .from("bundle_prices")
-    .select("price, cost_price")
-    .eq("id", bundleId)
-    .eq("active", true)
-    .maybeSingle();
-
-  if (data2) {
-    return { price: data2.price, costPrice: data2.cost_price, sizeGB: b?.sizeGB ?? 1 };
+  // Fall back to static bundle
+  if (staticBundle) {
+    return {
+      meta: staticBundle,
+      pricing: { price: staticBundle.price, costPrice: staticBundle.costPrice, sizeGB: staticBundle.sizeGB },
+    };
   }
 
-  if (b) return { price: b.price, costPrice: b.costPrice, sizeGB: b.sizeGB };
   return null;
 }
 
@@ -173,6 +168,39 @@ async function processLoyalty(
   }
 }
 
+// ─── OPTIMISATION 2: Inventor API call with timeout + 1 auto-retry ──────────
+async function callInventorAPI(
+  payload: Record<string, unknown>,
+  attempt = 1
+): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), INVENTOR_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.INVENTOR_API_KEY}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timer);
+    const body = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, body };
+  } catch (err) {
+    clearTimeout(timer);
+    // Retry once on timeout / network error
+    if (attempt === 1) {
+      await new Promise((r) => setTimeout(r, 1500)); // brief pause before retry
+      return callInventorAPI(payload, 2);
+    }
+    return { ok: false, status: 0, body: { error: String(err) } };
+  }
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { name, email, phone, bundleId, paystackRef, agentCode, applyReferralCredit, referralVia } = body;
@@ -181,87 +209,106 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Missing required fields." }, { status: 400 });
   }
 
-  const bundleMeta = await resolveBundleMeta(bundleId);
-  if (!bundleMeta) {
+  // ─── OPTIMISATION 1: one DB call instead of two ─────────────────────────
+  const bundleInfo = await getBundleInfo(bundleId);
+  if (!bundleInfo) {
     return Response.json({ error: "Invalid bundle." }, { status: 400 });
   }
+  const { meta: bundleMeta, pricing } = bundleInfo;
 
-  // Idempotency — don't process the same Paystack ref twice
-  const { data: existing } = await supabase
-    .from("orders")
-    .select("reference, status")
-    .eq("reference", paystackRef)
-    .maybeSingle();
+  // ─── OPTIMISATION 3: run idempotency check + agent lookup + referral
+  //     credit lookup all at the same time instead of one-by-one ──────────
+  const [existingResult, agentResult, creditResult] = await Promise.all([
+    // Idempotency — don't process the same Paystack ref twice
+    supabase
+      .from("orders")
+      .select("reference, status")
+      .eq("reference", paystackRef)
+      .maybeSingle(),
 
-  if (existing) {
-    return Response.json({ success: true, reference: existing.reference, status: existing.status });
-  }
+    // Agent lookup (only if agentCode supplied, otherwise resolve to null)
+    agentCode
+      ? supabase
+          .from("agents")
+          .select("id, name, status, agent_type")
+          .eq("referral_code", agentCode.toUpperCase())
+          .eq("status", "approved")
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
 
-  const pricing = await getEffectiveBundle(bundleId);
-  if (!pricing) {
-    return Response.json({ error: "Bundle not found." }, { status: 400 });
+    // Referral credit (only if requested)
+    applyReferralCredit && phone
+      ? supabase
+          .from("referral_credits")
+          .select("id, credit_ghc")
+          .eq("phone", phone)
+          .eq("used", false)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  if (existingResult.data) {
+    return Response.json({
+      success: true,
+      reference: existingResult.data.reference,
+      status: existingResult.data.status,
+    });
   }
 
   // Resolve agent
   let agentId: string | null = null;
   let agentName: string | undefined;
   let agentType: string = "commission";
-  if (agentCode) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("id, name, status, agent_type")
-      .eq("referral_code", agentCode.toUpperCase())
-      .eq("status", "approved")
-      .maybeSingle();
-    if (agent) { agentId = agent.id; agentName = agent.name; agentType = agent.agent_type ?? "commission"; }
+  const agent = agentResult.data;
+  if (agent) {
+    agentId = agent.id;
+    agentName = agent.name;
+    agentType = agent.agent_type ?? "commission";
   }
 
-  // For custom_price agents: use their personal markup price
+  // Referral credit
+  let creditAmount = 0;
+  let referralCreditId: string | null = null;
+  const credit = creditResult.data;
+  if (credit) {
+    creditAmount = Number(credit.credit_ghc);
+    referralCreditId = credit.id;
+  }
+
+  // For custom_price agents: fetch their personal markup price
   let effectivePrice = pricing.price;
   let tierPrice = pricing.price;
   if (agentId && agentType === "custom_price") {
-    const { data: tier } = await supabase
-      .from("custom_tier_prices")
-      .select("price")
-      .eq("bundle_id", bundleId)
-      .maybeSingle();
-    if (tier?.price) tierPrice = Number(tier.price);
+    // These two are independent — run in parallel
+    const [tierResult, agentPriceResult] = await Promise.all([
+      supabase
+        .from("custom_tier_prices")
+        .select("price")
+        .eq("bundle_id", bundleId)
+        .maybeSingle(),
+      supabase
+        .from("agent_bundle_prices")
+        .select("custom_price")
+        .eq("agent_id", agentId)
+        .eq("bundle_id", bundleId)
+        .eq("active", true)
+        .maybeSingle(),
+    ]);
 
-    const { data: agentPrice } = await supabase
-      .from("agent_bundle_prices")
-      .select("custom_price")
-      .eq("agent_id", agentId)
-      .eq("bundle_id", bundleId)
-      .eq("active", true)
-      .maybeSingle();
-    effectivePrice = agentPrice?.custom_price ? Number(agentPrice.custom_price) : tierPrice;
-  }
-
-  // Referral credit — server independently verifies (don't trust client claim alone)
-  let creditAmount = 0;
-  let referralCreditId: string | null = null;
-  if (applyReferralCredit && phone) {
-    try {
-      const { data: credit } = await supabase
-        .from("referral_credits")
-        .select("id, credit_ghc")
-        .eq("phone", phone)
-        .eq("used", false)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (credit) {
-        creditAmount = Number(credit.credit_ghc);
-        referralCreditId = credit.id;
-      }
-    } catch {
-      // fail gracefully — no credit applied
-    }
+    if (tierResult.data?.price) tierPrice = Number(tierResult.data.price);
+    effectivePrice = agentPriceResult.data?.custom_price
+      ? Number(agentPriceResult.data.custom_price)
+      : tierPrice;
   }
 
   // Verify Paystack payment
   if (!process.env.PAYSTACK_SECRET_KEY) {
-    return Response.json({ error: "PAYSTACK_SECRET_KEY is not set in Vercel environment variables. Add it and redeploy." }, { status: 500 });
+    return Response.json(
+      { error: "PAYSTACK_SECRET_KEY is not set in Vercel environment variables. Add it and redeploy." },
+      { status: 500 }
+    );
   }
 
   let psData: Record<string, unknown> = {};
@@ -272,7 +319,10 @@ export async function POST(request: NextRequest) {
     );
     psData = await psRes.json();
   } catch (err) {
-    return Response.json({ error: `Could not reach Paystack API: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
+    return Response.json(
+      { error: `Could not reach Paystack API: ${err instanceof Error ? err.message : String(err)}` },
+      { status: 502 }
+    );
   }
 
   const baseTotal = effectivePrice * (1 + PLATFORM_FEE_RATE);
@@ -285,15 +335,17 @@ export async function POST(request: NextRequest) {
     txnAmount >= expectedKobo;
 
   if (!paid) {
-    const reason = !process.env.PAYSTACK_SECRET_KEY
-      ? "Secret key missing"
-      : psData.status !== true
-      ? `Paystack API error: ${psData.message ?? "unknown"}`
-      : txnStatus !== "success"
-      ? `Transaction status: ${txnStatus}`
-      : `Amount mismatch: paid ${txnAmount} pesewas, expected ${expectedKobo}`;
+    const reason =
+      psData.status !== true
+        ? `Paystack API error: ${psData.message ?? "unknown"}`
+        : txnStatus !== "success"
+        ? `Transaction status: ${txnStatus}`
+        : `Amount mismatch: paid ${txnAmount} pesewas, expected ${expectedKobo}`;
     await sendAdminAlert(`PAYMENT VERIFY FAILED\nRef: ${paystackRef}\nReason: ${reason}`).catch(() => {});
-    return Response.json({ error: `Payment verification failed — ${reason}. Contact support on WhatsApp.` }, { status: 400 });
+    return Response.json(
+      { error: `Payment verification failed — ${reason}. Contact support on WhatsApp.` },
+      { status: 400 }
+    );
   }
 
   const chargedAmount = parseFloat((baseTotal - creditAmount).toFixed(2));
@@ -332,12 +384,15 @@ export async function POST(request: NextRequest) {
   if (saved.error) {
     const dbErrMsg = `ORDER SAVE FAILED\nRef: ${paystackRef}\nPhone: ${phone}\nBundle: ${bundleId}\nError: ${saved.message}`;
     await sendAdminAlert(dbErrMsg).catch(() => {});
-    return Response.json({
-      error: `Order could not be saved: ${saved.message}. Screenshot this and contact support on WhatsApp.`,
-    }, { status: 500 });
+    return Response.json(
+      { error: `Order could not be saved: ${saved.message}. Screenshot this and contact support on WhatsApp.` },
+      { status: 500 }
+    );
   }
 
-  await sendAdminAlert(fmtOrder({ ref: paystackRef, network: bundleMeta.network, size: bundleMeta.size, phone, amount: chargedAmount, profit, agentName }));
+  await sendAdminAlert(
+    fmtOrder({ ref: paystackRef, network: bundleMeta.network, size: bundleMeta.size, phone, amount: chargedAmount, profit, agentName })
+  );
 
   // Mark referral credit as used (fire and forget)
   if (referralCreditId) {
@@ -349,7 +404,7 @@ export async function POST(request: NextRequest) {
       .then(() => {});
   }
 
-  // Award referral credit to the person who shared the link (fire and forget)
+  // Award referral credit to referrer (fire and forget)
   const safeVia = typeof referralVia === "string" ? referralVia.trim() : "";
   if (safeVia && safeVia !== phone) {
     supabase
@@ -358,47 +413,24 @@ export async function POST(request: NextRequest) {
       .then(() => {});
   }
 
-  // Deliver bundle via Inventor DataHub
-  let inventorBody: Record<string, unknown> = {};
-  let inventorOk = false;
-  let inventorHttpStatus = 0;
-  try {
-    const invRes = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-      body: JSON.stringify({
-        network: networkApiName[bundleMeta.network],
-        Phone: phone,
-        Datasize: pricing.sizeGB,
-        reference: paystackRef,
-      }),
-    });
-    inventorHttpStatus = invRes.status;
-    inventorBody = await invRes.json().catch(() => ({}));
-    inventorOk =
-      invRes.ok ||
-      inventorBody.success === true ||
-      inventorBody.status === "success" ||
-      inventorBody.status === "00" ||
-      (typeof inventorBody.status === "number" && inventorBody.status >= 200 && inventorBody.status < 300);
-  } catch (err) {
-    inventorBody = { error: String(err) };
-  }
+  // ─── OPTIMISATION 2: Inventor API with 20s timeout + 1 auto-retry ───────
+  const { ok: invOkRaw, status: inventorHttpStatus, body: inventorBody } = await callInventorAPI({
+    network: networkApiName[bundleMeta.network],
+    Phone: phone,
+    Datasize: pricing.sizeGB,
+    reference: paystackRef,
+  });
 
   const inventorLog = `Inventor HTTP ${inventorHttpStatus}: ${JSON.stringify(inventorBody).slice(0, 300)}`;
 
   const invData = (inventorBody.data as Record<string, unknown>) ?? {};
-  // Inventor nests order details inside data.order
   const invOrderData = (invData.order as Record<string, unknown>) ?? {};
   const invPlanData = (invOrderData.plan as Record<string, unknown>) ?? {};
 
-  // Correctly read status from nested data.order.status
   const rawInvStatus = String(
     invOrderData.status ?? invData.status ?? invData.delivery_status ?? inventorBody.status ?? ""
   ).toLowerCase();
 
-  // Use Inventor's real plan name so labels are always correct (our DB label may differ).
-  // Strip the network prefix (e.g. "MTN ") since formatters add it separately.
   const inventorPlanName = (invPlanData.name as string) ?? null;
   const actualSize = inventorPlanName
     ? inventorPlanName.replace(new RegExp(`^${bundleMeta.network}\\s+`, "i"), "").trim()
@@ -410,7 +442,7 @@ export async function POST(request: NextRequest) {
     rawInvStatus.includes("dispatch") ||
     rawInvStatus.includes("pending");
 
-  if (invIsProcessing) inventorOk = false;
+  const inventorOk = invOkRaw && !invIsProcessing;
 
   // Process loyalty (await to include in response)
   const loyalty = await processLoyalty(phone, bundleMeta.network, paystackRef);
@@ -422,51 +454,44 @@ export async function POST(request: NextRequest) {
       (inventorBody.orderId as string) ??
       null;
 
-    await supabase.from("orders").update({
-      status: "completed",
-      inventor_order_id: orderId ?? null,
-      bundle_size: actualSize,
-    }).eq("reference", paystackRef);
+    await supabase
+      .from("orders")
+      .update({ status: "completed", inventor_order_id: orderId ?? null, bundle_size: actualSize })
+      .eq("reference", paystackRef);
 
     if (agentId) {
-      await supabase.rpc("increment_agent_stats", {
-        p_agent_id: agentId,
-        p_commission: agentCommission,
-        p_revenue: pricing.price,
-      }).maybeSingle();
+      await supabase
+        .rpc("increment_agent_stats", {
+          p_agent_id: agentId,
+          p_commission: agentCommission,
+          p_revenue: pricing.price,
+        })
+        .maybeSingle();
     }
 
     await sendAdminAlert(`${fmtDelivered(paystackRef, phone, bundleMeta.network, actualSize)}\n${inventorLog}`);
-    // Auto-log API deduction for this order
-    supabase.from("api_ledger").insert({
-      type: "deduction",
-      amount: pricing.costPrice,
-      note: `${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone}`,
-      order_reference: paystackRef,
-    }).then(() => {});
+    supabase
+      .from("api_ledger")
+      .insert({
+        type: "deduction",
+        amount: pricing.costPrice,
+        note: `${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone}`,
+        order_reference: paystackRef,
+      })
+      .then(() => {});
     return Response.json({ success: true, reference: paystackRef, status: "COMPLETED", loyalty });
   }
 
   if (invIsProcessing) {
-    await supabase.from("orders").update({
-      status: "processing",
-      bundle_size: actualSize,
-    }).eq("reference", paystackRef);
-    await sendAdminAlert(`⏳ ORDER PROCESSING\nRef: ${paystackRef}\nPhone: ${phone}\n${bundleMeta.network.toUpperCase()} ${actualSize}\n${inventorLog}`);
-    supabase.from("api_ledger").insert({
-      type: "deduction",
-      amount: pricing.costPrice,
-      note: `${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone} (processing)`,
-      order_reference: paystackRef,
-    }).then(() => {});
-    return Response.json({ success: true, reference: paystackRef, status: "PROCESSING", loyalty });
-  }
-
-  await supabase.from("orders").update({ status: "failed" }).eq("reference", paystackRef);
-
-  const failMsg = `${fmtFailed(paystackRef, phone, bundleMeta.network, bundleMeta.size, pricing.price)}\n\n${inventorLog}`;
-  await sendAdminAlert(failMsg);
-  await sendAdminBotMessage(failMsg, retryKeyboard(paystackRef));
-
-  return Response.json({ error: "Bundle delivery failed. Support has been notified. You will be refunded." }, { status: 502 });
-}
+    await supabase
+      .from("orders")
+      .update({ status: "processing", bundle_size: actualSize })
+      .eq("reference", paystackRef);
+    await sendAdminAlert(
+      `⏳ ORDER PROCESSING\nRef: ${paystackRef}\nPhone: ${phone}\n${bundleMeta.network.toUpperCase()} ${actualSize}\n${inventorLog}`
+    );
+    supabase
+      .from("api_ledger")
+      .insert({
+        type: "deduction",
+        amount: pricing.costPric
