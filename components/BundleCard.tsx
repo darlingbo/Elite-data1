@@ -4,41 +4,56 @@ import { Bundle, networkConfig } from "@/lib/bundles";
 interface Props {
   bundle: Bundle;
   onBuy: (bundle: Bundle) => void;
+  isBestValue?: boolean;
 }
 
-export default function BundleCard({ bundle, onBuy }: Props) {
+export default function BundleCard({ bundle, onBuy, isBestValue }: Props) {
   const net = networkConfig[bundle.network];
 
+  const hasBadge = isBestValue || bundle.popular;
+
   return (
-    <div className={`relative bg-white border-2 rounded-2xl p-5 flex flex-col gap-3 hover:shadow-lg transition-all hover:-translate-y-0.5 ${bundle.popular ? net.borderColor : "border-gray-200"}`}>
-      {bundle.popular && (
-        <span className={`absolute -top-3 left-1/2 -translate-x-1/2 ${net.bgColor} text-white text-xs font-bold px-3 py-0.5 rounded-full`}>
-          Popular
+    <div
+      className={`relative bg-white border-2 rounded-2xl p-4 flex flex-col gap-2 hover:shadow-lg transition-all hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer ${
+        isBestValue
+          ? "border-emerald-400"
+          : bundle.popular
+          ? net.borderColor
+          : "border-gray-100"
+      }`}
+      onClick={() => onBuy(bundle)}
+    >
+      {hasBadge && (
+        <span
+          className={`absolute -top-2.5 left-1/2 -translate-x-1/2 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full whitespace-nowrap ${
+            isBestValue ? "bg-emerald-500" : net.bgColor
+          }`}
+        >
+          {isBestValue ? "🏆 Best Value" : "Popular"}
         </span>
       )}
 
-      {/* Network badge */}
+      {/* Network badge + validity */}
       <div className="flex items-center justify-between">
-        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${net.bgLight} ${net.textColor}`}>
+        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${net.bgLight} ${net.textColor}`}>
           {net.name}
         </span>
-        <span className="text-xs text-gray-400">{bundle.validity}</span>
+        <span className="text-[10px] text-gray-400 font-medium">{bundle.validity}</span>
       </div>
 
       {/* Size */}
-      <div>
-        <p className="text-3xl font-black text-gray-800">{bundle.size}</p>
-        <p className="text-xs text-gray-500 mt-0.5">Data Bundle</p>
+      <div className="py-1">
+        <p className="text-3xl font-black text-gray-800 leading-none">{bundle.size}</p>
       </div>
 
-      {/* Price */}
+      {/* Price + button */}
       <div className="mt-auto">
-        <p className={`text-2xl font-black ${net.textColor}`}>GH₵ {bundle.price.toFixed(2)}</p>
+        <p className={`text-xl font-black ${net.textColor} mb-2`}>GH₵{bundle.price.toFixed(2)}</p>
         <button
-          onClick={() => onBuy(bundle)}
-          className={`w-full mt-3 ${net.bgColor} hover:opacity-90 text-white font-bold py-2.5 rounded-xl transition-opacity text-sm`}
+          onClick={(e) => { e.stopPropagation(); onBuy(bundle); }}
+          className={`w-full ${net.bgColor} hover:opacity-90 active:opacity-75 text-white font-bold py-2 rounded-xl transition-opacity text-xs`}
         >
-          Buy Now
+          Buy Now ⚡
         </button>
       </div>
     </div>

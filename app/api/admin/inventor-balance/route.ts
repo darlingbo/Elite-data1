@@ -12,19 +12,29 @@ export async function GET() {
 
   try {
     const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/balance`, {
-      headers: {
-        Authorization: `Bearer ${process.env.INVENTOR_API_KEY}`,
-      },
+      headers: { Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
       cache: "no-store",
     });
 
     if (!res.ok) {
-      return Response.json({ balance: null, error: "Could not fetch balance" });
+      return Response.json({ balance: null, error: `API error ${res.status}` });
     }
 
     const data = await res.json();
-    return Response.json(data);
-  } catch {
-    return Response.json({ balance: null, error: "Could not fetch balance" });
+
+    // Handle different response shapes from Inventor DataHub
+    const raw =
+      data?.balance ??
+      data?.data?.balance ??
+      data?.wallet_balance ??
+      data?.data?.wallet_balance ??
+      data?.amount ??
+      data?.data?.amount ??
+      null;
+
+    const balance = raw !== null ? Number(raw) : null;
+    return Response.json({ balance, raw: data });
+  } catch (err) {
+    return Response.json({ balance: null, error: String(err) });
   }
 }

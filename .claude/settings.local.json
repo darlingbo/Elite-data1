@@ -15,7 +15,8 @@
       "Bash(findstr -i \"bcrypt\")",
       "Bash(npx vercel *)",
       "Bash(npm install *)",
-      "Bash(npx next *)"
+      "Bash(npx next *)",
+      "Bash(npx tsc *)"
     ]
   }
 }

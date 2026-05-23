@@ -115,6 +115,25 @@ export async function POST(request: NextRequest) {
   return Response.json({ success: true, bundleId });
 }
 
+export async function DELETE(request: NextRequest) {
+  if (!(await isAdmin())) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await request.json();
+  const { bundleId } = body;
+  if (!bundleId) return Response.json({ error: "bundleId required." }, { status: 400 });
+
+  const defaultBundle = defaultBundles.find((b) => b.id === bundleId);
+  if (defaultBundle) {
+    return Response.json({ error: "Default bundles cannot be deleted — toggle them inactive instead." }, { status: 400 });
+  }
+
+  const { error } = await supabase.from("bundle_prices").delete().eq("id", bundleId);
+  if (error) return Response.json({ error: `Failed to delete: ${error.message}` }, { status: 500 });
+  return Response.json({ success: true });
+}
+
 export async function PATCH(request: NextRequest) {
   if (!(await isAdmin())) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

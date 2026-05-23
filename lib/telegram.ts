@@ -14,22 +14,14 @@ async function tgSend(token: string, message: string, markup?: object): Promise<
   } catch { /* never crash the main flow */ }
 }
 
-// ── Notification bot (@Swiftdatagh_bot) — one-way alerts ─────────────────────
-// Also mirrors every alert to the assistant bot so admin sees it all in one place
+// ── Assistant bot (@Darlingboy99_bot) — all alerts go here ───────────────────
 export async function sendAdminAlert(message: string): Promise<void> {
-  await Promise.all([
-    tgSend(BOT_TOKEN!, message),
-    tgSend(ASSISTANT_TOKEN!, message),
-  ]);
+  await tgSend(ASSISTANT_TOKEN!, message);
 }
 
-// ── Old admin bot (@Elite_dataAgentbot) + assistant — with inline buttons ─────
-// Used for failed orders that need a retry/manual button
+// ── Assistant bot — with inline buttons (for failed order retry buttons) ──────
 export async function sendAdminBotMessage(message: string, replyMarkup?: object): Promise<void> {
-  await Promise.all([
-    tgSend(ADMIN_BOT_TOKEN!, message, replyMarkup),
-    tgSend(ASSISTANT_TOKEN!, message, replyMarkup),
-  ]);
+  await tgSend(ASSISTANT_TOKEN!, message, replyMarkup);
 }
 
 // ── Message formatters ────────────────────────────────────────────────────────

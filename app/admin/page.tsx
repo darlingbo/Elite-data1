@@ -1,18 +1,36 @@
 "use client";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 
-type Tab = "overview" | "orders" | "agents" | "prices";
+const PricesView = dynamic(() => import("./_components/PricesView"), {
+  loading: () => <div style={{ textAlign: "center", color: "#475569", padding: "60px 0" }}>Loading bundles…</div>,
+});
+const AgentPriceModal = dynamic(() => import("./_components/AgentPriceModal"));
+const AgentPricesAdmin = dynamic(() => import("./_components/AgentPricesAdmin"), {
+  loading: () => <div style={{ textAlign: "center", color: "#475569", padding: "60px 0" }}>Loading…</div>,
+});
+const PnLView = dynamic(() => import("./_components/PnLView"), {
+  loading: () => <div style={{ textAlign: "center", color: "#475569", padding: "60px 0" }}>Loading…</div>,
+});
+const ApiKeysAdmin = dynamic(() => import("./_components/ApiKeysAdmin"), {
+  loading: () => <div style={{ textAlign: "center", color: "#475569", padding: "60px 0" }}>Loading…</div>,
+});
+const AnnouncementsAdmin = dynamic(() => import("./_components/AnnouncementsAdmin"), {
+  loading: () => <div style={{ textAlign: "center", color: "#475569", padding: "60px 0" }}>Loading…</div>,
+});
+
+type Tab = "overview" | "orders" | "agents" | "prices" | "agentprices" | "pnl" | "apikeys" | "announcements";
 type OrderStatus = "ALL" | "COMPLETED" | "PROCESSING" | "PENDING" | "FAILED";
 
 interface Order {
   reference: string; status: string; amount: number; admin_commission: number;
-  agent_commission: number; customer_name: string; phone: string; network: string;
+  agent_commission: number; cost_price?: number; customer_name: string; phone: string; network: string;
   bundle_size: string; created_at: string; agent_id: string | null;
 }
 interface Agent {
   id: string; name: string; email: string; phone: string; whatsapp?: string; business_name: string;
-  referral_code: string; status: string; commission_balance: number; total_sales: number;
+  referral_code: string; status: string; agent_type?: string; commission_balance: number; total_sales: number;
   total_revenue: number; created_at: string;
 }
 interface StatsData {
@@ -21,11 +39,6 @@ interface StatsData {
   profit: { admin: number; agentCommissions: number; gross: number };
   agents: { all: Agent[]; total: number; pending: number; approved: number; rejected: number; };
 }
-interface BundleRow {
-  id: string; network: string; size: string; sizeGB: number; validity: string;
-  price: number; costPrice: number; hasOverride: boolean; active: boolean;
-}
-
 const PAGE_SIZE = 50;
 
 function getGreeting() {
@@ -44,6 +57,27 @@ function getThisMonthOrders(orders: Order[]) {
   }).length;
 }
 
+function getTodayStats(orders: Order[]) {
+  const now = new Date();
+  const todayOrders = orders.filter((o) => {
+    const d = new Date(o.created_at);
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  });
+  // Only count completed orders for profit (failed = refund needed, pending = not delivered yet)
+  const done = todayOrders.filter((o) => (o.status ?? "").toLowerCase() === "completed");
+  const agentDone = done.filter((o) => o.agent_id);
+  const directDone = done.filter((o) => !o.agent_id);
+  return {
+    count: todayOrders.length,
+    revenue: done.reduce((s, o) => s + (Number(o.amount) || 0), 0),
+    profit: done.reduce((s, o) => s + (Number(o.admin_commission) || 0), 0),
+    completed: done.length,
+    agentProfit: agentDone.reduce((s, o) => s + (Number(o.admin_commission) || 0), 0),
+    directProfit: directDone.reduce((s, o) => s + (Number(o.admin_commission) || 0), 0),
+    agentCount: agentDone.length,
+  };
+}
+
 function useCountUp(target: number, duration = 1000, active = true) {
   const [value, setValue] = useState(0);
   const raf = useRef<number>(0);
@@ -53,7 +87,8 @@ function useCountUp(target: number, duration = 1000, active = true) {
     const start = performance.now();
     const tick = (now: number) => {
       const p = Math.min((now - start) / duration, 1);
-      setValue(Math.round(target * (1 - Math.pow(1 - p, 3))));
+      const v = target * (1 - Math.pow(1 - p, 3));
+      setValue(p < 1 ? Math.round(v * 100) / 100 : target);
       if (p < 1) raf.current = requestAnimationFrame(tick);
     };
     raf.current = requestAnimationFrame(tick);
@@ -69,6 +104,7 @@ function getMonthly(orders: Order[]) {
     return { label: d.toLocaleString("en", { month: "short" }), revenue: 0, profit: 0, count: 0 };
   });
   for (const o of orders) {
+    if ((o.status ?? "").toLowerCase() !== "completed") continue; // only completed orders
     const d = new Date(o.created_at);
     const ago = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
     if (ago >= 0 && ago <= 5) {
@@ -117,6 +153,16 @@ const IconTrend = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
   </svg>
 );
+const IconKey = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+  </svg>
+);
+const IconMegaphone = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+  </svg>
+);
 const IconSignout = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -128,16 +174,89 @@ const IconWhatsApp = () => (
   </svg>
 );
 
+// ─── Change Password Modal ────────────────────────────────────────────────────
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [ok, setOk] = useState(false);
+
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setMsg("");
+    if (next.length < 8) { setMsg("New password must be at least 8 characters."); return; }
+    if (next !== confirm) { setMsg("Passwords do not match."); return; }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: current, newPassword: next }),
+      });
+      const data = await res.json();
+      if (data.success) { setOk(true); setMsg("Password changed successfully!"); }
+      else setMsg(data.error || "Failed to change password.");
+    } catch { setMsg("Network error. Please try again."); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+      <div className="rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-[#1e3050]" style={{ background: "#162032" }}>
+        <h3 className="font-black text-white text-lg mb-1">Change Password</h3>
+        <p className="text-xs text-slate-500 mb-5">You&apos;ll use the new password to log in next time.</p>
+        {ok ? (
+          <div className="text-center py-4">
+            <p className="text-green-400 font-bold text-sm mb-4">✅ Password updated!</p>
+            <button onClick={onClose} className="text-sm text-slate-400 hover:text-white transition-colors">Close</button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {[
+              { label: "Current Password", val: current, set: setCurrent },
+              { label: "New Password (min 8 chars)", val: next, set: setNext },
+              { label: "Confirm New Password", val: confirm, set: setConfirm },
+            ].map(({ label, val, set }) => (
+              <div key={label}>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">{label}</label>
+                <input type="password" value={val} onChange={(e) => set(e.target.value)} required
+                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
+                  style={{ background: "#0e1928" }} />
+              </div>
+            ))}
+            {msg && <p className="text-xs font-semibold text-red-400 whitespace-pre-wrap">{msg}</p>}
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={onClose}
+                className="flex-1 border border-[#1e3050] text-slate-400 font-semibold py-2.5 rounded-xl text-sm hover:text-white transition-colors">Cancel</button>
+              <button type="submit" disabled={loading}
+                className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60"
+                style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
+                {loading ? "Saving…" : "Change Password"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-function Sidebar({ tab, setTab, pendingAgents, onLogout, mobileOpen, onMobileClose }: {
+function Sidebar({ tab, setTab, pendingAgents, onLogout, onChangePassword, mobileOpen, onMobileClose }: {
   tab: Tab; setTab: (t: Tab) => void; pendingAgents: number; onLogout: () => void;
-  mobileOpen: boolean; onMobileClose: () => void;
+  onChangePassword: () => void; mobileOpen: boolean; onMobileClose: () => void;
 }) {
   const nav = [
     { id: "overview" as Tab, label: "Dashboard", icon: <IconHome /> },
     { id: "orders" as Tab, label: "Orders", icon: <IconOrders /> },
     { id: "agents" as Tab, label: "Agents", icon: <IconAgents />, badge: pendingAgents || undefined },
-    { id: "prices" as Tab, label: "Bundles", icon: <IconPrices /> },
+    { id: "prices" as Tab, label: "Bundles & Prices", icon: <IconPrices /> },
+    { id: "agentprices" as Tab, label: "Agent Pricing", icon: <IconAgents /> },
+    { id: "pnl" as Tab, label: "Profit & Loss", icon: <IconTrend /> },
+    { id: "apikeys" as Tab, label: "API Keys", icon: <IconKey /> },
+    { id: "announcements" as Tab, label: "Announcements", icon: <IconMegaphone /> },
   ];
   return (
     <aside className={`fixed inset-y-0 left-0 z-50 w-60 flex flex-col border-r border-[#1e3050] transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`} style={{ background: "#0b1120" }}>
@@ -215,6 +334,16 @@ function Sidebar({ tab, setTab, pendingAgents, onLogout, mobileOpen, onMobileClo
           </svg>
           +233 509 794 503
         </div>
+        <button onClick={onChangePassword}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all"
+          style={{ color: "#94a3b8" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#162032"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = ""; }}>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+          </svg>
+          Change Password
+        </button>
         <button onClick={onLogout}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 transition-all"
           style={{ color: "#f87171" }}
@@ -230,18 +359,22 @@ function Sidebar({ tab, setTab, pendingAgents, onLogout, mobileOpen, onMobileClo
 
 // ─── Overview ─────────────────────────────────────────────────────────────────
 function Overview({ stats, animated, onNavigate }: { stats: StatsData; animated: boolean; onNavigate: (t: Tab) => void }) {
-  const revenue = useCountUp(Math.round(stats.revenue.total), 1200, animated);
-  const totalOrders = useCountUp(stats.orders.total, 900, animated);
-  const profit = useCountUp(Math.round(stats.profit.admin), 1200, animated);
-  const thisMonth = useCountUp(getThisMonthOrders(stats.orders.all), 800, animated);
-  const [apiBalance, setApiBalance] = useState<{ balance: number | null; error?: string }>({ balance: null });
+  const today = getTodayStats(stats.orders.all);
+  const todayRevenue = useCountUp(Math.round(today.revenue * 100) / 100, 1200, animated);
+  const todayProfit = useCountUp(Math.round(today.profit * 100) / 100, 1200, animated);
+  const todayOrders = useCountUp(today.count, 900, animated);
+  const [apiBalance, setApiBalance] = useState<{ balance: number | null; error?: string; raw?: unknown }>({ balance: null });
+  const [balanceLoading, setBalanceLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchBalance = useCallback(() => {
+    setBalanceLoading(true);
     fetch("/api/admin/inventor-balance")
       .then((r) => r.json())
-      .then((d) => setApiBalance(d))
-      .catch(() => setApiBalance({ balance: null, error: "Could not fetch balance" }));
+      .then((d) => { setApiBalance(d); setBalanceLoading(false); })
+      .catch(() => { setApiBalance({ balance: null, error: "Network error" }); setBalanceLoading(false); });
   }, []);
+
+  useEffect(() => { fetchBalance(); }, [fetchBalance]);
 
   const monthly = getMonthly(stats.orders.all);
   const maxRev = Math.max(...monthly.map((m) => m.revenue), 1);
@@ -250,31 +383,39 @@ function Overview({ stats, animated, onNavigate }: { stats: StatsData; animated:
     <div className="space-y-5">
       {/* Row 1 — Revenue card + Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-        {/* Revenue hero card */}
+        {/* Today hero card */}
         <div className="lg:col-span-3 rounded-2xl p-6 border border-[#1e3050] relative overflow-hidden" style={{ background: "#162032" }}>
           <div className="absolute top-0 right-0 w-48 h-48 rounded-full opacity-10 blur-3xl"
-            style={{ background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", transform: "translate(30%,-30%)" }} />
+            style={{ background: "linear-gradient(135deg,#10b981,#3b82f6)", transform: "translate(30%,-30%)" }} />
           <div className="flex items-start justify-between mb-4 relative">
             <div>
-              <p className="text-slate-400 text-sm font-medium">Total Revenue</p>
-              <p className="text-4xl font-black text-white mt-1">GH₵{revenue.toLocaleString()}</p>
-              <p className="text-slate-500 text-sm mt-1">Gross profit: GH₵{Math.round(stats.profit.gross).toLocaleString()}</p>
+              <p className="text-slate-400 text-sm font-medium">Today's Revenue</p>
+              <p className="text-4xl font-black text-white mt-1">GH₵{todayRevenue.toFixed(2)}</p>
+              <p className="text-slate-500 text-sm mt-1">{new Date().toLocaleDateString("en-GH", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</p>
             </div>
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center border border-[#1e3050]" style={{ background: "#1e2d45" }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center border border-[#1e3050]" style={{ background: "#0a2a1f" }}>
               <IconWallet />
             </div>
           </div>
           <div className="relative grid grid-cols-3 gap-3 mt-5">
-            {[
-              { label: "Cost", value: `GH₵${Math.round(stats.revenue.cost).toLocaleString()}`, color: "#f87171" },
-              { label: "Admin Profit", value: `GH₵${Math.round(stats.profit.admin).toLocaleString()}`, color: "#4ade80" },
-              { label: "Agent Payouts", value: `GH₵${Math.round(stats.profit.agentCommissions).toLocaleString()}`, color: "#a78bfa" },
-            ].map((s) => (
-              <div key={s.label} className="rounded-xl p-3 border border-[#1e3050]" style={{ background: "#0e1928" }}>
-                <p className="text-xs text-slate-500 mb-1">{s.label}</p>
-                <p className="font-black text-sm" style={{ color: s.color }}>{s.value}</p>
-              </div>
-            ))}
+            <div className="rounded-xl p-3 border border-[#1e3050]" style={{ background: "#0e1928" }}>
+              <p className="text-xs text-slate-500 mb-1">Today&apos;s Profit</p>
+              <p className="font-black text-sm" style={{ color: "#4ade80" }}>GH₵{todayProfit.toFixed(2)}</p>
+              {(today.agentCount > 0 || today.directProfit > 0) && (
+                <p className="text-[10px] text-slate-600 mt-1 leading-tight">
+                  GH₵{today.directProfit.toFixed(2)} direct
+                  {today.agentCount > 0 && <> + GH₵{today.agentProfit.toFixed(2)} from {today.agentCount} agent {today.agentCount === 1 ? "sale" : "sales"}</>}
+                </p>
+              )}
+            </div>
+            <div className="rounded-xl p-3 border border-[#1e3050]" style={{ background: "#0e1928" }}>
+              <p className="text-xs text-slate-500 mb-1">Orders Today</p>
+              <p className="font-black text-sm" style={{ color: "#60a5fa" }}>{todayOrders}</p>
+            </div>
+            <div className="rounded-xl p-3 border border-[#1e3050]" style={{ background: "#0e1928" }}>
+              <p className="text-xs text-slate-500 mb-1">Completed</p>
+              <p className="font-black text-sm" style={{ color: "#a78bfa" }}>{today.completed}</p>
+            </div>
           </div>
         </div>
 
@@ -328,9 +469,9 @@ function Overview({ stats, animated, onNavigate }: { stats: StatsData; animated:
       {/* Row 2 — Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Total Orders", value: String(totalOrders), sub: "All time purchases", icon: <IconCart />, iconBg: "#1e3a5f", iconColor: "#3b82f6" },
-          { label: "Admin Profit", value: `GH₵${profit.toLocaleString()}`, sub: "Your earnings", icon: <IconWallet />, iconBg: "#14302a", iconColor: "#10b981" },
-          { label: "This Month", value: String(thisMonth), sub: "Orders this month", icon: <IconTrend />, iconBg: "#2a1a3a", iconColor: "#a78bfa" },
+          { label: "Today's Orders", value: String(todayOrders), sub: `${stats.orders.total} total all time`, icon: <IconCart />, iconBg: "#1e3a5f", iconColor: "#3b82f6" },
+          { label: "Today's Profit", value: `GH₵${todayProfit.toFixed(2)}`, sub: "Your earnings today", icon: <IconWallet />, iconBg: "#14302a", iconColor: "#10b981" },
+          { label: "This Month", value: String(getThisMonthOrders(stats.orders.all)), sub: "Orders this month", icon: <IconTrend />, iconBg: "#2a1a3a", iconColor: "#a78bfa" },
           { label: "Active Agents", value: String(stats.agents.approved), sub: `${stats.agents.pending} pending approval`, icon: <IconAgents />, iconBg: "#2a200a", iconColor: "#f59e0b" },
         ].map((c, i) => (
           <div key={c.label} className="rounded-2xl p-5 border border-[#1e3050]" style={{ background: "#162032", animation: `slideUp .35s ease both`, animationDelay: `${i * 60}ms` }}>
@@ -345,18 +486,42 @@ function Overview({ stats, animated, onNavigate }: { stats: StatsData; animated:
           </div>
         ))}
         {/* API Balance card */}
-        <div className="rounded-2xl p-5 border border-[#1e3050]" style={{ background: "#162032", animation: `slideUp .35s ease both`, animationDelay: `${4 * 60}ms` }}>
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">API Balance</p>
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#0a2a1f", color: "#34d399" }}>
-              <IconWallet />
+        {(() => {
+          const bal = apiBalance.balance;
+          const low = bal !== null && bal < 20;
+          const critical = bal !== null && bal < 5;
+          return (
+            <div className="rounded-2xl p-5 border col-span-2 lg:col-span-1"
+              style={{ background: "#162032", borderColor: critical ? "#7f1d1d" : low ? "#78350f" : "#1e3050", animation: `slideUp .35s ease both`, animationDelay: `${4 * 60}ms` }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-medium uppercase tracking-wider" style={{ color: critical ? "#f87171" : low ? "#fbbf24" : "#94a3b8" }}>
+                  {critical ? "⚠️ Critical" : low ? "⚠️ Low Balance" : "API Balance"}
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={fetchBalance} title="Refresh balance"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+                    style={{ background: "#0e1928" }}>
+                    <svg className={`w-3.5 h-3.5 ${balanceLoading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+                    style={{ background: critical ? "#450a0a" : low ? "#431407" : "#0a2a1f", color: critical ? "#f87171" : low ? "#fbbf24" : "#34d399" }}>
+                    <IconWallet />
+                  </div>
+                </div>
+              </div>
+              <p className="text-2xl font-black" style={{ color: critical ? "#f87171" : low ? "#fbbf24" : "#fff" }}>
+                {balanceLoading ? <span className="text-slate-500 text-lg">Loading…</span>
+                  : bal !== null ? `GH₵${bal.toFixed(2)}`
+                  : <span className="text-slate-500 text-base">{apiBalance.error ?? "Unavailable"}</span>}
+              </p>
+              <p className="text-xs mt-1" style={{ color: critical ? "#fca5a5" : low ? "#fde68a" : "#64748b" }}>
+                {critical ? "Top up now — deliveries may fail!" : low ? "Top up soon" : "Inventor DataHub"}
+              </p>
             </div>
-          </div>
-          <p className="text-2xl font-black text-white">
-            {apiBalance.balance !== null ? `GH₵${Number(apiBalance.balance).toLocaleString()}` : "—"}
-          </p>
-          <p className="text-xs text-slate-500 mt-1">Inventor DataHub</p>
-        </div>
+          );
+        })()}
       </div>
 
       {/* Row 3 — Monthly chart + status breakdown */}
@@ -414,9 +579,9 @@ function Overview({ stats, animated, onNavigate }: { stats: StatsData; animated:
           <p className="font-bold text-white mt-6 mb-4">Network Split</p>
           <div className="space-y-3">
             {[
-              { name: "MTN", color: "#facc15", count: stats.orders.all.filter((o) => o.network.toLowerCase() === "mtn").length },
-              { name: "Telecel", color: "#f87171", count: stats.orders.all.filter((o) => o.network.toLowerCase() === "telecel").length },
-              { name: "AirtelTigo", color: "#fb7185", count: stats.orders.all.filter((o) => o.network.toLowerCase() === "airteltigo").length },
+              { name: "MTN", color: "#facc15", count: stats.orders.all.filter((o) => o.network?.toLowerCase() === "mtn").length },
+              { name: "Telecel", color: "#f87171", count: stats.orders.all.filter((o) => o.network?.toLowerCase() === "telecel").length },
+              { name: "AirtelTigo", color: "#fb7185", count: stats.orders.all.filter((o) => o.network?.toLowerCase() === "airteltigo").length },
             ].map((n) => {
               const max = stats.orders.total || 1;
               return (
@@ -446,23 +611,23 @@ function Overview({ stats, animated, onNavigate }: { stats: StatsData; animated:
           <p className="text-center text-slate-500 py-10">No orders yet</p>
         ) : (
           <div className="divide-y divide-[#1e3050]">
-            {[...stats.orders.all].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 6).map((o) => {
+            {[...stats.orders.all].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 6).map((o, i) => {
               const dotColor: Record<string, string> = { COMPLETED: "#10b981", PROCESSING: "#3b82f6", PENDING: "#f59e0b", FAILED: "#f87171" };
               return (
-                <div key={o.reference} className="flex items-center gap-4 px-5 py-3.5 hover:bg-[#1e3050]/30 transition-colors">
+                <div key={o.reference ?? o.created_at ?? i} className="flex items-center gap-4 px-5 py-3.5 hover:bg-[#1e3050]/30 transition-colors">
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-xs font-black"
-                    style={{ background: o.network.toLowerCase() === "mtn" ? "#78350f" : o.network.toLowerCase() === "telecel" ? "#7f1d1d" : "#881337", color: o.network.toLowerCase() === "mtn" ? "#fbbf24" : "#fca5a5" }}>
-                    {o.network.toUpperCase().slice(0, 2)}
+                    style={{ background: o.network?.toLowerCase() === "mtn" ? "#78350f" : o.network?.toLowerCase() === "telecel" ? "#7f1d1d" : "#881337", color: o.network?.toLowerCase() === "mtn" ? "#fbbf24" : "#fca5a5" }}>
+                    {(o.network ?? "?").toUpperCase().slice(0, 2)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">{o.customer_name}</p>
-                    <p className="text-xs text-slate-500">{o.network.toUpperCase()} {o.bundle_size} · {o.phone}</p>
+                    <p className="text-sm font-semibold text-white truncate">{o.customer_name || o.phone || "—"}</p>
+                    <p className="text-xs text-slate-500">{(o.network ?? "—").toUpperCase()} {(o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel)\s+/i, "").trim()} · {o.phone}</p>
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-sm font-black text-white">GH₵{Number(o.amount).toFixed(2)}</p>
                     <p className="text-xs text-slate-500">{new Date(o.created_at).toLocaleDateString("en-GH", { day: "2-digit", month: "short" })}</p>
                   </div>
-                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background: dotColor[o.status] ?? "#6b7280" }} />
+                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background: dotColor[o.status.toUpperCase()] ?? "#6b7280" }} />
                 </div>
               );
             })}
@@ -478,15 +643,54 @@ function OrdersView({ orders, onRefresh }: { orders: Order[]; onRefresh: () => v
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus>("ALL");
   const [page, setPage] = useState(1);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
+  const [retrying, setRetrying] = useState<string | null>(null);
+  const [retryMsg, setRetryMsg] = useState<{ ref: string; ok: boolean; text: string } | null>(null);
+
+  async function handleRetry(reference: string) {
+    setRetrying(reference);
+    setRetryMsg(null);
+    try {
+      const res = await fetch("/api/admin/orders/retry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reference }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setRetryMsg({ ref: reference, ok: true, text: `✓ ${d.status === "completed" ? "Delivered!" : "Processing…"}` });
+        onRefresh();
+      } else {
+        setRetryMsg({ ref: reference, ok: false, text: "Retry failed — check Telegram for details" });
+      }
+    } catch {
+      setRetryMsg({ ref: reference, ok: false, text: "Network error" });
+    } finally {
+      setRetrying(null);
+      setTimeout(() => setRetryMsg(null), 6000);
+    }
+  }
+
+  async function handleSync() {
+    setSyncing(true); setSyncMsg("");
+    try {
+      const res = await fetch("/api/admin/sync-orders", { method: "POST" });
+      const d = await res.json();
+      setSyncMsg(d.updated > 0 ? `✓ ${d.updated} order${d.updated !== 1 ? "s" : ""} updated` : `✓ All ${d.checked} orders up to date`);
+      if (d.updated > 0) onRefresh();
+    } catch { setSyncMsg("Sync failed"); }
+    finally { setSyncing(false); setTimeout(() => setSyncMsg(""), 4000); }
+  }
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     return orders.slice()
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .filter((o) => {
-        if (statusFilter !== "ALL" && o.status !== statusFilter) return false;
+        if (statusFilter !== "ALL" && o.status.toUpperCase() !== statusFilter) return false;
         if (!q) return true;
-        return o.customer_name.toLowerCase().includes(q) || o.phone.includes(q) || o.reference.toLowerCase().includes(q) || o.network.toLowerCase().includes(q);
+        return (o.customer_name ?? "").toLowerCase().includes(q) || (o.phone ?? "").includes(q) || (o.reference ?? "").toLowerCase().includes(q) || (o.network ?? "").toLowerCase().includes(q);
       });
   }, [orders, search, statusFilter]);
 
@@ -496,10 +700,10 @@ function OrdersView({ orders, onRefresh }: { orders: Order[]; onRefresh: () => v
 
   const counts: Record<OrderStatus, number> = {
     ALL: orders.length,
-    COMPLETED: orders.filter((o) => o.status === "COMPLETED").length,
-    PROCESSING: orders.filter((o) => o.status === "PROCESSING").length,
-    PENDING: orders.filter((o) => o.status === "PENDING").length,
-    FAILED: orders.filter((o) => o.status === "FAILED").length,
+    COMPLETED: orders.filter((o) => o.status.toUpperCase() === "COMPLETED").length,
+    PROCESSING: orders.filter((o) => o.status.toUpperCase() === "PROCESSING").length,
+    PENDING: orders.filter((o) => o.status.toUpperCase() === "PENDING").length,
+    FAILED: orders.filter((o) => o.status.toUpperCase() === "FAILED").length,
   };
 
   const tabDefs: { key: OrderStatus; color: string }[] = [
@@ -540,6 +744,12 @@ function OrdersView({ orders, onRefresh }: { orders: Order[]; onRefresh: () => v
             style={{ background: "#162032" }}>
             ↻ Refresh
           </button>
+          <button onClick={handleSync} disabled={syncing}
+            className="flex items-center gap-1.5 text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl transition-colors"
+            style={{ background: syncing ? "#162032" : "rgba(59,130,246,0.1)", borderColor: "#3b82f660", color: "#60a5fa" }}>
+            {syncing ? "Syncing…" : "⚡ Sync Status"}
+          </button>
+          {syncMsg && <span className="text-xs font-semibold text-green-400">{syncMsg}</span>}
         </div>
       </div>
 
@@ -569,31 +779,43 @@ function OrdersView({ orders, onRefresh }: { orders: Order[]; onRefresh: () => v
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#1e3050] text-xs text-slate-500 uppercase tracking-wider" style={{ background: "#0e1928" }}>
-                {["#", "Customer", "Network", "Phone", "Amount", "Profit", "Source", "Status", "Date"].map((h) => (
+                {["#", "Customer", "Network", "Phone", "Amount", "Profit", "Source", "Status", "Date", ""].map((h) => (
                   <th key={h} className="px-4 py-3 text-left font-semibold">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {pageOrders.map((o, idx) => {
-                const net = o.network.toLowerCase();
+                const net = (o.network ?? "").toLowerCase();
                 const nb = netBadge[net] ?? { bg: "#1e293b", color: "#94a3b8" };
                 return (
-                  <tr key={o.reference} className="border-b border-[#1e3050]/50 hover:bg-[#1e3050]/30 transition-colors last:border-0">
+                  <tr key={o.reference ?? o.created_at ?? idx} className="border-b border-[#1e3050]/50 hover:bg-[#1e3050]/30 transition-colors last:border-0">
                     <td className="px-4 py-3.5 text-slate-600 text-xs font-mono">
                       {((page - 1) * PAGE_SIZE) + idx + 1}
                     </td>
                     <td className="px-4 py-3.5">
-                      <p className="font-semibold text-white whitespace-nowrap">{o.customer_name}</p>
-                      <p className="text-[11px] text-slate-500 font-mono mt-0.5">{o.reference.slice(0, 12)}…</p>
+                      <p className="font-semibold text-white whitespace-nowrap">{o.customer_name || o.phone || "—"}</p>
+                      <a href={`/track?ref=${encodeURIComponent(o.reference ?? "")}`} target="_blank" rel="noreferrer"
+                        className="text-[11px] text-blue-400 hover:text-blue-300 font-mono mt-0.5 underline underline-offset-2">
+                        {o.reference ? o.reference.slice(0, 14) + "…" : "—"}
+                      </a>
                     </td>
                     <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded" style={{ background: nb.bg, color: nb.color }}>
-                          {o.network.toUpperCase()}
-                        </span>
-                        <span className="text-slate-400 text-xs">{o.bundle_size}</span>
-                      </div>
+                      {(() => {
+                        const bs = o.bundle_size ?? "";
+                        const rawNet = o.network || (bs.toLowerCase().startsWith("mtn") ? "mtn" : bs.toLowerCase().startsWith("telecel") ? "telecel" : bs.toLowerCase().startsWith("at ") || bs.toLowerCase().includes("airtel") ? "airteltigo" : "");
+                        const displayNet = rawNet ? rawNet.toUpperCase() : "—";
+                        const displayBadge = netBadge[rawNet] ?? { bg: "#1e293b", color: "#64748b" };
+                        const cleanSize = bs.replace(/^(mtn|telecel|at ishare|airteltigo|airtel)\s+/i, "").trim() || "—";
+                        return (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded" style={{ background: displayBadge.bg, color: displayBadge.color }}>
+                              {displayNet}
+                            </span>
+                            <span className="text-slate-400 text-xs">{cleanSize}</span>
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3.5 font-mono text-xs text-slate-400">{o.phone}</td>
                     <td className="px-4 py-3.5 font-black text-white">GH₵{Number(o.amount).toFixed(2)}</td>
@@ -608,13 +830,28 @@ function OrdersView({ orders, onRefresh }: { orders: Order[]; onRefresh: () => v
                     </td>
                     <td className="px-4 py-3.5">
                       <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
-                        style={{ background: statusBg[o.status] ?? "transparent", color: statusDot[o.status] ?? "#94a3b8" }}>
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusDot[o.status] ?? "#94a3b8" }} />
+                        style={{ background: statusBg[o.status.toUpperCase()] ?? "transparent", color: statusDot[o.status.toUpperCase()] ?? "#94a3b8" }}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusDot[o.status.toUpperCase()] ?? "#94a3b8" }} />
                         {o.status.charAt(0) + o.status.slice(1).toLowerCase()}
                       </span>
                     </td>
                     <td className="px-4 py-3.5 text-slate-500 text-xs whitespace-nowrap">
                       {new Date(o.created_at).toLocaleDateString("en-GH", { day: "2-digit", month: "short", year: "numeric" })}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      {["pending", "processing", "failed"].includes((o.status ?? "").toLowerCase()) && o.reference && (
+                        retryMsg?.ref === o.reference ? (
+                          <span className={`text-xs font-bold ${retryMsg.ok ? "text-green-400" : "text-red-400"}`}>{retryMsg.text}</span>
+                        ) : (
+                          <button
+                            onClick={() => handleRetry(o.reference)}
+                            disabled={retrying === o.reference}
+                            className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                            style={{ background: "rgba(251,146,60,0.15)", color: "#fb923c", border: "1px solid rgba(251,146,60,0.3)" }}>
+                            {retrying === o.reference ? "…" : "🔄 Retry"}
+                          </button>
+                        )
+                      )}
                     </td>
                   </tr>
                 );
@@ -664,6 +901,7 @@ function AgentsView({ stats, onRefresh }: { stats: StatsData; onRefresh: () => v
   const [agentTab, setAgentTab] = useState<"pending" | "approved">("pending");
   const [agentAction, setAgentAction] = useState<{ id: string; name: string; action: "approve" | "reject" } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [pricesAgent, setPricesAgent] = useState<{ id: string; name: string } | null>(null);
 
   async function handleAction() {
     if (!agentAction) return;
@@ -710,6 +948,7 @@ function AgentsView({ stats, onRefresh }: { stats: StatsData; onRefresh: () => v
                 <th className="px-4 py-3 text-left font-semibold">WhatsApp</th>
                 <th className="px-4 py-3 text-left font-semibold">Business</th>
                 {agentTab === "approved" && <>
+                  <th className="px-4 py-3 text-left font-semibold">Type</th>
                   <th className="px-4 py-3 text-left font-semibold">Sales</th>
                   <th className="px-4 py-3 text-left font-semibold">Balance</th>
                   <th className="px-4 py-3 text-left font-semibold">Ref Code</th>
@@ -734,6 +973,13 @@ function AgentsView({ stats, onRefresh }: { stats: StatsData; onRefresh: () => v
                   </td>
                   <td className="px-4 py-3.5 text-slate-500 text-xs">{a.business_name || "—"}</td>
                   {agentTab === "approved" && <>
+                    <td className="px-4 py-3.5">
+                      {a.agent_type === "custom_price" ? (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>Custom Price</span>
+                      ) : (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", border: "1px solid rgba(16,185,129,0.25)" }}>Commission</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3.5 font-bold text-white">{a.total_sales}</td>
                     <td className="px-4 py-3.5 font-black" style={{ color: "#4ade80" }}>GH₵{(a.commission_balance ?? 0).toFixed(2)}</td>
                     <td className="px-4 py-3.5 font-mono text-xs font-bold" style={{ color: "#60a5fa" }}>{a.referral_code}</td>
@@ -753,8 +999,17 @@ function AgentsView({ stats, onRefresh }: { stats: StatsData; onRefresh: () => v
                       </div>
                     )}
                     {agentTab === "approved" && (
-                      <button onClick={() => setAgentAction({ id: a.id, name: a.name, action: "reject" })}
-                        className="text-xs font-semibold transition-colors" style={{ color: "#f87171" }}>Remove</button>
+                      <div className="flex items-center gap-3">
+                        {a.agent_type === "custom_price" && (
+                          <button onClick={() => setPricesAgent({ id: a.id, name: a.name })}
+                            className="text-xs font-bold px-2.5 py-1 rounded-lg transition-colors"
+                            style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>
+                            Set Prices
+                          </button>
+                        )}
+                        <button onClick={() => setAgentAction({ id: a.id, name: a.name, action: "reject" })}
+                          className="text-xs font-semibold transition-colors" style={{ color: "#f87171" }}>Remove</button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -795,391 +1050,9 @@ function AgentsView({ stats, onRefresh }: { stats: StatsData; onRefresh: () => v
           </div>
         </div>
       )}
-    </div>
-  );
-}
 
-// ─── Bundle Management View ───────────────────────────────────────────────────
-function PricesView() {
-  const [bundles, setBundles] = useState<BundleRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<BundleRow | null>(null);
-  const [editPrice, setEditPrice] = useState({ price: "", costPrice: "" });
-  const [editMeta, setEditMeta] = useState({ sizeLabel: "", sizeGB: "", validity: "" });
-  const [editLoading, setEditLoading] = useState(false);
-  const [editMsg, setEditMsg] = useState("");
-  const [search, setSearch] = useState("");
-  const [networkFilter, setNetworkFilter] = useState<"all" | "mtn" | "telecel" | "airteltigo">("all");
-  const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
-  const [addForm, setAddForm] = useState({ network: "mtn", sizeLabel: "", sizeGB: "", validity: "30 days", price: "", costPrice: "" });
-  const [addLoading, setAddLoading] = useState(false);
-  const [addMsg, setAddMsg] = useState("");
-
-  const fetch_ = useCallback(async () => {
-    setLoading(true);
-    const res = await fetch("/api/admin/bundles");
-    const data = await res.json();
-    setBundles(data.bundles ?? []);
-    setLoading(false);
-  }, []);
-  useEffect(() => { fetch_(); }, [fetch_]);
-
-  async function handleAddBundle() {
-    setAddMsg("");
-    if (!addForm.sizeLabel.trim()) return setAddMsg("Size label is required.");
-    if (!addForm.sizeGB || isNaN(Number(addForm.sizeGB)) || Number(addForm.sizeGB) <= 0) return setAddMsg("Valid GB size required.");
-    if (!addForm.validity.trim()) return setAddMsg("Validity is required.");
-    if (!addForm.price || isNaN(Number(addForm.price)) || Number(addForm.price) <= 0) return setAddMsg("Valid selling price required.");
-    if (!addForm.costPrice || isNaN(Number(addForm.costPrice)) || Number(addForm.costPrice) <= 0) return setAddMsg("Valid cost price required.");
-    if (Number(addForm.costPrice) >= Number(addForm.price)) return setAddMsg("Cost price must be less than selling price.");
-    setAddLoading(true);
-    const res = await fetch("/api/admin/bundles", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        network: addForm.network,
-        sizeLabel: addForm.sizeLabel.trim(),
-        sizeGB: Number(addForm.sizeGB),
-        validity: addForm.validity.trim(),
-        price: Number(addForm.price),
-        costPrice: Number(addForm.costPrice),
-      }),
-    });
-    const data = await res.json();
-    setAddLoading(false);
-    if (data.success) {
-      setAddMsg("Bundle added!");
-      setAddForm({ network: "mtn", sizeLabel: "", sizeGB: "", validity: "30 days", price: "", costPrice: "" });
-      fetch_();
-      setTimeout(() => { setAddOpen(false); setAddMsg(""); }, 1800);
-    } else {
-      setAddMsg(data.error || "Failed to add bundle.");
-    }
-  }
-
-  async function handleSave() {
-    if (!editing) return;
-    if (!editPrice.price || !editPrice.costPrice || isNaN(parseFloat(editPrice.price)) || isNaN(parseFloat(editPrice.costPrice))) {
-      setEditMsg("Enter valid numbers for both prices.");
-      return;
-    }
-    if (editMeta.sizeGB && (isNaN(parseFloat(editMeta.sizeGB)) || parseFloat(editMeta.sizeGB) <= 0)) {
-      setEditMsg("Size (GB) must be a positive number.");
-      return;
-    }
-    setEditLoading(true); setEditMsg("");
-    const body: Record<string, unknown> = {
-      bundleId: editing.id,
-      price: parseFloat(editPrice.price),
-      costPrice: parseFloat(editPrice.costPrice),
-      active: editing.active,
-    };
-    if (editMeta.sizeLabel.trim()) body.sizeLabel = editMeta.sizeLabel.trim();
-    if (editMeta.sizeGB) body.sizeGB = parseFloat(editMeta.sizeGB);
-    if (editMeta.validity.trim()) body.validity = editMeta.validity.trim();
-    const res = await fetch("/api/admin/bundles", {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setEditMsg(data.warning ? `Saved! Note: ${data.warning}` : "Saved!");
-      fetch_();
-      setTimeout(() => { setEditing(null); setEditMsg(""); }, 1500);
-    }
-    else setEditMsg(data.error || "Error");
-    setEditLoading(false);
-  }
-
-  async function handleToggleActive(b: BundleRow) {
-    setTogglingId(b.id);
-    await fetch("/api/admin/bundles", {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bundleId: b.id, active: !b.active }),
-    });
-    setBundles((prev) => prev.map((x) => x.id === b.id ? { ...x, active: !b.active } : x));
-    setTogglingId(null);
-  }
-
-  const shown = bundles.filter((b) => {
-    const q = search.toLowerCase();
-    const matchNet = networkFilter === "all" || b.network.toLowerCase() === networkFilter;
-    return matchNet && (!q || b.size.toLowerCase().includes(q));
-  });
-
-  const netBadge: Record<string, { bg: string; color: string }> = {
-    mtn: { bg: "#78350f", color: "#fbbf24" },
-    telecel: { bg: "#7f1d1d", color: "#fca5a5" },
-    airteltigo: { bg: "#881337", color: "#fda4af" },
-  };
-
-  const totals = {
-    active: bundles.filter((b) => b.active).length,
-    inactive: bundles.filter((b) => !b.active).length,
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-black text-white">Bundle Management</h1>
-          <p className="text-sm text-slate-500">
-            Edit prices, toggle visibility — {totals.active} active, {totals.inactive} hidden
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => { setAddOpen((v) => !v); setAddMsg(""); }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white transition-all"
-            style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            Add New Bundle
-          </button>
-          {/* Network filter */}
-          <div className="flex gap-1 rounded-xl p-1 border border-[#1e3050]" style={{ background: "#0e1928" }}>
-            {(["all", "mtn", "telecel", "airteltigo"] as const).map((n) => (
-              <button key={n} onClick={() => setNetworkFilter(n)}
-                className="text-[11px] font-bold px-2.5 py-1 rounded-lg capitalize transition-all"
-                style={networkFilter === n ? { background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", color: "#fff" } : { color: "#64748b" }}>
-                {n === "all" ? "All" : n === "airteltigo" ? "AT" : n.charAt(0).toUpperCase() + n.slice(1)}
-              </button>
-            ))}
-          </div>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">🔍</span>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…"
-              className="pl-9 pr-4 py-2 text-sm rounded-xl border border-[#1e3050] focus:outline-none focus:border-blue-500 w-36 text-white placeholder-slate-600"
-              style={{ background: "#162032" }} />
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Add Bundle Panel */}
-      {addOpen && (
-        <div className="rounded-2xl border border-blue-500/30 p-5" style={{ background: "#0e1928" }}>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <p className="font-black text-white text-base">Add New Bundle</p>
-              <p className="text-xs text-slate-500 mt-0.5">Fill in all details and click Save to add a new bundle to the store</p>
-            </div>
-            <button onClick={() => { setAddOpen(false); setAddMsg(""); }} className="text-slate-500 hover:text-white transition-colors">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1">Network</label>
-              <select value={addForm.network} onChange={(e) => setAddForm((f) => ({ ...f, network: e.target.value }))}
-                className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
-                style={{ background: "#162032" }}>
-                <option value="mtn">MTN</option>
-                <option value="telecel">Telecel</option>
-                <option value="airteltigo">AirtelTigo</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1">Size Label</label>
-              <input type="text" placeholder="e.g. 3GB" value={addForm.sizeLabel}
-                onChange={(e) => setAddForm((f) => ({ ...f, sizeLabel: e.target.value }))}
-                className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
-                style={{ background: "#162032" }} />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1">GB (for API)</label>
-              <input type="number" step="0.01" min="0.01" placeholder="e.g. 3" value={addForm.sizeGB}
-                onChange={(e) => setAddForm((f) => ({ ...f, sizeGB: e.target.value }))}
-                className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
-                style={{ background: "#162032" }} />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1">Validity</label>
-              <input type="text" placeholder="30 days" value={addForm.validity}
-                onChange={(e) => setAddForm((f) => ({ ...f, validity: e.target.value }))}
-                className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
-                style={{ background: "#162032" }} />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1">Sell Price (GH₵)</label>
-              <input type="number" step="0.01" min="0.01" placeholder="e.g. 15" value={addForm.price}
-                onChange={(e) => setAddForm((f) => ({ ...f, price: e.target.value }))}
-                className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
-                style={{ background: "#162032" }} />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1">Cost Price (GH₵)</label>
-              <input type="number" step="0.01" min="0.01" placeholder="e.g. 11" value={addForm.costPrice}
-                onChange={(e) => setAddForm((f) => ({ ...f, costPrice: e.target.value }))}
-                className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
-                style={{ background: "#162032" }} />
-            </div>
-          </div>
-          {addForm.price && addForm.costPrice && !isNaN(Number(addForm.price)) && !isNaN(Number(addForm.costPrice)) && Number(addForm.price) > Number(addForm.costPrice) && (
-            <div className="mt-3 text-xs font-semibold" style={{ color: "#4ade80" }}>
-              Margin: GH₵{(Number(addForm.price) - Number(addForm.costPrice)).toFixed(2)} ({(((Number(addForm.price) - Number(addForm.costPrice)) / Number(addForm.price)) * 100).toFixed(0)}%)
-            </div>
-          )}
-          {addMsg && (
-            <p className={`mt-3 text-xs font-semibold ${addMsg === "Bundle added!" ? "text-green-400" : "text-red-400"}`}>{addMsg}</p>
-          )}
-          <div className="mt-4 flex gap-3">
-            <button onClick={() => { setAddOpen(false); setAddMsg(""); }}
-              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-400 border border-[#1e3050] hover:text-white transition-colors">
-              Cancel
-            </button>
-            <button onClick={handleAddBundle} disabled={addLoading}
-              className="px-6 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-60 transition-all"
-              style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
-              {addLoading ? "Saving…" : "Save Bundle"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="rounded-2xl border border-[#1e3050] overflow-hidden" style={{ background: "#162032" }}>
-        {loading ? <p className="text-center text-slate-500 py-16">Loading…</p> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[#1e3050] text-xs text-slate-500 uppercase tracking-wider" style={{ background: "#0e1928" }}>
-                  <th className="px-4 py-3 text-left font-semibold">Network</th>
-                  <th className="px-4 py-3 text-left font-semibold">Bundle</th>
-                  <th className="px-4 py-3 text-left font-semibold">Validity</th>
-                  <th className="px-4 py-3 text-left font-semibold">Sell Price</th>
-                  <th className="px-4 py-3 text-left font-semibold">Cost</th>
-                  <th className="px-4 py-3 text-left font-semibold">Margin</th>
-                  <th className="px-4 py-3 text-left font-semibold">Status</th>
-                  <th className="px-4 py-3 text-left font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((b) => {
-                  const nb = netBadge[b.network.toLowerCase()] ?? { bg: "#1e293b", color: "#94a3b8" };
-                  const margin = b.price - b.costPrice;
-                  const marginPct = ((margin / b.price) * 100).toFixed(0);
-                  return (
-                    <tr key={b.id} className={`border-b border-[#1e3050]/50 last:border-0 transition-colors ${b.active ? "hover:bg-[#1e3050]/30" : "opacity-50 hover:opacity-70"}`}>
-                      <td className="px-4 py-3.5">
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded" style={{ background: nb.bg, color: nb.color }}>
-                          {b.network.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 font-semibold text-slate-300">
-                        {b.size}
-                        {b.hasOverride && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa" }}>custom</span>}
-                      </td>
-                      <td className="px-4 py-3.5 text-slate-500 text-xs">{b.validity}</td>
-                      <td className="px-4 py-3.5 font-black text-white">GH₵{b.price.toFixed(2)}</td>
-                      <td className="px-4 py-3.5 text-slate-500">GH₵{b.costPrice.toFixed(2)}</td>
-                      <td className="px-4 py-3.5">
-                        <span className="font-black" style={{ color: "#4ade80" }}>GH₵{margin.toFixed(2)}</span>
-                        <span className="text-slate-600 text-xs ml-1">({marginPct}%)</span>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <button
-                          onClick={() => handleToggleActive(b)}
-                          disabled={togglingId === b.id}
-                          className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-40"
-                          style={{ background: b.active ? "#10b981" : "#374151" }}
-                          title={b.active ? "Click to hide from store" : "Click to show in store"}
-                        >
-                          <span className="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ease-in-out"
-                            style={{ transform: b.active ? "translateX(16px)" : "translateX(0)" }} />
-                        </button>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <button onClick={() => { setEditing(b); setEditPrice({ price: String(b.price), costPrice: String(b.costPrice) }); setEditMeta({ sizeLabel: "", sizeGB: "", validity: "" }); setEditMsg(""); }}
-                          className="text-xs font-bold px-3 py-1.5 rounded-lg transition-colors text-blue-400 border border-blue-500/30 hover:border-blue-400"
-                          style={{ background: "rgba(59,130,246,0.1)" }}>
-                          Edit Price
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {shown.length === 0 && <p className="text-center text-slate-500 py-10">No bundles match your filter.</p>}
-          </div>
-        )}
-      </div>
-
-      {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-[#1e3050] max-h-[90vh] overflow-y-auto" style={{ background: "#162032" }}>
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-[11px] font-black px-2 py-0.5 rounded" style={netBadge[editing.network.toLowerCase()] ? { background: netBadge[editing.network.toLowerCase()].bg, color: netBadge[editing.network.toLowerCase()].color } : {}}>
-                {editing.network.toUpperCase()}
-              </span>
-              <h3 className="font-black text-white text-lg">Edit Bundle</h3>
-            </div>
-
-            <p className="text-xs text-slate-500 mb-4">Changes override the defaults. Leave size/validity blank to reset to default.</p>
-
-            <div className="space-y-3">
-              {/* Prices */}
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pricing</p>
-              {[{ label: "Selling Price (GH₵)", key: "price" as const }, { label: "Cost / Fulfillment (GH₵)", key: "costPrice" as const }].map(({ label, key }) => (
-                <div key={key}>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">{label}</label>
-                  <input type="number" step="0.01" min="0.01"
-                    value={editPrice[key]}
-                    onChange={(e) => setEditPrice((p) => ({ ...p, [key]: e.target.value }))}
-                    className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
-                    style={{ background: "#0e1928" }} />
-                </div>
-              ))}
-              {editPrice.price && editPrice.costPrice && !isNaN(parseFloat(editPrice.price)) && !isNaN(parseFloat(editPrice.costPrice)) && (
-                <div className="rounded-lg px-3 py-2 text-xs" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80" }}>
-                  <span className="font-black">Margin: GH₵{(parseFloat(editPrice.price) - parseFloat(editPrice.costPrice)).toFixed(2)}</span>
-                  <span className="opacity-60 ml-1">({(((parseFloat(editPrice.price) - parseFloat(editPrice.costPrice)) / parseFloat(editPrice.price)) * 100).toFixed(0)}% of sale)</span>
-                </div>
-              )}
-
-              {/* Bundle Metadata */}
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider pt-2">Bundle Details</p>
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Display Size Label <span className="text-slate-600">(e.g. 2GB, 500MB)</span></label>
-                <input type="text" placeholder={editing.size}
-                  value={editMeta.sizeLabel}
-                  onChange={(e) => setEditMeta((m) => ({ ...m, sizeLabel: e.target.value }))}
-                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
-                  style={{ background: "#0e1928" }} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Data Size in GB <span className="text-slate-600">(for Inventor API — e.g. 2, 0.5)</span></label>
-                <input type="number" step="0.01" min="0.01" placeholder={String(editing.sizeGB)}
-                  value={editMeta.sizeGB}
-                  onChange={(e) => setEditMeta((m) => ({ ...m, sizeGB: e.target.value }))}
-                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
-                  style={{ background: "#0e1928" }} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Validity <span className="text-slate-600">(e.g. 30 days, 7 days)</span></label>
-                <input type="text" placeholder={editing.validity}
-                  value={editMeta.validity}
-                  onChange={(e) => setEditMeta((m) => ({ ...m, validity: e.target.value }))}
-                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
-                  style={{ background: "#0e1928" }} />
-              </div>
-
-              {editMsg && <p className={`text-xs font-semibold ${editMsg === "Saved!" ? "text-green-400" : "text-red-400"}`}>{editMsg}</p>}
-            </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={() => { setEditing(null); setEditMsg(""); }}
-                className="flex-1 border border-[#1e3050] text-slate-400 font-semibold py-2.5 rounded-xl text-sm hover:text-white transition-colors">Cancel</button>
-              <button onClick={handleSave} disabled={editLoading}
-                className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60"
-                style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
-                {editLoading ? "Saving…" : "Save Changes"}
-              </button>
-            </div>
-          </div>
-        </div>
+      {pricesAgent && (
+        <AgentPriceModal agentId={pricesAgent.id} agentName={pricesAgent.name} onClose={() => setPricesAgent(null)} />
       )}
     </div>
   );
@@ -1193,6 +1066,7 @@ export default function AdminDashboard() {
   const [loadingStats, setLoadingStats] = useState(true);
   const [animated, setAnimated] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [showChangePw, setShowChangePw] = useState(false);
 
   const fetchStats = useCallback(async () => {
     setLoadingStats(true);
@@ -1220,7 +1094,8 @@ export default function AdminDashboard() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#0d1424" }}>
-      <Sidebar tab={tab} setTab={setTab} pendingAgents={stats?.agents.pending ?? 0} onLogout={handleLogout} mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} />
+      <Sidebar tab={tab} setTab={setTab} pendingAgents={stats?.agents.pending ?? 0} onLogout={handleLogout} onChangePassword={() => setShowChangePw(true)} mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} />
+      {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}
       {mobileSidebarOpen && (
         <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={() => setMobileSidebarOpen(false)} />
       )}
@@ -1245,18 +1120,26 @@ export default function AdminDashboard() {
           </div>
           <div className="flex items-center gap-3">
             {stats && (
-              <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border"
+              <span className="hidden sm:flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border"
                 style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", borderColor: "rgba(16,185,129,0.3)" }}>
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 Live
               </span>
             )}
             <button onClick={fetchStats}
-              className="text-xs font-medium text-slate-400 hover:text-white border border-[#1e3050] px-3 py-1.5 rounded-xl transition-colors"
+              className="hidden sm:block text-xs font-medium text-slate-400 hover:text-white border border-[#1e3050] px-3 py-1.5 rounded-xl transition-colors"
               style={{ background: "#162032" }}>
               ↻ Sync
             </button>
-            <div className="w-9 h-9 rounded-full flex items-center justify-center font-black text-white text-sm"
+            <button onClick={handleLogout}
+              className="md:hidden flex items-center gap-1.5 text-xs font-bold text-red-400 border border-red-500/30 hover:bg-red-500/10 px-3 py-1.5 rounded-xl transition-colors"
+              style={{ background: "#1a0f0f" }}>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Logout
+            </button>
+            <div className="hidden md:flex w-9 h-9 rounded-full items-center justify-center font-black text-white text-sm"
               style={{ background: "linear-gradient(135deg,#3b82f6,#8b5cf6)" }}>A</div>
           </div>
         </header>
@@ -1274,6 +1157,10 @@ export default function AdminDashboard() {
               {tab === "orders" && stats && <OrdersView orders={stats.orders.all} onRefresh={fetchStats} />}
               {tab === "agents" && stats && <AgentsView stats={stats} onRefresh={fetchStats} />}
               {tab === "prices" && <PricesView />}
+              {tab === "agentprices" && stats && <AgentPricesAdmin allAgents={stats.agents.all} />}
+              {tab === "pnl" && stats && <PnLView orders={stats.orders.all} />}
+              {tab === "apikeys" && <ApiKeysAdmin />}
+              {tab === "announcements" && <AnnouncementsAdmin />}
             </>
           )}
         </main>

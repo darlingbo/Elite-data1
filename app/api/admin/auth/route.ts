@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
-import { timingSafeEqual } from "crypto";
+import { createHash, timingSafeEqual } from "crypto";
+import { supabase } from "@/lib/supabase";
 
 // In-memory rate limiter: max 5 attempts per IP per 15 minutes
 const attempts = new Map<string, { count: number; resetAt: number }>();
@@ -32,6 +33,28 @@ function safeEqual(a: string, b: string): boolean {
   } catch { return false; }
 }
 
+async function verifyAdminPassword(password: string): Promise<boolean> {
+  // Check DB-stored hash first (set via Change Password feature)
+  try {
+    const { data } = await supabase
+      .from("admin_config")
+      .select("value")
+      .eq("key", "admin_password_hash")
+      .maybeSingle();
+    if (data && (data as { value: string }).value) {
+      const salt = process.env.ADMIN_SESSION_TOKEN ?? "elite-data-salt";
+      const candidateHash = createHash("sha256").update(salt + password).digest("hex");
+      const storedHash = (data as { value: string }).value;
+      try {
+        return timingSafeEqual(Buffer.from(candidateHash), Buffer.from(storedHash));
+      } catch { return false; }
+    }
+  } catch { /* table may not exist yet, fall through */ }
+
+  // Fall back to ADMIN_PASSWORD env var
+  return safeEqual(String(password), process.env.ADMIN_PASSWORD ?? "");
+}
+
 export async function POST(request: NextRequest) {
   const ip = getIp(request);
   if (isRateLimited(ip)) {
@@ -39,9 +62,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { password } = await request.json();
-  const expected = process.env.ADMIN_PASSWORD ?? "";
-
-  if (!password || !safeEqual(String(password), expected)) {
+  if (!password || !(await verifyAdminPassword(String(password)))) {
     return Response.json({ error: "Incorrect password." }, { status: 401 });
   }
 

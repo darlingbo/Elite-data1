@@ -5,7 +5,8 @@ import { sendAdminAlert, fmtAgentApplied } from "@/lib/telegram";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { name, email, phone, whatsapp, business_name, password } = body;
+  const { name, email, phone, whatsapp, business_name, password, agent_type } = body;
+  const agentType = agent_type === "custom_price" ? "custom_price" : "commission";
 
   if (!name?.trim() || !email?.trim() || !phone?.trim() || !whatsapp?.trim()) {
     return Response.json({ error: "Name, email, phone, and WhatsApp number are all required." }, { status: 400 });
@@ -49,6 +50,7 @@ export async function POST(request: NextRequest) {
     whatsapp: whatsapp.trim(),
     business_name: business_name?.trim() || null,
     password_hash,
+    agent_type: agentType,
     status: "pending",
     commission_balance: 0,
     total_sales: 0,
@@ -67,6 +69,7 @@ export async function POST(request: NextRequest) {
     phone: phone.trim(),
     whatsapp: whatsapp.trim(),
     business_name: business_name?.trim() || null,
+    agent_type: agentType,
     status: "pending",
     commission_balance: 0,
     total_sales: 0,

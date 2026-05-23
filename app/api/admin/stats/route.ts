@@ -13,7 +13,7 @@ export async function GET() {
 
   const [ordersRes, agentsRes] = await Promise.all([
     supabase.from("orders").select("status, amount, cost_price, admin_commission, agent_commission, agent_id, created_at, network, bundle_size, phone, reference, customer_name"),
-    supabase.from("agents").select("id, name, email, phone, whatsapp, business_name, referral_code, status, commission_balance, total_sales, total_revenue, created_at"),
+    supabase.from("agents").select("id, name, email, phone, whatsapp, business_name, referral_code, status, agent_type, commission_balance, total_sales, total_revenue, created_at"),
   ]);
 
   const orders = ordersRes.data ?? [];
@@ -33,10 +33,10 @@ export async function GET() {
     orders: {
       all: orders,
       total: orders.length,
-      completed: byStatus["COMPLETED"] ?? 0,
-      processing: byStatus["PROCESSING"] ?? 0,
-      pending: byStatus["PENDING"] ?? 0,
-      failed: byStatus["FAILED"] ?? 0,
+      completed: (byStatus["completed"] ?? 0) + (byStatus["COMPLETED"] ?? 0),
+      processing: (byStatus["processing"] ?? 0) + (byStatus["PROCESSING"] ?? 0),
+      pending: (byStatus["pending"] ?? 0) + (byStatus["PENDING"] ?? 0),
+      failed: (byStatus["failed"] ?? 0) + (byStatus["FAILED"] ?? 0),
     },
     revenue: { total: totalRevenue, cost: totalCost },
     profit: { admin: adminProfit, agentCommissions, gross: totalRevenue - totalCost },

@@ -2,45 +2,68 @@ import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { supabase } from "@/lib/supabase";
 
-export async function GET(request: NextRequest) {
-  const code = request.nextUrl.searchParams.get("code");
-  const email = request.nextUrl.searchParams.get("email");
-  const password = request.nextUrl.searchParams.get("password");
-
-  if (!code && !email) {
-    return Response.json({ error: "Referral code or email required." }, { status: 400 });
+// In-memory rate limiter: max 8 attempts per IP per 15 minutes
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || entry.resetAt < now) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + 15 * 60 * 1000 });
+    return false;
   }
+  entry.count++;
+  return entry.count > 8;
+}
 
+async function lookupAgent(code: string | null, email: string | null) {
   const { data: agent, error } = await (
     code
-      ? supabase.from("agents").select("id, name, email, referral_code, commission_balance, total_sales, total_revenue, status, password_hash").eq("referral_code", code.toUpperCase()).maybeSingle()
-      : supabase.from("agents").select("id, name, email, referral_code, commission_balance, total_sales, total_revenue, status, password_hash").eq("email", email!.toLowerCase().trim()).maybeSingle()
+      ? supabase.from("agents").select("id, name, email, referral_code, commission_balance, total_sales, total_revenue, status, agent_type, password_hash").eq("referral_code", code.toUpperCase()).maybeSingle()
+      : supabase.from("agents").select("id, name, email, referral_code, commission_balance, total_sales, total_revenue, status, agent_type, password_hash").eq("email", email!.toLowerCase().trim()).maybeSingle()
   );
-
   if (error) {
-    // password_hash column may not exist yet — retry without it
-    const { data: agent2, error: err2 } = await (
+    const { data: agent2 } = await (
       code
-        ? supabase.from("agents").select("id, name, email, referral_code, commission_balance, total_sales, total_revenue, status").eq("referral_code", code.toUpperCase()).maybeSingle()
-        : supabase.from("agents").select("id, name, email, referral_code, commission_balance, total_sales, total_revenue, status").eq("email", email!.toLowerCase().trim()).maybeSingle()
+        ? supabase.from("agents").select("id, name, email, referral_code, commission_balance, total_sales, total_revenue, status, agent_type").eq("referral_code", code.toUpperCase()).maybeSingle()
+        : supabase.from("agents").select("id, name, email, referral_code, commission_balance, total_sales, total_revenue, status, agent_type").eq("email", email!.toLowerCase().trim()).maybeSingle()
     );
+    return { agent: agent2 ?? null, hash: null };
+  }
+  return { agent: agent ?? null, hash: (agent as { password_hash?: string } | null)?.password_hash ?? null };
+}
 
-    if (err2 || !agent2) {
-      return Response.json({ error: "Agent not found. Check your details and try again." }, { status: 404 });
-    }
+// GET: referral-code-only login (no password required — public dashboard)
+export async function GET(request: NextRequest) {
+  const code = request.nextUrl.searchParams.get("code");
+  if (!code) {
+    return Response.json({ error: "Referral code required." }, { status: 400 });
+  }
+  const { agent, hash } = await lookupAgent(code, null);
+  if (!agent) return Response.json({ error: "Agent not found. Check your referral code." }, { status: 404 });
+  return handleAgentResponse(agent, hash, null);
+}
 
-    return handleAgentResponse(agent2, null, password);
+// POST: email + password login (credentials sent securely in request body)
+export async function POST(request: NextRequest) {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  if (checkRateLimit(ip)) {
+    return Response.json({ error: "Too many login attempts. Try again in 15 minutes." }, { status: 429 });
   }
 
-  if (!agent) {
-    return Response.json({ error: "Agent not found. Check your details and try again." }, { status: 404 });
+  const body = await request.json().catch(() => ({})) as Record<string, string>;
+  const { email, password } = body;
+
+  if (!email?.trim() || !password) {
+    return Response.json({ error: "Email and password are required." }, { status: 400 });
   }
 
-  return handleAgentResponse(agent, agent.password_hash ?? null, password);
+  const { agent, hash } = await lookupAgent(null, email.trim());
+  if (!agent) return Response.json({ error: "Agent not found. Check your details and try again." }, { status: 404 });
+  return handleAgentResponse(agent, hash, password);
 }
 
 async function handleAgentResponse(
-  agent: { id: string; name: string; email: string; referral_code: string | null; commission_balance: number; total_sales: number; total_revenue?: number; status: string },
+  agent: { id: string; name: string; email: string; referral_code: string | null; commission_balance: number; total_sales: number; total_revenue?: number; status: string; agent_type?: string },
   storedHash: string | null,
   password: string | null
 ) {
@@ -79,6 +102,7 @@ async function handleAgentResponse(
       commission_balance: agent.commission_balance ?? 0,
       total_sales: agent.total_sales ?? 0,
       total_revenue: agent.total_revenue ?? 0,
+      agent_type: agent.agent_type ?? "commission",
       orders: orders ?? [],
     },
   });

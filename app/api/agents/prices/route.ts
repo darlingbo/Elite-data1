@@ -1,0 +1,46 @@
+import { NextRequest } from "next/server";
+import { supabase } from "@/lib/supabase";
+
+export async function GET(request: NextRequest) {
+  const agentId = request.nextUrl.searchParams.get("agentId");
+  if (!agentId) return Response.json({ error: "agentId required" }, { status: 400 });
+
+  const { data } = await supabase
+    .from("agent_bundle_prices")
+    .select("bundle_id, custom_price, active")
+    .eq("agent_id", agentId);
+
+  return Response.json({ prices: data ?? [] });
+}
+
+export async function POST(request: NextRequest) {
+  const { agentId, bundleId, customPrice, active, referralCode } = await request.json();
+
+  if (!agentId || !bundleId || customPrice === undefined || !referralCode) {
+    return Response.json({ error: "Missing fields." }, { status: 400 });
+  }
+  if (Number(customPrice) < 0.5) {
+    return Response.json({ error: "Price must be at least GH₵0.50." }, { status: 400 });
+  }
+
+  // Verify the caller owns this agent account
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("id")
+    .eq("id", agentId)
+    .eq("referral_code", String(referralCode).toUpperCase())
+    .eq("status", "approved")
+    .maybeSingle();
+
+  if (!agent) return Response.json({ error: "Unauthorized." }, { status: 403 });
+
+  const { error } = await supabase
+    .from("agent_bundle_prices")
+    .upsert(
+      { agent_id: agentId, bundle_id: bundleId, custom_price: Number(customPrice), active: active ?? true, updated_at: new Date().toISOString() },
+      { onConflict: "agent_id,bundle_id" }
+    );
+
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+  return Response.json({ success: true });
+}

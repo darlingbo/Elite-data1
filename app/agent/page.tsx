@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 const perks = [
@@ -22,6 +23,8 @@ const EyeIcon = ({ open }: { open: boolean }) =>
   );
 
 export default function AgentPage() {
+  const router = useRouter();
+  const [agentType, setAgentType] = useState<"commission" | "custom_price">("commission");
   const [form, setForm] = useState({
     name: "", email: "", phone: "", whatsapp: "", business_name: "", password: "", confirmPassword: "",
   });
@@ -30,6 +33,14 @@ export default function AgentPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("elite_agent_applied") === "true") {
+        router.replace("/agent/dashboard");
+      }
+    } catch {}
+  }, [router]);
 
   function set(field: string, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -60,10 +71,12 @@ export default function AgentPage() {
           whatsapp: form.whatsapp,
           business_name: form.business_name,
           password: form.password,
+          agent_type: agentType,
         }),
       });
       const data = await res.json();
       if (data.success) {
+        try { localStorage.setItem("elite_agent_applied", "true"); } catch {}
         setSuccess(true);
       } else {
         setError(data.error || "Something went wrong. Please try again.");
@@ -163,10 +176,49 @@ export default function AgentPage() {
       {/* Application Form */}
       <section id="apply" className="py-14 px-4 bg-gray-50">
         <div className="max-w-lg mx-auto">
+          {/* Register / Login toggle */}
+          <div className="flex rounded-xl border border-gray-200 bg-white overflow-hidden mb-8 shadow-sm">
+            <div className="flex-1 py-3 text-center text-sm font-black text-blue-600 bg-blue-50 border-b-2 border-blue-600">
+              Register
+            </div>
+            <Link href="/agent/dashboard"
+              className="flex-1 py-3 text-center text-sm font-semibold text-gray-500 hover:text-blue-600 hover:bg-gray-50 transition-colors">
+              Login to Dashboard
+            </Link>
+          </div>
+
           <div className="text-center mb-8">
             <h2 className="text-2xl font-black text-gray-800 mb-2">Apply to Become an Agent</h2>
             <p className="text-gray-500 text-sm">We review all applications within 24 hours</p>
           </div>
+
+          {/* Agent type selector */}
+          <div className="mb-6">
+            <p className="text-sm font-bold text-gray-700 mb-3 text-center">Choose your agent type</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button type="button" onClick={() => setAgentType("commission")}
+                className={`p-4 rounded-2xl border-2 text-left transition-all ${agentType === "commission" ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-white hover:border-blue-300"}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${agentType === "commission" ? "border-blue-500" : "border-gray-300"}`}>
+                    {agentType === "commission" && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                  </div>
+                  <span className="font-black text-gray-800 text-sm">Commission Agent</span>
+                </div>
+                <p className="text-xs text-gray-500 leading-relaxed">Earn <span className="font-bold text-green-600">80% of every sale&apos;s profit</span>. We handle all pricing — just share your link.</p>
+              </button>
+              <button type="button" onClick={() => setAgentType("custom_price")}
+                className={`p-4 rounded-2xl border-2 text-left transition-all ${agentType === "custom_price" ? "border-purple-500 bg-purple-50" : "border-gray-200 bg-white hover:border-purple-300"}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${agentType === "custom_price" ? "border-purple-500" : "border-gray-300"}`}>
+                    {agentType === "custom_price" && <div className="w-2 h-2 rounded-full bg-purple-500" />}
+                  </div>
+                  <span className="font-black text-gray-800 text-sm">Set My Own Prices</span>
+                </div>
+                <p className="text-xs text-gray-500 leading-relaxed"><span className="font-bold text-purple-600">You control your margins</span>. Set custom prices for each bundle and keep 100% of your markup.</p>
+              </button>
+            </div>
+          </div>
+
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
@@ -251,10 +303,6 @@ export default function AgentPage() {
             </form>
           </div>
 
-          <div className="mt-4 text-center text-sm text-gray-500">
-            Already an agent?{" "}
-            <Link href="/agent/dashboard" className="text-blue-600 font-semibold hover:underline">Log In to Dashboard</Link>
-          </div>
         </div>
       </section>
     </div>

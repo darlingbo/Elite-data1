@@ -12,9 +12,12 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  // Inject pathname so the root layout can conditionally hide the site navbar
+  const response = NextResponse.next();
+  response.headers.set("x-pathname", pathname);
+  return response;
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

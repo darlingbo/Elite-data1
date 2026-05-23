@@ -1,10 +1,11 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Bundle, networkConfig } from "@/lib/bundles";
 
 interface Props {
   bundle: Bundle;
   agentCode?: string;
+  referralVia?: string;
   onClose: () => void;
 }
 
@@ -16,6 +17,18 @@ declare global {
 }
 
 const PLATFORM_FEE_RATE = 0.02;
+
+type LoyaltyData = {
+  count: number;
+  total: number;
+  windowEndsAt: string | null;
+  rewardEarned: boolean;
+};
+
+type SuccessState = {
+  reference: string;
+  loyalty?: LoyaltyData;
+};
 
 function usePaystackReady() {
   const [ready, setReady] = useState(false);
@@ -41,18 +54,56 @@ function usePaystackReady() {
   return ready;
 }
 
-export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
+function timeLeft(isoString: string): string {
+  const diff = new Date(isoString).getTime() - Date.now();
+  if (diff <= 0) return "expired";
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function copyToClipboard(text: string, onDone: () => void) {
+  navigator.clipboard?.writeText(text).then(onDone).catch(onDone);
+}
+
+export default function CheckoutModal({ bundle, agentCode, referralVia, onClose }: Props) {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState<{ reference: string } | null>(null);
+  const [success, setSuccess] = useState<SuccessState | null>(null);
+  const [referralCredit, setReferralCredit] = useState(0);
+  const [creditChecked, setCreditChecked] = useState(false);
+  const [copied, setCopied] = useState(false);
   const paystackReady = usePaystackReady();
+  const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const net = networkConfig[bundle.network];
   const feeAmount = parseFloat((bundle.price * PLATFORM_FEE_RATE).toFixed(2));
-  const totalAmount = parseFloat((bundle.price + feeAmount).toFixed(2));
+  const baseTotal = parseFloat((bundle.price + feeAmount).toFixed(2));
+  const totalAmount = parseFloat((baseTotal - referralCredit).toFixed(2));
+
+  // Check referral credits when phone is entered
+  useEffect(() => {
+    const cleaned = phone.replace(/\s/g, "");
+    if (!/^0[2-5][0-9]{8}$/.test(cleaned)) {
+      setReferralCredit(0);
+      setCreditChecked(false);
+      return;
+    }
+    if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current);
+    phoneCheckTimer.current = setTimeout(() => {
+      fetch(`/api/referral/check?phone=${encodeURIComponent(cleaned)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          setReferralCredit(data.credits ?? 0);
+          setCreditChecked(true);
+        })
+        .catch(() => {});
+    }, 600);
+    return () => { if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current); };
+  }, [phone]);
 
   function validatePhone(p: string) {
     return /^0[2-5][0-9]{8}$/.test(p.replace(/\s/g, ""));
@@ -74,52 +125,54 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
     setLoading(true);
 
     try {
-    const handler = window.PaystackPop.setup({
-      key,
-      email,
-      amount: Math.round(totalAmount * 100),
-      currency: "GHS",
-      ref: `elite-${Date.now()}`,
-      metadata: {
-        custom_fields: [
-          { display_name: "Customer Name", variable_name: "name", value: name },
-          { display_name: "Phone Number", variable_name: "phone", value: phone },
-          { display_name: "Bundle", variable_name: "bundle", value: `${net.name} ${bundle.size}` },
-        ],
-      },
-      callback: function(response: { reference: string }) {
-        fetch("/api/orders/create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name,
-            email,
-            phone,
-            bundleId: bundle.id,
-            paystackRef: response.reference,
-            agentCode: agentCode ?? null,
-          }),
-        })
-          .then(function(res) { return res.json(); })
-          .then(function(data) {
-            setLoading(false);
-            if (data.success) {
-              setSuccess({ reference: data.reference });
-            } else {
-              setError(data.error || "Something went wrong. Please contact support.");
-            }
+      const handler = window.PaystackPop.setup({
+        key,
+        email,
+        amount: Math.round(totalAmount * 100),
+        currency: "GHS",
+        ref: `elite-${Date.now()}`,
+        metadata: {
+          custom_fields: [
+            { display_name: "Customer Name", variable_name: "name", value: name },
+            { display_name: "Phone Number", variable_name: "phone", value: phone },
+            { display_name: "Bundle", variable_name: "bundle", value: `${net.name} ${bundle.size}` },
+          ],
+        },
+        callback: function(response: { reference: string }) {
+          fetch("/api/orders/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name,
+              email,
+              phone,
+              bundleId: bundle.id,
+              paystackRef: response.reference,
+              agentCode: agentCode ?? null,
+              referralVia: referralVia ?? null,
+              applyReferralCredit: referralCredit > 0,
+            }),
           })
-          .catch(function() {
-            setLoading(false);
-            setError("Network error. Please contact support on WhatsApp.");
-          });
-      },
-      onClose: () => {
-        setLoading(false);
-      },
-    });
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+              setLoading(false);
+              if (data.success) {
+                setSuccess({ reference: data.reference, loyalty: data.loyalty });
+              } else {
+                setError(data.error || "Something went wrong. Please contact support.");
+              }
+            })
+            .catch(function() {
+              setLoading(false);
+              setError("Network error. Please contact support on WhatsApp.");
+            });
+        },
+        onClose: () => {
+          setLoading(false);
+        },
+      });
 
-    handler.openIframe();
+      handler.openIframe();
     } catch (err) {
       setLoading(false);
       setError(`Paystack error: ${err instanceof Error ? err.message : String(err)}`);
@@ -127,30 +180,97 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
   }
 
   if (success) {
+    const loyalty = success.loyalty;
+    const referralLink = typeof window !== "undefined"
+      ? `${window.location.origin}/buy?via=${phone.replace(/\s/g, "")}`
+      : "";
+
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="p-6 text-center border-b border-gray-100">
+            <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg className="w-7 h-7 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-black text-gray-800 mb-1">Payment Confirmed!</h2>
+            <p className="text-gray-500 text-sm">
+              Your <span className="font-bold">{net.name} {bundle.size}</span> bundle is being delivered to{" "}
+              <span className="font-bold">{phone}</span>.
+            </p>
           </div>
-          <h2 className="text-2xl font-black text-gray-800 mb-2">Order Placed!</h2>
-          <p className="text-gray-500 text-sm mb-4">
-            Your <span className="font-bold">{net.name} {bundle.size}</span> bundle is being delivered to{" "}
-            <span className="font-bold">{phone}</span>. This usually takes 1–5 minutes.
-          </p>
-          <div className="bg-gray-50 rounded-xl px-4 py-3 mb-6">
-            <p className="text-xs text-gray-400 mb-1">Order Reference</p>
-            <p className="font-mono font-bold text-gray-800 text-sm break-all">{success.reference}</p>
+
+          <div className="px-5 py-4 space-y-3">
+            {/* Order reference */}
+            <div className="bg-gray-50 rounded-xl px-4 py-3">
+              <p className="text-xs text-gray-400 mb-0.5">Order Reference</p>
+              <p className="font-mono font-bold text-gray-800 text-sm break-all">{success.reference}</p>
+            </div>
+
+            {/* Loyalty progress */}
+            {loyalty && (
+              loyalty.rewardEarned ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-center">
+                  <p className="text-2xl mb-1">🎉</p>
+                  <p className="font-black text-emerald-700 text-sm">FREE 1GB EARNED!</p>
+                  <p className="text-emerald-600 text-xs mt-0.5">
+                    You bought 4 bundles today — a free 1GB {net.name} bundle is being delivered to your phone!
+                  </p>
+                </div>
+              ) : loyalty.count > 0 && loyalty.windowEndsAt ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-bold text-amber-700">🔥 Loyalty Punch Card</p>
+                    <p className="text-[10px] text-amber-500">{timeLeft(loyalty.windowEndsAt)} left</p>
+                  </div>
+                  <div className="flex gap-1.5 mb-1.5">
+                    {Array.from({ length: loyalty.total }).map((_, i) => (
+                      <div
+                        key={i}
+                        className={`flex-1 h-2 rounded-full ${i < loyalty.count ? "bg-amber-400" : "bg-amber-100"}`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-amber-600">
+                    {loyalty.count}/{loyalty.total} bundles ·{" "}
+                    {loyalty.total - loyalty.count} more in {timeLeft(loyalty.windowEndsAt)} = <span className="font-bold">FREE 1GB!</span>
+                  </p>
+                </div>
+              ) : null
+            )}
+
+            {/* Referral share */}
+            {referralLink && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                <p className="text-xs font-bold text-blue-700 mb-1">💰 Refer &amp; Earn GH₵1</p>
+                <p className="text-xs text-blue-600 mb-2">
+                  Share your link — earn <span className="font-bold">GH₵1 off</span> your next purchase for every friend who buys!
+                </p>
+                <div className="flex gap-2">
+                  <p className="flex-1 text-[10px] font-mono bg-white border border-blue-200 rounded-lg px-2 py-1.5 text-blue-700 truncate">
+                    {referralLink}
+                  </p>
+                  <button
+                    onClick={() => copyToClipboard(referralLink, () => { setCopied(true); setTimeout(() => setCopied(false), 2000); })}
+                    className="text-xs font-bold bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors shrink-0"
+                  >
+                    {copied ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <a
+              href={`/track?ref=${encodeURIComponent(success.reference)}`}
+              className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors text-sm text-center"
+            >
+              Track My Order Live →
+            </a>
+            <button onClick={onClose} className="w-full text-gray-400 hover:text-gray-600 text-sm py-1 transition-colors">
+              Close
+            </button>
           </div>
-          <p className="text-xs text-gray-400 mb-6">
-            Save this reference to track your order. A confirmation was sent to {email}.
-          </p>
-          <button onClick={onClose}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors text-sm">
-            Done
-          </button>
         </div>
       </div>
     );
@@ -158,7 +278,7 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className={`${net.bgLight} rounded-t-2xl px-6 py-4 flex items-center justify-between border-b ${net.borderColor} border`}>
           <div>
@@ -170,16 +290,22 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
                 <span className="font-semibold text-gray-700">GH₵{bundle.price.toFixed(2)}</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-400">
-                <span>Payment processing fee (2%)</span>
+                <span>Processing fee (2%)</span>
                 <span>GH₵{feeAmount.toFixed(2)}</span>
               </div>
+              {referralCredit > 0 && (
+                <div className="flex items-center gap-2 text-xs text-emerald-600 font-semibold">
+                  <span>🎁 Referral credit</span>
+                  <span>−GH₵{referralCredit.toFixed(2)}</span>
+                </div>
+              )}
               <div className={`flex items-center gap-2 text-base font-black ${net.textColor}`}>
                 <span>Total</span>
                 <span>GH₵{totalAmount.toFixed(2)}</span>
               </div>
             </div>
           </div>
-          <div className={`w-14 h-14 rounded-full ${net.bgColor} flex items-center justify-center text-white font-black text-sm`}>
+          <div className={`w-14 h-14 rounded-full ${net.bgColor} flex items-center justify-center text-white font-black text-sm shrink-0`}>
             {net.logo}
           </div>
         </div>
@@ -208,6 +334,9 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
             </label>
             <input type="tel" placeholder="0241234567" value={phone} onChange={(e) => setPhone(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            {creditChecked && referralCredit > 0 && (
+              <p className="text-xs text-emerald-600 font-semibold mt-1">🎁 GH₵{referralCredit.toFixed(2)} referral credit applied!</p>
+            )}
           </div>
 
           <div className="bg-blue-50 rounded-lg px-3 py-2 text-xs text-blue-700">
@@ -216,7 +345,7 @@ export default function CheckoutModal({ bundle, agentCode, onClose }: Props) {
 
           <button onClick={handlePay} disabled={loading || !paystackReady}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl transition-colors text-sm">
-            {loading ? "Processing..." : !paystackReady ? "Initializing payment…" : `Pay GH₵ ${totalAmount.toFixed(2)} via Paystack`}
+            {loading ? "Processing..." : !paystackReady ? "Initializing payment…" : `Pay GH₵${totalAmount.toFixed(2)} via Paystack`}
           </button>
 
           <button onClick={onClose} className="w-full text-gray-500 hover:text-gray-700 text-sm py-1 transition-colors">
