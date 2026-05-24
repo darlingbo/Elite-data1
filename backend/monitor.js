@@ -12,9 +12,16 @@ const TG_CHAT       = process.env.TELEGRAM_CHAT_ID
 const INVENTOR_KEY  = process.env.INVENTOR_API_KEY
 const SITE_URL      = 'https://elite-data1.vercel.app'
 
-if (!SUPABASE_URL || !SERVICE_KEY || !TG_TOKEN || !TG_CHAT) {
-  console.error('Missing required env vars: SUPABASE_URL, SUPABASE_SERVICE_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID')
-  console.error('Add these as GitHub Actions secrets in your repo settings.')
+const missing = [
+  !SUPABASE_URL    && 'SUPABASE_URL',
+  !SERVICE_KEY     && 'SUPABASE_SERVICE_KEY',
+  !TG_TOKEN        && 'TELEGRAM_BOT_TOKEN',
+  !TG_CHAT         && 'TELEGRAM_CHAT_ID',
+].filter(Boolean)
+
+if (missing.length) {
+  console.error('Missing GitHub Actions secrets:', missing.join(', '))
+  console.error('Go to your repo → Settings → Secrets and variables → Actions → New repository secret')
   process.exit(1)
 }
 
@@ -61,12 +68,25 @@ async function checkStuckOrders() {
 
   // Orders stuck in PENDING or FAILED for more than 4 minutes
   const cutoff = new Date(Date.now() - 4 * 60 * 1000).toISOString()
-  const { data: orders, error } = await sb
+  let { data: orders, error } = await sb
     .from('orders')
     .select('reference, phone, network, bundle_size, bundle_size_gb, amount, agent_id, agent_commission, status, created_at')
     .in('status', ['pending', 'failed'])
     .lt('created_at', cutoff)
     .limit(10)
+
+  // Fall back if newer columns don't exist yet
+  if (error) {
+    const { data: basic, error: err2 } = await sb
+      .from('orders')
+      .select('reference, phone, network, bundle_size, amount, agent_id, status, created_at')
+      .in('status', ['pending', 'failed'])
+      .lt('created_at', cutoff)
+      .limit(10)
+    if (err2) { console.error('[Orders] DB error:', err2.message); return }
+    orders = (basic ?? []).map(o => ({ ...o, bundle_size_gb: null, agent_commission: null }))
+    error = null
+  }
 
   if (error) { console.error('[Orders] DB error:', error.message); return }
   if (!orders?.length) { console.log('[Orders] No stuck orders'); return }
@@ -75,13 +95,18 @@ async function checkStuckOrders() {
   let fixed = 0, failed = 0
 
   for (const o of orders) {
-    if (!o.phone || !o.network || !o.bundle_size_gb) {
+    const sizeGb = o.bundle_size_gb ?? (() => {
+      const m = (o.bundle_size ?? '').match(/(\d+(?:\.\d+)?)\s*gb/i)
+      return m ? parseFloat(m[1]) : null
+    })()
+
+    if (!o.phone || !o.network || !sizeGb) {
       console.log(`[Orders] Skipping ${o.reference} — missing phone/network/size`)
       continue
     }
     try {
       const ref = `ED_FIX_${Date.now()}_${o.reference.slice(-6)}`
-      await deliverData(o.network, o.phone, o.bundle_size_gb, ref)
+      await deliverData(o.network, o.phone, sizeGb, ref)
       await sb.from('orders').update({ status: 'completed' }).eq('reference', o.reference)
 
       // Credit agent commission if applicable
