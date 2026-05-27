@@ -6,6 +6,7 @@ export interface ApiKeyAuth {
   keyId: string;
   walletBalance: number;
   name: string;
+  agentId: string | null;
 }
 
 export type ApiKeyResult = ApiKeyAuth | { ok: false; error: string };
@@ -20,7 +21,7 @@ export async function authenticateApiKey(request: NextRequest): Promise<ApiKeyRe
 
   const { data, error } = await supabase
     .from("api_keys")
-    .select("id, name, active, wallet_balance")
+    .select("id, name, active, wallet_balance, agent_id")
     .eq("key", key)
     .maybeSingle();
 
@@ -40,5 +41,6 @@ export async function authenticateApiKey(request: NextRequest): Promise<ApiKeyRe
     keyId: data.id,
     walletBalance: Number(data.wallet_balance) || 0,
     name: data.name ?? "",
+    agentId: (data as { agent_id?: string | null }).agent_id ?? null,
   };
 }
