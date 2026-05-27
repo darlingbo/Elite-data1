@@ -142,22 +142,6 @@ export default function AgentWalletsAdmin() {
         </div>
       )}
 
-      {/* SQL Setup Notice */}
-      <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl p-4 text-sm">
-        <p className="text-amber-300 font-bold mb-1">⚠️ Run this SQL in Supabase first (one-time setup):</p>
-        <pre className="text-amber-200 text-xs bg-black/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">{`ALTER TABLE agents ADD COLUMN IF NOT EXISTS wallet_balance NUMERIC DEFAULT 0;
-
-CREATE TABLE IF NOT EXISTS agent_wallet_transactions (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  agent_id uuid NOT NULL,
-  type text NOT NULL,
-  amount NUMERIC NOT NULL,
-  description text,
-  paystack_reference text,
-  created_at timestamptz DEFAULT now()
-);`}</pre>
-      </div>
-
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
         {[

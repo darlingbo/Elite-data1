@@ -312,13 +312,6 @@ GET  /api/v1/orders/:reference    → Check order status`}</div>
           <div style={CODE_STYLE}>{sampleCode}</div>
         </div>
 
-        <div style={{ marginTop: 14, padding: "12px 14px", background: "#0e1928", borderRadius: 10, border: "1px solid #1e3050" }}>
-          <p style={{ color: "#fbbf24", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>⚠ Run migration in Supabase first</p>
-          <p style={{ color: "#64748b", fontSize: 12, margin: 0 }}>
-            Go to your Supabase dashboard → SQL Editor → paste the contents of <span style={{ color: "#93c5fd", fontFamily: "monospace" }}>migration.sql</span> → click Run.
-            This adds the wallet system to your database.
-          </p>
-        </div>
       </div>
     </div>
   );
