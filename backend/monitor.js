@@ -1,23 +1,21 @@
 /**
  * Standalone monitor — runs in GitHub Actions every 5 min.
- * Checks stuck orders, site health, and sends Telegram alerts.
+ * Checks site health, stuck orders, and sends Telegram alerts.
+ * Does NOT auto-deliver — that is handled by cron-job.org with admin approval.
  */
 import { createClient } from '@supabase/supabase-js'
-import fetch from 'node-fetch'
-import { WebSocket } from 'ws'
 
 const SUPABASE_URL  = process.env.SUPABASE_URL
 const SERVICE_KEY   = process.env.SUPABASE_SERVICE_KEY
 const TG_TOKEN      = process.env.TELEGRAM_BOT_TOKEN
 const TG_CHAT       = process.env.TELEGRAM_CHAT_ID
-const INVENTOR_KEY  = process.env.INVENTOR_API_KEY
-const SITE_URL      = 'https://elite-data1.vercel.app'
+const SITE_URL      = 'https://www.elitedata1.com'
 
 const missing = [
-  !SUPABASE_URL    && 'SUPABASE_URL',
-  !SERVICE_KEY     && 'SUPABASE_SERVICE_KEY',
-  !TG_TOKEN        && 'TELEGRAM_BOT_TOKEN',
-  !TG_CHAT         && 'TELEGRAM_CHAT_ID',
+  !SUPABASE_URL  && 'SUPABASE_URL',
+  !SERVICE_KEY   && 'SUPABASE_SERVICE_KEY',
+  !TG_TOKEN      && 'TELEGRAM_BOT_TOKEN',
+  !TG_CHAT       && 'TELEGRAM_CHAT_ID',
 ].filter(Boolean)
 
 if (missing.length) {
@@ -26,9 +24,7 @@ if (missing.length) {
   process.exit(1)
 }
 
-const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
-  realtime: { transport: WebSocket },
-})
+const sb = createClient(SUPABASE_URL, SERVICE_KEY)
 
 async function tg(msg) {
   await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
@@ -49,98 +45,34 @@ async function checkSiteHealth() {
   }
 }
 
-async function deliverData(network, phone, sizeGB, ref) {
-  const netMap = { MTN: 'MTN', TELECEL: 'TELECEL', AIRTELTIGO: 'AT ISHARE' }
-  const net = netMap[network?.toUpperCase()] || network
-  const res = await fetch('https://agent.inventor-datahub.com/api/developer/purchase', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${INVENTOR_KEY}` },
-    body: JSON.stringify({ network: net, Phone: phone, Datasize: Number(sizeGB), reference: ref }),
-    signal: AbortSignal.timeout(30000)
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`)
-  return data
-}
-
 async function checkStuckOrders() {
-  if (!INVENTOR_KEY) {
-    console.log('[Orders] Skipping — INVENTOR_API_KEY not set')
-    return
-  }
-
-  // Orders stuck in PENDING or FAILED for more than 4 minutes
-  const cutoff = new Date(Date.now() - 4 * 60 * 1000).toISOString()
-  let { data: orders, error } = await sb
+  // Alert only — do NOT auto-deliver. Cron-job.org handles delivery with admin approval.
+  const cutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString()
+  const { data: orders, error } = await sb
     .from('orders')
-    .select('reference, phone, network, bundle_size, bundle_size_gb, amount, agent_id, agent_commission, status, created_at')
-    .in('status', ['pending', 'failed'])
+    .select('reference, phone, network, bundle_size, status, created_at')
+    .in('status', ['pending', 'processing'])
     .lt('created_at', cutoff)
     .limit(10)
-
-  // Fall back if newer columns don't exist yet
-  if (error) {
-    const { data: basic, error: err2 } = await sb
-      .from('orders')
-      .select('reference, phone, network, bundle_size, amount, agent_id, status, created_at')
-      .in('status', ['pending', 'failed'])
-      .lt('created_at', cutoff)
-      .limit(10)
-    if (err2) { console.error('[Orders] DB error:', err2.message); return }
-    orders = (basic ?? []).map(o => ({ ...o, bundle_size_gb: null, agent_commission: null }))
-    error = null
-  }
 
   if (error) { console.error('[Orders] DB error:', error.message); return }
   if (!orders?.length) { console.log('[Orders] No stuck orders'); return }
 
-  console.log(`[Orders] Found ${orders.length} stuck order(s)`)
-  let fixed = 0, failed = 0
+  console.log(`[Orders] Found ${orders.length} stuck order(s) — alerting only`)
+  const lines = orders.map(o => {
+    const age = Math.round((Date.now() - new Date(o.created_at).getTime()) / 60000)
+    return `• ${o.network?.toUpperCase()} ${o.bundle_size} → ${o.phone} (${age} min, ${o.status})`
+  }).join('\n')
 
-  for (const o of orders) {
-    const sizeGb = o.bundle_size_gb ?? (() => {
-      const m = (o.bundle_size ?? '').match(/(\d+(?:\.\d+)?)\s*gb/i)
-      return m ? parseFloat(m[1]) : null
-    })()
-
-    if (!o.phone || !o.network || !sizeGb) {
-      console.log(`[Orders] Skipping ${o.reference} — missing phone/network/size`)
-      continue
-    }
-    try {
-      const ref = `ED_FIX_${Date.now()}_${o.reference.slice(-6)}`
-      await deliverData(o.network, o.phone, sizeGb, ref)
-      await sb.from('orders').update({ status: 'completed' }).eq('reference', o.reference)
-
-      // Credit agent commission if applicable
-      if (o.agent_id && o.agent_commission) {
-        await sb.rpc('increment_agent_stats', {
-          p_agent_id: o.agent_id,
-          p_commission: parseFloat(o.agent_commission),
-          p_revenue: parseFloat(o.amount)
-        }).maybeSingle()
-      }
-
-      fixed++
-      console.log(`[Orders] Fixed: ${o.phone} ${o.network} ${o.bundle_size_gb}GB`)
-    } catch (err) {
-      await sb.from('orders').update({ status: 'failed' }).eq('reference', o.reference)
-      failed++
-      console.log(`[Orders] Failed to fix ${o.reference}: ${err.message}`)
-    }
-  }
-
-  if (fixed > 0) {
-    await tg(`✅ <b>Auto-fixed ${fixed} stuck order(s)</b>${failed > 0 ? `\n❌ ${failed} could not be fixed` : ''}`)
-  }
-  if (failed > 0 && fixed === 0) {
-    await tg(`⚠️ <b>${failed} order(s) still stuck after retry</b>\nManual delivery may be needed. Check admin panel.`)
-  }
+  await tg(
+    `⚠️ <b>${orders.length} order(s) stuck for 20+ min</b>\n\n${lines}\n\n` +
+    `Cron-job.org will ask for your approval to send. Check Telegram.`
+  )
 }
 
 async function sendDailySummary() {
   const hour = new Date().getUTCHours()
-  if (hour !== 20) return  // Send at 8 PM Ghana time (UTC+0)
+  if (hour !== 20) return  // 8 PM Ghana time (UTC+0)
 
   const today = new Date().toISOString().slice(0, 10)
   const { data: orders } = await sb
