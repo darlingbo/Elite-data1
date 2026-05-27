@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { bundles as defaultBundles } from "@/lib/bundles";
+import { bundles as defaultBundles, sizeLabel } from "@/lib/bundles";
 
 export async function GET(request: NextRequest) {
   const agentCode = request.nextUrl.searchParams.get("agent");
@@ -21,12 +21,14 @@ export async function GET(request: NextRequest) {
     .map((b) => {
       const ov = overrideMap.get(b.id) as { price?: number; cost_price?: number; size_label?: string; size_gb?: number; validity?: string } | undefined;
       if (!ov) return b;
+      const sizeGB = ov.size_gb ?? b.sizeGB;
+      const size = ov.size_label ?? (ov.size_gb != null ? sizeLabel(sizeGB) : b.size);
       return {
         ...b,
         price: ov.price ?? b.price,
         costPrice: ov.cost_price ?? b.costPrice,
-        size: ov.size_label ?? b.size,
-        sizeGB: ov.size_gb ?? b.sizeGB,
+        size,
+        sizeGB,
         validity: ov.validity ?? b.validity,
       };
     });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (pathname.startsWith("/admin") && pathname !== "/admin/login") {
@@ -12,7 +12,6 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Inject pathname so the root layout can conditionally hide the site navbar
   const response = NextResponse.next();
   response.headers.set("x-pathname", pathname);
   return response;

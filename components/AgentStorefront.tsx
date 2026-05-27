@@ -41,7 +41,11 @@ interface Props {
   agentCode: string;
 }
 
+const MAIN_WHATSAPP = "233509794503";
+
 export default function AgentStorefront({ shopName, agentWhatsapp, agentCode }: Props) {
+  // Use agent's own WhatsApp if available, otherwise fall back to main site number
+  const supportNumber = agentWhatsapp && agentWhatsapp.length > 5 ? agentWhatsapp : MAIN_WHATSAPP;
   const palette = getShopPalette(shopName);
   const [bundles, setBundles] = useState<Bundle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,8 +152,8 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode }: 
           </button>
         </div>
 
-        {/* WhatsApp support */}
-        <a href={`https://wa.me/${agentWhatsapp}`} target="_blank" rel="noreferrer"
+        {/* WhatsApp support — shows agent's own number, falls back to main site number */}
+        <a href={`https://wa.me/${supportNumber}`} target="_blank" rel="noreferrer"
           className="flex items-center gap-3 bg-white rounded-2xl shadow-sm p-4 hover:shadow-md transition-all">
           <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center shrink-0">
             <svg className="w-5 h-5 text-green-600" viewBox="0 0 24 24" fill="currentColor">
@@ -158,7 +162,7 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode }: 
           </div>
           <div className="flex-1">
             <p className="font-bold text-gray-800 text-sm">WhatsApp Support</p>
-            <p className="text-xs text-gray-400">Need help? Chat with us</p>
+            <p className="text-xs text-gray-400">+{supportNumber}</p>
           </div>
           <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-full shrink-0">Online</span>
         </a>

@@ -1,5 +1,8 @@
 import Link from "next/link";
 import AgentAwareSection from "@/components/AgentAwareSection";
+import PopularBundlesSection from "@/components/PopularBundlesSection";
+import SocialProofTicker from "@/components/SocialProofTicker";
+import MascotBanner from "@/components/MascotBanner";
 
 const networks = [
   { name: "MTN", border: "border-yellow-300", desc: "MTN data bundles from GH₵4", logo: "MTN", logoColor: "bg-yellow-400", textColor: "text-yellow-700", btnColor: "bg-yellow-400" },
@@ -13,7 +16,7 @@ const features = [
   { icon: "💰", title: "Best Prices", desc: "Lowest data bundle prices across all networks in Ghana." },
   { icon: "📞", title: "24/7 Support", desc: "Live support on WhatsApp anytime you need help." },
   { icon: "🤖", title: "Fully Automated", desc: "No manual processing — orders fulfill themselves instantly." },
-  { icon: "🔗", title: "Agent Earnings", desc: "Become an agent and earn 80% profit on every sale you refer." },
+  { icon: "🔗", title: "Agent Earnings", desc: "Become an agent and earn on every sale you refer." },
 ];
 
 const stats = [
@@ -40,18 +43,23 @@ const testimonials = [
 const faqs = [
   { q: "How fast is delivery?", a: "Bundles are delivered automatically within 1–5 minutes after payment is confirmed. No manual steps needed." },
   { q: "Which payment methods are accepted?", a: "We accept all major mobile money (MTN MoMo, Telecel Cash, AirtelTigo Money) and bank cards via Paystack — Ghana's most trusted payment gateway." },
-  { q: "What if my bundle doesn't arrive?", a: "Contact us immediately on WhatsApp (+233 556 631 260). We resolve all delivery issues within 30 minutes." },
+  { q: "What if my bundle doesn't arrive?", a: "Contact us immediately on WhatsApp (+233 509 794 503). We resolve all delivery issues within 30 minutes." },
   { q: "Can I buy for someone else's number?", a: "Yes! Just enter the recipient's phone number in the checkout form. The bundle goes directly to that number." },
-  { q: "How do I become an agent?", a: "Click 'Become Agent' in the navigation, fill the short form, and we'll review your application within 24 hours. You earn 80% of every sale made through your referral link." },
+  { q: "How do I become an agent?", a: "Click 'Become Agent' in the navigation, fill the short form, and we'll review your application within 24 hours. You earn on every sale made through your referral link." },
   { q: "How do I track my order?", a: "After payment, you receive a reference code. Use it on the Track Order page to check your delivery status anytime." },
 ];
 
 export default function Home() {
   return (
     <div>
+      {/* Monthly promo mascot banner */}
+      <MascotBanner />
+
+      {/* Live social proof ticker */}
+      <SocialProofTicker />
+
       {/* Hero */}
       <section className="bg-gradient-to-br from-blue-800 via-blue-700 to-blue-500 text-white py-20 px-4 relative overflow-hidden">
-        {/* Background decoration */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-10 left-10 w-64 h-64 rounded-full bg-white blur-3xl" />
           <div className="absolute bottom-10 right-10 w-96 h-96 rounded-full bg-yellow-400 blur-3xl" />
@@ -71,11 +79,10 @@ export default function Home() {
             <Link href="/buy" className="bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-8 py-4 rounded-xl text-lg transition-all shadow-lg hover:shadow-yellow-400/30 hover:-translate-y-0.5">
               Buy Data Now ⚡
             </Link>
-            <Link href="/track" className="bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-4 rounded-xl transition-colors border border-white/30 backdrop-blur">
-              Track My Order
+            <Link href="/prices" className="bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-4 rounded-xl transition-colors border border-white/30 backdrop-blur">
+              View All Prices
             </Link>
           </div>
-          {/* Trust badges */}
           <div className="flex flex-wrap justify-center gap-4 text-sm text-blue-200">
             <span className="flex items-center gap-1">✅ Paystack Secured</span>
             <span className="flex items-center gap-1">⚡ Auto-Delivery</span>
@@ -123,6 +130,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Popular Bundles — client component */}
+      <PopularBundlesSection />
 
       {/* How it works */}
       <section className="bg-white py-16 px-4">
@@ -200,20 +210,20 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Agent banner — hidden when visitor came via referral link */}
+      {/* Agent banner */}
       <AgentAwareSection>
-      <section className="py-14 px-4 bg-gradient-to-r from-blue-800 to-blue-600 text-white">
-        <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <div>
-            <h2 className="text-2xl font-black mb-2">Earn Money as an Elite Data Agent</h2>
-            <p className="text-blue-200">Share your referral link — earn 80% profit on every bundle sold through it. Free to join.</p>
+        <section className="py-14 px-4 bg-gradient-to-r from-blue-800 to-blue-600 text-white">
+          <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+            <div>
+              <h2 className="text-2xl font-black mb-2">Earn Money as an Elite Data Agent</h2>
+              <p className="text-blue-200">Share your referral link — earn on every bundle sold through it. Free to join.</p>
+            </div>
+            <Link href="/agent"
+              className="shrink-0 bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-8 py-3.5 rounded-xl transition-colors shadow-lg whitespace-nowrap">
+              Become an Agent →
+            </Link>
           </div>
-          <Link href="/agent"
-            className="shrink-0 bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-8 py-3.5 rounded-xl transition-colors shadow-lg whitespace-nowrap">
-            Become an Agent →
-          </Link>
-        </div>
-      </section>
+        </section>
       </AgentAwareSection>
 
       {/* FAQ */}

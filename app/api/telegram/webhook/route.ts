@@ -5,6 +5,7 @@ import { networkApiName } from "@/lib/bundles";
 const ADMIN_BOT_TOKEN = process.env.TELEGRAM_ADMIN_BOT_TOKEN!;
 const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID!;
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET!;
+const SITE_URL = process.env.SITE_URL ?? "https://elitedata1.com";
 
 async function reply(chatId: string, text: string, markup?: object) {
   await fetch(`https://api.telegram.org/bot${ADMIN_BOT_TOKEN}/sendMessage`, {
@@ -245,7 +246,7 @@ async function cmdRecover(chatId: string, reference: string) {
   // Find bundleId by matching network + price closest to paid amount
   let bundleId = "";
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL ? process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://elite-data1.vercel.app" : "https://elite-data1.vercel.app"}/api/bundles`);
+    const res = await fetch(`${SITE_URL}/api/bundles`);
     const data = await res.json() as { bundles: Array<{ id: string; network: string; price: number }> };
     const bundles = data.bundles ?? [];
     const basePrice = amountPesewas / 100 / 1.02;
@@ -273,7 +274,7 @@ async function cmdRecover(chatId: string, reference: string) {
   await reply(chatId, `✅ Payment confirmed! Delivering <b>${bundleLabel}</b> to <code>${phone}</code>…`);
 
   try {
-    const createRes = await fetch("https://elite-data1.vercel.app/api/orders/create", {
+    const createRes = await fetch(`${SITE_URL}/api/orders/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: customerName, email, phone, bundleId, paystackRef: reference }),
@@ -301,7 +302,7 @@ async function cmdRecover(chatId: string, reference: string) {
 async function cmdSync(chatId: string) {
   await reply(chatId, "🔄 Checking all stuck orders and retrying…");
   try {
-    const res = await fetch("https://elite-data1.vercel.app/api/admin/sync-orders", {
+    const res = await fetch(`${SITE_URL}/api/admin/sync-orders`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -381,7 +382,7 @@ async function cmdSend(chatId: string, arg: string) {
   type BundleItem = { id: string; network: string; size: string; sizeGB: number; price: number; costPrice: number };
   let bundle: BundleItem | null = null;
   try {
-    const bRes = await fetch("https://elite-data1.vercel.app/api/bundles");
+    const bRes = await fetch(`${SITE_URL}/api/bundles`);
     const bData = await bRes.json() as { bundles: BundleItem[] };
     const all: BundleItem[] = bData.bundles ?? [];
     bundle = all.find(b => b.network === network && b.sizeGB === sizeGB) ?? null;
@@ -431,7 +432,24 @@ async function cmdSend(chatId: string, arg: string) {
       invBody.status === "00";
 
     if (ok) {
-      // Record in DB
+      // Mark any pending/processing orders for this phone+network+size as completed
+      // so the cron doesn't re-deliver them and cause double data
+      const { data: stuck } = await supabase
+        .from("orders")
+        .select("reference")
+        .eq("phone", phone.trim())
+        .eq("network", network)
+        .eq("bundle_size_gb", sizeGB)
+        .in("status", ["pending", "processing"]);
+      const cancelledRefs: string[] = [];
+      if (stuck && stuck.length > 0) {
+        for (const o of stuck) {
+          await supabase.from("orders").update({ status: "completed" }).eq("reference", o.reference);
+          cancelledRefs.push(o.reference);
+        }
+      }
+
+      // Record manual delivery in DB
       await supabase.from("orders").insert({
         reference: ref,
         customer_name: "Manual (Telegram)",
@@ -444,14 +462,15 @@ async function cmdSend(chatId: string, arg: string) {
         admin_commission: parseFloat((bundle.price - bundle.costPrice).toFixed(2)),
         agent_commission: 0,
         status: "completed",
-      }).then(() => {});
+      });
 
       await reply(chatId,
         `✅ <b>Delivered!</b>\n\n` +
         `📱 Phone: <code>${phone}</code>\n` +
         `📦 Bundle: ${network.toUpperCase()} ${bundle.size}\n` +
         `💰 Cost: GH₵${bundle.costPrice} deducted from API\n` +
-        `📎 Ref: <code>${ref}</code>`
+        `📎 Ref: <code>${ref}</code>` +
+        (cancelledRefs.length > 0 ? `\n\n⚠️ Closed ${cancelledRefs.length} pending order(s) for this number so cron won't re-deliver.` : "")
       );
     } else {
       const errMsg = JSON.stringify(invBody).slice(0, 300);
@@ -509,10 +528,65 @@ export async function POST(request: NextRequest) {
   if (!message?.text) return Response.json({ ok: true });
 
   const chatId = String(message.chat.id);
-  if (chatId !== ADMIN_CHAT_ID) { await reply(chatId, "⛔ This bot is for the site admin only."); return Response.json({ ok: true }); }
+  const msgText = (message.text as string).trim();
 
-  const text = (message.text as string).trim().split(" ")[0].toLowerCase();
-  const arg = (message.text as string).trim().split(" ").slice(1).join(" ");
+  // ── Agent linking via /start AGENTCODE ────────────────────────────────────
+  if (chatId !== ADMIN_CHAT_ID) {
+    const isStart = msgText.toLowerCase().startsWith("/start");
+    const code = msgText.split(" ")[1]?.trim().toUpperCase();
+
+    if (isStart && code) {
+      const { data: agent } = await supabase
+        .from("agents")
+        .select("id, name, referral_code, telegram_chat_id")
+        .eq("referral_code", code)
+        .eq("status", "approved")
+        .maybeSingle();
+
+      if (!agent) {
+        await reply(chatId,
+          `❌ <b>Code not found</b>\n\n` +
+          `The code <code>${code}</code> is not linked to any active agent.\n\n` +
+          `Go to your dashboard and copy the exact link from the <b>Connect Telegram</b> section.`
+        );
+        return Response.json({ ok: true });
+      }
+
+      if (agent.telegram_chat_id && agent.telegram_chat_id !== chatId) {
+        await reply(chatId,
+          `⚠️ <b>Already connected to another Telegram account</b>\n\n` +
+          `Contact admin on WhatsApp to reset your Telegram link.`
+        );
+        return Response.json({ ok: true });
+      }
+
+      await supabase.from("agents").update({ telegram_chat_id: chatId }).eq("id", agent.id);
+
+      await reply(chatId,
+        `✅ <b>Connected! You are now ${agent.name}</b>\n\n` +
+        `📱 From now on, every time a customer buys from your store link, you will get an instant notification here on Telegram.\n\n` +
+        `🛒 <b>What you will see:</b>\n` +
+        `• Customer name &amp; phone\n` +
+        `• Bundle bought\n` +
+        `• Amount paid\n` +
+        `• Your commission earned\n` +
+        `• Delivery status\n\n` +
+        `Keep this chat open and notifications turned on! 🔔`
+      );
+      return Response.json({ ok: true });
+    }
+
+    // Non-admin, no valid code
+    await reply(chatId,
+      `👋 <b>Elite Data Agent Bot</b>\n\n` +
+      `This bot sends you instant sale notifications.\n\n` +
+      `To connect your account, go to your agent dashboard and tap <b>Connect Telegram</b>.`
+    );
+    return Response.json({ ok: true });
+  }
+
+  const text = msgText.split(" ")[0].toLowerCase();
+  const arg = msgText.split(" ").slice(1).join(" ");
 
   switch (text) {
     case "/start":

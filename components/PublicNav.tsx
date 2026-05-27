@@ -4,6 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navLinks = [
+  { href: "/", label: "Home" },
+  { href: "/buy", label: "Buy Data" },
+  { href: "/prices", label: "Prices" },
+  { href: "/business", label: "Business" },
+  { href: "/track", label: "Track Order" },
+
+];
+
+const drawerLinks = [
   {
     href: "/",
     label: "Home",
@@ -19,6 +28,15 @@ const navLinks = [
     icon: (
       <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+      </svg>
+    ),
+  },
+  {
+    href: "/prices",
+    label: "Bundle Prices",
+    icon: (
+      <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" />
       </svg>
     ),
   },
@@ -64,9 +82,7 @@ export default function PublicNav() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
+  useEffect(() => { setOpen(false); }, [pathname]);
 
   useEffect(() => {
     if (open) document.body.style.overflow = "hidden";
@@ -76,32 +92,68 @@ export default function PublicNav() {
 
   return (
     <>
-      {/* Floating hamburger button */}
-      <button
-        onClick={() => setOpen(true)}
-        className="fixed top-4 left-4 z-40 w-11 h-11 bg-white rounded-2xl shadow-lg border border-gray-100 flex items-center justify-center text-gray-700 hover:bg-gray-50 transition-colors"
-        aria-label="Open menu"
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
+      {/* Sticky top navbar */}
+      <nav className="sticky top-0 z-40 bg-blue-900/95 backdrop-blur border-b border-blue-800/60 h-14 flex items-center px-4 gap-3">
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2 shrink-0 mr-2">
+          <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center">
+            <span className="text-white font-black text-xs">ED</span>
+          </div>
+          <span className="text-white font-black text-base leading-none hidden sm:block">Elite Data</span>
+        </Link>
+
+        {/* Desktop links */}
+        <div className="hidden md:flex items-center gap-1 flex-1">
+          {navLinks.map(link => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                pathname === link.href
+                  ? "bg-white/15 text-white"
+                  : "text-blue-200 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              {link.label}
+            </Link>
+          ))}
+        </div>
+
+        <div className="flex-1 md:flex-none" />
+
+        {/* Agent login button (desktop) */}
+        <Link
+          href="/agent/dashboard"
+          className="hidden md:inline-flex items-center gap-1.5 text-sm font-bold text-blue-200 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/10"
+        >
+          Agent Login
+        </Link>
+        <Link
+          href="/buy"
+          className="hidden md:inline-flex items-center gap-1.5 bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black text-sm px-4 py-1.5 rounded-xl transition-colors"
+        >
+          Buy Data ⚡
+        </Link>
+
+        {/* Mobile hamburger — part of navbar, not floating */}
+        <button
+          onClick={() => setOpen(true)}
+          className="md:hidden flex items-center justify-center w-9 h-9 rounded-xl text-blue-200 hover:text-white hover:bg-white/10 transition-colors"
+          aria-label="Open menu"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      </nav>
 
       {/* Overlay */}
       {open && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40"
-          onClick={() => setOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setOpen(false)} />
       )}
 
       {/* Slide-out drawer */}
-      <aside className={`
-        fixed top-0 left-0 bottom-0 z-50 w-72
-        bg-gradient-to-b from-blue-900 to-blue-800
-        flex flex-col transition-transform duration-300
-        ${open ? "translate-x-0" : "-translate-x-full"}
-      `}>
+      <aside className={`fixed top-0 left-0 bottom-0 z-50 w-72 bg-gradient-to-b from-blue-900 to-blue-800 flex flex-col transition-transform duration-300 ${open ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Header */}
         <div className="px-5 py-5 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -122,7 +174,7 @@ export default function PublicNav() {
 
         {/* Nav links */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navLinks.map(link => {
+          {drawerLinks.map(link => {
             const active = pathname === link.href;
             return (
               <Link

@@ -14,9 +14,21 @@ async function tgSend(token: string, message: string, markup?: object): Promise<
   } catch { /* never crash the main flow */ }
 }
 
+// ── Send to a specific agent's Telegram chat via Elite_dataAgentbot ───────────
+export async function sendAgentNotification(agentChatId: string, message: string): Promise<void> {
+  if (!ADMIN_BOT_TOKEN || !agentChatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${ADMIN_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: agentChatId, text: message, parse_mode: "HTML" }),
+    });
+  } catch { /* never crash the main flow */ }
+}
+
 // ── Assistant bot (@Darlingboy99_bot) — all alerts go here ───────────────────
-export async function sendAdminAlert(message: string): Promise<void> {
-  await tgSend(ASSISTANT_TOKEN!, message);
+export async function sendAdminAlert(message: string, markup?: object): Promise<void> {
+  await tgSend(ASSISTANT_TOKEN!, message, markup);
 }
 
 // ── Assistant bot — with inline buttons (for failed order retry buttons) ──────

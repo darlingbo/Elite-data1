@@ -15,21 +15,28 @@ function checkRateLimit(ip: string): boolean {
   return entry.count > 8;
 }
 
-async function lookupAgent(code: string | null, email: string | null) {
-  const { data: agent, error } = await (
-    code
-      ? supabase.from("agents").select("id, name, email, referral_code, commission_balance, total_sales, total_revenue, status, agent_type, password_hash").eq("referral_code", code.toUpperCase()).maybeSingle()
-      : supabase.from("agents").select("id, name, email, referral_code, commission_balance, total_sales, total_revenue, status, agent_type, password_hash").eq("email", email!.toLowerCase().trim()).maybeSingle()
-  );
+type AgentRow = {
+  id: string; name: string; email: string; phone?: string | null; referral_code: string | null;
+  commission_balance: number; wallet_balance?: number; total_sales: number;
+  total_revenue?: number; status: string; agent_type?: string;
+  business_name?: string | null; telegram_chat_id?: string | null;
+  password_hash?: string;
+};
+
+async function lookupAgent(code: string | null, email: string | null): Promise<{ agent: AgentRow | null; hash: string | null }> {
+  const q = code
+    ? supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id, password_hash").eq("referral_code", code.toUpperCase())
+    : supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id, password_hash").eq("email", email!.toLowerCase().trim());
+  const { data: agent, error } = await q.maybeSingle();
   if (error) {
-    const { data: agent2 } = await (
-      code
-        ? supabase.from("agents").select("id, name, email, referral_code, commission_balance, total_sales, total_revenue, status, agent_type").eq("referral_code", code.toUpperCase()).maybeSingle()
-        : supabase.from("agents").select("id, name, email, referral_code, commission_balance, total_sales, total_revenue, status, agent_type").eq("email", email!.toLowerCase().trim()).maybeSingle()
-    );
-    return { agent: agent2 ?? null, hash: null };
+    const q2 = code
+      ? supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id").eq("referral_code", code.toUpperCase())
+      : supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id").eq("email", email!.toLowerCase().trim());
+    const { data: agent2 } = await q2.maybeSingle();
+    return { agent: (agent2 as AgentRow | null) ?? null, hash: null };
   }
-  return { agent: agent ?? null, hash: (agent as { password_hash?: string } | null)?.password_hash ?? null };
+  const row = agent as AgentRow | null;
+  return { agent: row ?? null, hash: row?.password_hash ?? null };
 }
 
 // GET: referral-code-only login (no password required — public dashboard)
@@ -63,7 +70,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleAgentResponse(
-  agent: { id: string; name: string; email: string; referral_code: string | null; commission_balance: number; total_sales: number; total_revenue?: number; status: string; agent_type?: string },
+  agent: { id: string; name: string; email: string; phone?: string | null; referral_code: string | null; commission_balance: number; wallet_balance?: number; total_sales: number; total_revenue?: number; status: string; agent_type?: string; business_name?: string | null; telegram_chat_id?: string | null },
   storedHash: string | null,
   password: string | null
 ) {
@@ -85,12 +92,28 @@ async function handleAgentResponse(
     }
   }
 
-  const { data: orders } = await supabase
+  let { data: orders, error: ordersErr } = await supabase
     .from("orders")
-    .select("reference, bundle_size, network, amount, agent_commission, status, created_at, phone")
+    .select("reference, bundle_size, network, amount, cost_price, agent_commission, status, created_at, phone")
     .eq("agent_id", agent.id)
     .order("created_at", { ascending: false })
-    .limit(50);
+    .limit(1000);
+
+  // agent_commission or cost_price column may not exist yet — fall back to basic columns
+  if (ordersErr) {
+    const { data: ordersBasic } = await supabase
+      .from("orders")
+      .select("reference, bundle_size, network, amount, status, created_at, phone")
+      .eq("agent_id", agent.id)
+      .order("created_at", { ascending: false })
+      .limit(1000);
+    orders = (ordersBasic ?? []).map(o => ({ ...o, cost_price: 0, agent_commission: 0 }));
+  }
+
+  const allOrders = orders ?? [];
+  const pendingCommission = allOrders
+    .filter(o => o.status === "pending" || o.status === "processing")
+    .reduce((sum, o) => sum + (Number(o.agent_commission) || 0), 0);
 
   return Response.json({
     success: true,
@@ -98,12 +121,17 @@ async function handleAgentResponse(
       id: agent.id,
       name: agent.name,
       email: agent.email,
+      phone: agent.phone ?? null,
       referral_code: agent.referral_code,
       commission_balance: agent.commission_balance ?? 0,
+      wallet_balance: agent.wallet_balance ?? 0,
+      pending_commission: parseFloat(pendingCommission.toFixed(2)),
       total_sales: agent.total_sales ?? 0,
       total_revenue: agent.total_revenue ?? 0,
       agent_type: agent.agent_type ?? "commission",
-      orders: orders ?? [],
+      business_name: agent.business_name ?? null,
+      telegram_chat_id: agent.telegram_chat_id ?? null,
+      orders: allOrders,
     },
   });
 }

@@ -85,23 +85,32 @@ export async function POST(request: NextRequest) {
     await supabase.from("orders").update({ status: "completed", inventor_order_id: orderId }).eq("reference", reference);
 
     if (order.agent_id) {
-      await supabase.rpc("increment_agent_stats", {
-        p_agent_id: order.agent_id,
-        p_commission: Number(order.agent_commission) || 0,
-        p_revenue: (Number(order.cost_price) || 0) + (Number(order.agent_commission) || 0) + (Number(order.admin_commission) || 0),
-      }).maybeSingle();
+      const commission = Number(order.agent_commission) || 0;
+      const revenue = (Number(order.cost_price) || 0) + (Number(order.agent_commission) || 0) + (Number(order.admin_commission) || 0);
+      const { data: ag } = await supabase.from("agents").select("commission_balance, total_sales, total_revenue").eq("id", order.agent_id).maybeSingle();
+      if (ag) {
+        await supabase.from("agents").update({
+          commission_balance: (Number(ag.commission_balance) || 0) + commission,
+          total_sales: (Number(ag.total_sales) || 0) + 1,
+          total_revenue: (Number(ag.total_revenue) || 0) + revenue,
+          updated_at: new Date().toISOString(),
+        }).eq("id", order.agent_id);
+      }
     }
 
+    try { await supabase.from("order_logs").insert({ reference, action: "retry_success", note: "Admin retry — delivered successfully", details: { log: inventorLog } }); } catch { /* non-critical */ }
     await sendAdminAlert(`✅ RETRY SUCCEEDED\nRef: ${reference}\nPhone: ${order.phone}\n${(order.network ?? "").toUpperCase()} ${order.bundle_size}\n${inventorLog}`);
     return Response.json({ success: true, status: "completed" });
   }
 
   if (isProcessing) {
     await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
+    try { await supabase.from("order_logs").insert({ reference, action: "retry_processing", note: "Admin retry — Inventor processing", details: { log: inventorLog } }); } catch { /* non-critical */ }
     await sendAdminAlert(`⏳ RETRY → PROCESSING\nRef: ${reference}\nPhone: ${order.phone}\n${inventorLog}`);
     return Response.json({ success: true, status: "processing" });
   }
 
+  try { await supabase.from("order_logs").insert({ reference, action: "retry_failed", note: "Admin retry — Inventor rejected", details: { log: inventorLog } }); } catch { /* non-critical */ }
   await sendAdminAlert(`❌ RETRY FAILED\nRef: ${reference}\nPhone: ${order.phone}\n${inventorLog}`);
   return Response.json({ success: false, status: "failed", log: inventorLog }, { status: 502 });
 }

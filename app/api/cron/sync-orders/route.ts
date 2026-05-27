@@ -28,13 +28,29 @@ async function checkInventorOrder(reference: string): Promise<"completed" | "pro
   }
 }
 
+async function creditAgent(agentId: string, commission: number, revenue: number) {
+  if (!agentId || !commission) return;
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("commission_balance, total_sales, total_revenue")
+    .eq("id", agentId)
+    .maybeSingle();
+  if (!agent) return;
+  await supabase.from("agents").update({
+    commission_balance: (Number(agent.commission_balance) || 0) + commission,
+    total_sales: (Number(agent.total_sales) || 0) + 1,
+    total_revenue: (Number(agent.total_revenue) || 0) + revenue,
+    updated_at: new Date().toISOString(),
+  }).eq("id", agentId);
+}
+
 async function retryDelivery(order: {
   reference: string;
   phone: string;
   network: string;
   bundle_size_gb: number;
   bundle_size: string;
-}): Promise<boolean> {
+}): Promise<"sent" | "already_processing" | "failed"> {
   try {
     const retryRef = `${order.reference}-rs`;
     const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
@@ -48,35 +64,59 @@ async function retryDelivery(order: {
       }),
       signal: AbortSignal.timeout(15000),
     });
+
+    // 409 = Inventor already has this order in-flight — don't retry, just mark processing
+    if (res.status === 409) return "already_processing";
+
     const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-    return res.ok || body.success === true || body.status === "success" || body.status === "00";
+    const ok = res.ok || body.success === true || body.status === "success" || body.status === "00";
+    return ok ? "sent" : "failed";
   } catch {
-    return false;
+    return "failed";
   }
 }
 
 export async function GET(request: NextRequest) {
+  // Allow Vercel cron (x-vercel-cron header) OR matching Bearer token OR no auth (external cron-job.org)
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const isVercelCron = request.headers.get("x-vercel-cron") === "1";
+  const cronSecret = process.env.CRON_SECRET;
+  const hasValidAuth = isVercelCron || !cronSecret || authHeader === `Bearer ${cronSecret}`;
+  if (!hasValidAuth) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
   const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
-  const { data: orders } = await supabase
+  type OrderRow = { reference: string; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null };
+
+  let orders: OrderRow[] | null = null;
+  const { data: full, error: fullErr } = await supabase
     .from("orders")
-    .select("reference, status, phone, network, bundle_size, bundle_size_gb, created_at")
+    .select("reference, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount")
     .in("status", ["pending", "processing"])
     .gte("created_at", cutoff48h);
 
+  if (!fullErr) {
+    orders = full as OrderRow[];
+  } else {
+    const { data: basic } = await supabase
+      .from("orders")
+      .select("reference, status, phone, network, bundle_size, created_at, agent_id")
+      .in("status", ["pending", "processing"])
+      .gte("created_at", cutoff48h);
+    orders = (basic ?? []).map(o => ({ ...o, bundle_size_gb: null, agent_commission: null, amount: null })) as OrderRow[];
+  }
+
   if (!orders?.length) return Response.json({ updated: 0, retried: 0, checked: 0 });
 
-  const chunks: typeof orders[] = [];
+  const chunks: OrderRow[][] = [];
   for (let i = 0; i < orders.length; i += 10) chunks.push(orders.slice(i, i + 10));
 
   let updated = 0, retried = 0;
   const retriedOrders: string[] = [];
+  const completedOrders: string[] = [];
 
   for (const chunk of chunks) {
     await Promise.all(chunk.map(async (order) => {
@@ -84,36 +124,61 @@ export async function GET(request: NextRequest) {
 
       if (invStatus === "completed") {
         await supabase.from("orders").update({ status: "completed" }).eq("reference", order.reference);
+        if (order.agent_id) {
+          await creditAgent(order.agent_id, Number(order.agent_commission) || 0, Number(order.amount) || 0);
+        }
+        const profit = order.amount ? (Number(order.amount) - (Number(order.amount) * 0.8)).toFixed(2) : null;
+        completedOrders.push(
+          `✅ ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → ${order.phone}` +
+          (profit ? ` | Profit: GH₵${profit}` : "")
+        );
         updated++;
         return;
       }
+
       if (invStatus === "failed") {
         await supabase.from("orders").update({ status: "failed" }).eq("reference", order.reference);
         updated++;
         return;
       }
 
+      const sizeGb = order.bundle_size_gb ?? (() => {
+        const m = (order.bundle_size ?? "").match(/(\d+(?:\.\d+)?)\s*gb/i);
+        return m ? parseFloat(m[1]) : 1;
+      })();
+
       const isStuck = order.created_at < stuckCutoff;
-      if (isStuck && order.phone && order.network && order.bundle_size_gb) {
-        const success = await retryDelivery({
-          reference: order.reference,
-          phone: order.phone,
-          network: order.network,
-          bundle_size_gb: Number(order.bundle_size_gb),
-          bundle_size: order.bundle_size,
-        });
-        if (success) {
-          await supabase.from("orders").update({ status: "processing" }).eq("reference", order.reference);
-          retried++;
-          retriedOrders.push(`📱 ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (ref: ${order.reference})`);
-        }
+      if (isStuck && order.phone && order.network && sizeGb) {
+        // Ask admin for approval before sending — prevents double delivery
+        await supabase.from("orders").update({ status: "pending_approval" }).eq("reference", order.reference);
+        await sendAdminAlert(
+          `⚠️ <b>STUCK ORDER — Approve Send?</b>\n\n` +
+          `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
+          `📎 Ref: <code>${order.reference}</code>\n\n` +
+          `This order has been stuck for 15+ min. Did you already send this manually?\n` +
+          `Tap <b>YES</b> to send now, or <b>NO</b> if already done.`,
+          {
+            inline_keyboard: [[
+              { text: "✅ YES — Send Now", callback_data: `approve_retry:${order.reference}` },
+              { text: "❌ NO — Already Done", callback_data: `skip_retry:${order.reference}` },
+            ]],
+          }
+        );
+        retried++;
+        retriedOrders.push(`⚠️ ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (awaiting approval)`);
       }
     }));
   }
 
+  if (completedOrders.length > 0) {
+    await sendAdminAlert(
+      `📦 ORDER UPDATE: ${completedOrders.length} order(s) completed\n\n${completedOrders.join("\n")}`
+    ).catch(() => {});
+  }
+
   if (retriedOrders.length > 0) {
     await sendAdminAlert(
-      `🔁 AUTO-RETRY: ${retried} stuck order(s) resent to Inventor\n\n${retriedOrders.join("\n")}`
+      `🔁 AUTO-RETRY: ${retried} stuck order(s) resent\n\n${retriedOrders.join("\n")}`
     ).catch(() => {});
   }
 

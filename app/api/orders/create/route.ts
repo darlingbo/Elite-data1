@@ -1,18 +1,28 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { bundles, networkApiName, type Network } from "@/lib/bundles";
-import { sendAdminAlert, sendAdminBotMessage, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
+import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles";
+import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
 
 const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
 const LOYALTY_REQUIRED = 4;
 
-// Timeout for Inventor API calls (ms)
-const INVENTOR_TIMEOUT_MS = 20_000;
+// Inventor must respond within this time — if not, order stays "pending" for monitor to pick up
+const INVENTOR_TIMEOUT_MS = 7_000;
 
 type BundleMeta = { id: string; network: Network; size: string; sizeGB: number };
 type BundlePricing = { price: number; costPrice: number; sizeGB: number };
 type BundleInfo = { meta: BundleMeta; pricing: BundlePricing } | null;
+
+// Extract a numeric GB value from a label like "4GB" or "500MB"
+function parseSizeGbFromLabel(label: string | null | undefined): number | null {
+  if (!label) return null;
+  const gb = label.match(/^(\d+(?:\.\d+)?)\s*GB$/i);
+  if (gb) return parseFloat(gb[1]);
+  const mb = label.match(/^(\d+(?:\.\d+)?)\s*MB$/i);
+  if (mb) return parseFloat(mb[1]) / 1000;
+  return null;
+}
 
 // ─── OPTIMISATION 1: single DB round-trip for both meta + pricing ────────────
 async function getBundleInfo(bundleId: string): Promise<BundleInfo> {
@@ -26,21 +36,17 @@ async function getBundleInfo(bundleId: string): Promise<BundleInfo> {
     .eq("active", true)
     .maybeSingle();
 
-  if (data?.network) {
-    const sizeGB = data.size_gb ?? staticBundle?.sizeGB ?? 1;
-    return {
-      meta: {
-        id: data.id,
-        network: data.network as Network,
-        size: data.size_label ?? bundleId,
-        sizeGB,
-      },
-      pricing: {
-        price: data.price,
-        costPrice: data.cost_price,
-        sizeGB,
-      },
-    };
+  if (data) {
+    // network is null for default bundles (implied by ID) — fall back to static
+    const network = (data.network as Network | null) ?? staticBundle?.network;
+    if (network) {
+      const sizeGB = data.size_gb ?? parseSizeGbFromLabel(data.size_label) ?? staticBundle?.sizeGB ?? 1;
+      const size = data.size_label ?? (data.size_gb != null ? sizeLabel(sizeGB) : (staticBundle?.size ?? bundleId));
+      return {
+        meta: { id: data.id, network, size, sizeGB },
+        pricing: { price: data.price, costPrice: data.cost_price, sizeGB },
+      };
+    }
   }
 
   // Fall back to static bundle
@@ -54,7 +60,7 @@ async function getBundleInfo(bundleId: string): Promise<BundleInfo> {
   return null;
 }
 
-async function saveOrder(fields: Record<string, unknown>): Promise<{ error: boolean; message?: string }> {
+async function saveOrder(fields: Record<string, unknown>): Promise<{ error: boolean; partial?: string; message?: string }> {
   const { error: e1 } = await supabase.from("orders").insert(fields);
   if (!e1) return { error: false };
 
@@ -72,16 +78,39 @@ async function saveOrder(fields: Record<string, unknown>): Promise<{ error: bool
     status: fields.status,
   };
   const { error: e2 } = await supabase.from("orders").insert(minimal);
-  if (!e2) return { error: false };
+  if (!e2) return { error: false, partial: `T1 failed: ${e1.message} (${e1.code})` };
 
+  // T2.5 — if agent_id FK constraint is the culprit, save without it but keep all other fields
+  const isAgentFk = e1.message.includes("agent_id_fkey") || e2.message.includes("agent_id_fkey");
+  if (isAgentFk && fields.agent_id) {
+    const withoutAgent = {
+      reference: fields.reference,
+      customer_name: fields.customer_name,
+      phone: fields.phone,
+      network: fields.network,
+      bundle_size: fields.bundle_size,
+      amount: fields.amount,
+      cost_price: fields.cost_price,
+      admin_commission: fields.admin_commission,
+      agent_commission: fields.agent_commission,
+      status: fields.status,
+    };
+    const { error: e25 } = await supabase.from("orders").insert(withoutAgent);
+    if (!e25) return { error: false, partial: `agent_id FK constraint — saved without agent_id link. Fix: ALTER TABLE orders DROP CONSTRAINT orders_agent_id_fkey; ALTER TABLE orders ADD CONSTRAINT orders_agent_id_fkey FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE SET NULL;` };
+  }
+
+  // T3 — keep network, bundle_size, customer_name so the record is usable
   const bare = {
     reference: fields.reference,
+    customer_name: fields.customer_name ?? null,
     phone: fields.phone,
+    network: fields.network ?? null,
+    bundle_size: fields.bundle_size ?? null,
     amount: fields.amount,
     status: String(fields.status).toLowerCase(),
   };
   const { error: e3 } = await supabase.from("orders").insert(bare);
-  if (!e3) return { error: false };
+  if (!e3) return { error: false, partial: `T1+T2 failed: ${e1.message} | ${e2.message}` };
 
   return {
     error: true,
@@ -168,10 +197,10 @@ async function processLoyalty(
   }
 }
 
-// ─── OPTIMISATION 2: Inventor API call with timeout + 1 auto-retry ──────────
+// Inventor API call — single attempt with tight timeout
+// If it doesn't respond in time, order stays "pending" and the monitor delivers it
 async function callInventorAPI(
-  payload: Record<string, unknown>,
-  attempt = 1
+  payload: Record<string, unknown>
 ): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), INVENTOR_TIMEOUT_MS);
@@ -192,11 +221,6 @@ async function callInventorAPI(
     return { ok: res.ok, status: res.status, body };
   } catch (err) {
     clearTimeout(timer);
-    // Retry once on timeout / network error
-    if (attempt === 1) {
-      await new Promise((r) => setTimeout(r, 1500)); // brief pause before retry
-      return callInventorAPI(payload, 2);
-    }
     return { ok: false, status: 0, body: { error: String(err) } };
   }
 }
@@ -218,7 +242,7 @@ export async function POST(request: NextRequest) {
 
   // ─── OPTIMISATION 3: run idempotency check + agent lookup + referral
   //     credit lookup all at the same time instead of one-by-one ──────────
-  const [existingResult, agentResult, creditResult] = await Promise.all([
+  const [existingResult, agentResult, creditResult, commissionGlobalResult] = await Promise.all([
     // Idempotency — don't process the same Paystack ref twice
     supabase
       .from("orders")
@@ -230,7 +254,7 @@ export async function POST(request: NextRequest) {
     agentCode
       ? supabase
           .from("agents")
-          .select("id, name, status, agent_type")
+          .select("id, name, status, agent_type, telegram_chat_id")
           .eq("referral_code", agentCode.toUpperCase())
           .eq("status", "approved")
           .maybeSingle()
@@ -247,6 +271,13 @@ export async function POST(request: NextRequest) {
           .limit(1)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+
+    // Global commission setting
+    supabase
+      .from("commission_settings")
+      .select("agent_pct")
+      .eq("id", "global")
+      .maybeSingle(),
   ]);
 
   if (existingResult.data) {
@@ -261,11 +292,13 @@ export async function POST(request: NextRequest) {
   let agentId: string | null = null;
   let agentName: string | undefined;
   let agentType: string = "commission";
+  let agentTelegramChatId: string | null = null;
   const agent = agentResult.data;
   if (agent) {
     agentId = agent.id;
     agentName = agent.name;
     agentType = agent.agent_type ?? "commission";
+    agentTelegramChatId = (agent as { telegram_chat_id?: string | null }).telegram_chat_id ?? null;
   }
 
   // Referral credit
@@ -278,7 +311,6 @@ export async function POST(request: NextRequest) {
   }
 
   // For custom_price agents: fetch their personal markup price
-  let effectivePrice = pricing.price;
   let tierPrice = pricing.price;
   if (agentId && agentType === "custom_price") {
     // These two are independent — run in parallel
@@ -298,9 +330,7 @@ export async function POST(request: NextRequest) {
     ]);
 
     if (tierResult.data?.price) tierPrice = Number(tierResult.data.price);
-    effectivePrice = agentPriceResult.data?.custom_price
-      ? Number(agentPriceResult.data.custom_price)
-      : tierPrice;
+    if (agentPriceResult.data?.custom_price) tierPrice = Number(agentPriceResult.data.custom_price);
   }
 
   // Verify Paystack payment
@@ -313,10 +343,13 @@ export async function POST(request: NextRequest) {
 
   let psData: Record<string, unknown> = {};
   try {
+    const psCtrl = new AbortController();
+    const psTimer = setTimeout(() => psCtrl.abort(), 8_000);
     const psRes = await fetch(
       `https://api.paystack.co/transaction/verify/${encodeURIComponent(paystackRef)}`,
-      { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` } }
+      { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }, signal: psCtrl.signal }
     );
+    clearTimeout(psTimer);
     psData = await psRes.json();
   } catch (err) {
     return Response.json(
@@ -325,14 +358,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const baseTotal = effectivePrice * (1 + PLATFORM_FEE_RATE);
-  const expectedKobo = Math.round((baseTotal - creditAmount) * 100);
   const txnStatus = (psData.data as Record<string, unknown>)?.status;
   const txnAmount = Number((psData.data as Record<string, unknown>)?.amount ?? 0);
+
+  // Floor: customer must pay at least cost price (prevents £0 fraud).
+  // We do NOT enforce exact match — Paystack already charged what the client showed,
+  // and custom-agent prices and referral credits cause legitimate "mismatches".
+  const minKobo = Math.round(pricing.costPrice * 100);
   const paid =
     psData.status === true &&
     txnStatus === "success" &&
-    txnAmount >= expectedKobo;
+    txnAmount >= minKobo;
 
   if (!paid) {
     const reason =
@@ -340,7 +376,7 @@ export async function POST(request: NextRequest) {
         ? `Paystack API error: ${psData.message ?? "unknown"}`
         : txnStatus !== "success"
         ? `Transaction status: ${txnStatus}`
-        : `Amount mismatch: paid ${txnAmount} pesewas, expected ${expectedKobo}`;
+        : `Amount too low: paid ${txnAmount} pesewas, minimum ${minKobo}`;
     await sendAdminAlert(`PAYMENT VERIFY FAILED\nRef: ${paystackRef}\nReason: ${reason}`).catch(() => {});
     return Response.json(
       { error: `Payment verification failed — ${reason}. Contact support on WhatsApp.` },
@@ -348,19 +384,58 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const chargedAmount = parseFloat((baseTotal - creditAmount).toFixed(2));
+  // For price-mode agents: verify wallet has enough to cover cost before proceeding.
+  // This is a hard stop — customer has just paid, so we don't deliver if agent can't fund it.
+  if (agentId && agentType === "custom_price") {
+    const { data: walletAgent } = await supabase
+      .from("agents")
+      .select("wallet_balance")
+      .eq("id", agentId)
+      .maybeSingle();
+    if (walletAgent && Number(walletAgent.wallet_balance) < pricing.costPrice) {
+      await sendAdminAlert(
+        `⚠️ PRICE-MODE AGENT WALLET INSUFFICIENT\nRef: ${paystackRef}\nAgent: ${agentName ?? agentId}\nWallet: GH₵${Number(walletAgent.wallet_balance).toFixed(2)}\nCost needed: GH₵${pricing.costPrice.toFixed(2)}\n\nCustomer was charged but order NOT delivered. Manual refund required.`
+      ).catch(() => {});
+      return Response.json(
+        { error: "The agent's account does not have enough credit to fulfill this order. Please contact them. A refund will be issued." },
+        { status: 402 }
+      );
+    }
+  }
+
+  // Use Paystack as source of truth for the charged amount.
+  // Derive effective selling price by reversing the fee + credit.
+  const chargedAmount = parseFloat((txnAmount / 100).toFixed(2));
+  const effectivePriceFromPayment = parseFloat(
+    ((chargedAmount + creditAmount) / (1 + PLATFORM_FEE_RATE)).toFixed(2)
+  );
+
+  // Resolve commission split — global default then per-agent override
+  const globalAgentPct = (commissionGlobalResult.data?.agent_pct ?? 80) / 100;
+  let agentSplitRate = globalAgentPct;
+  if (agentId) {
+    const { data: overrideData } = await supabase
+      .from("agent_commission_overrides")
+      .select("agent_pct")
+      .eq("agent_id", agentId)
+      .maybeSingle();
+    if (overrideData?.agent_pct != null) {
+      agentSplitRate = Number(overrideData.agent_pct) / 100;
+    }
+  }
+
   let agentCommission: number;
   let adminCommission: number;
   if (!agentId) {
     agentCommission = 0;
-    adminCommission = parseFloat((pricing.price - pricing.costPrice).toFixed(2));
+    adminCommission = parseFloat(Math.max(0, effectivePriceFromPayment - pricing.costPrice).toFixed(2));
   } else if (agentType === "custom_price") {
-    agentCommission = parseFloat(Math.max(0, effectivePrice - tierPrice).toFixed(2));
+    agentCommission = parseFloat(Math.max(0, effectivePriceFromPayment - tierPrice).toFixed(2));
     adminCommission = parseFloat(Math.max(0, tierPrice - pricing.costPrice).toFixed(2));
   } else {
-    const profit = effectivePrice - pricing.costPrice;
-    agentCommission = parseFloat((profit * 0.8).toFixed(2));
-    adminCommission = parseFloat((profit * 0.2).toFixed(2));
+    const profit = Math.max(0, effectivePriceFromPayment - pricing.costPrice);
+    agentCommission = parseFloat((profit * agentSplitRate).toFixed(2));
+    adminCommission = parseFloat((profit * (1 - agentSplitRate)).toFixed(2));
   }
   const profit = agentCommission + adminCommission;
 
@@ -380,6 +455,11 @@ export async function POST(request: NextRequest) {
     agent_id: agentId,
     status: "pending",
   });
+
+  // Warn silently when fallback save was used (order still saved but with partial data)
+  if (saved.partial) {
+    sendAdminAlert(`⚠️ ORDER PARTIAL SAVE\nRef: ${paystackRef}\nPhone: ${phone}\nBundle: ${bundleId}\n${saved.partial}\n\nOrder saved with reduced fields — delivery continuing.`).catch(() => {});
+  }
 
   if (saved.error) {
     const dbErrMsg = `ORDER SAVE FAILED\nRef: ${paystackRef}\nPhone: ${phone}\nBundle: ${bundleId}\nError: ${saved.message}`;
@@ -444,8 +524,8 @@ export async function POST(request: NextRequest) {
 
   const inventorOk = invOkRaw && !invIsProcessing;
 
-  // Process loyalty (await to include in response)
-  const loyalty = await processLoyalty(phone, bundleMeta.network, paystackRef);
+  // Process loyalty fire-and-forget — doesn't block response
+  processLoyalty(phone, bundleMeta.network, paystackRef).catch(() => {});
 
   if (inventorOk) {
     const orderId: string | null =
@@ -456,20 +536,62 @@ export async function POST(request: NextRequest) {
 
     await supabase
       .from("orders")
-      .update({ status: "completed", inventor_order_id: orderId ?? null, bundle_size: actualSize })
+      .update({ status: "completed", inventor_order_id: orderId ?? null, bundle_size: actualSize, network: bundleMeta.network, customer_name: name })
       .eq("reference", paystackRef);
 
     if (agentId) {
-      await supabase
-        .rpc("increment_agent_stats", {
-          p_agent_id: agentId,
-          p_commission: agentCommission,
-          p_revenue: pricing.price,
-        })
-        .maybeSingle();
+      if (agentType === "custom_price") {
+        // Price mode: consume wallet (cost price), credit commission with full selling price
+        const { data: ag } = await supabase
+          .from("agents")
+          .select("wallet_balance, commission_balance, total_sales")
+          .eq("id", agentId)
+          .maybeSingle();
+        if (ag) {
+          await supabase.from("agents").update({
+            wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - pricing.costPrice),
+            commission_balance: Number(ag.commission_balance ?? 0) + chargedAmount,
+            total_sales: Number(ag.total_sales ?? 0) + 1,
+          }).eq("id", agentId);
+          supabase.from("agent_wallet_transactions").insert({
+            agent_id: agentId,
+            type: "sale",
+            amount: chargedAmount,
+            description: `Sale: ${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone}`,
+          }).then(() => {});
+        }
+      } else {
+        const { data: ag } = await supabase
+          .from("agents")
+          .select("commission_balance, total_sales, total_revenue")
+          .eq("id", agentId)
+          .maybeSingle();
+        if (ag) {
+          await supabase.from("agents").update({
+            commission_balance: (Number(ag.commission_balance) || 0) + agentCommission,
+            total_sales: (Number(ag.total_sales) || 0) + 1,
+            total_revenue: (Number(ag.total_revenue) || 0) + chargedAmount,
+            updated_at: new Date().toISOString(),
+          }).eq("id", agentId);
+        }
+      }
     }
 
     await sendAdminAlert(`${fmtDelivered(paystackRef, phone, bundleMeta.network, actualSize)}\n${inventorLog}`);
+
+    // Notify agent on Telegram (fire and forget)
+    if (agentTelegramChatId) {
+      sendAgentNotification(
+        agentTelegramChatId,
+        `🛒 <b>New Sale!</b>\n\n` +
+        `📱 ${bundleMeta.network.toUpperCase()} ${actualSize} → <code>${phone}</code>\n` +
+        `💰 Sold for: GH₵${chargedAmount.toFixed(2)}\n` +
+        `💵 Your commission: GH₵${agentCommission.toFixed(2)}\n` +
+        `✅ Status: Delivered\n` +
+        `📎 Ref: <code>${paystackRef}</code>`
+      ).catch(() => {});
+    }
+
     supabase
       .from("api_ledger")
       .insert({
@@ -479,19 +601,50 @@ export async function POST(request: NextRequest) {
         order_reference: paystackRef,
       })
       .then(() => {});
-    return Response.json({ success: true, reference: paystackRef, status: "COMPLETED", loyalty });
+    return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
   }
 
   if (invIsProcessing) {
     await supabase
       .from("orders")
-      .update({ status: "processing", bundle_size: actualSize })
+      .update({ status: "processing", bundle_size: actualSize, network: bundleMeta.network, customer_name: name })
       .eq("reference", paystackRef);
     await sendAdminAlert(
       `⏳ ORDER PROCESSING\nRef: ${paystackRef}\nPhone: ${phone}\n${bundleMeta.network.toUpperCase()} ${actualSize}\n${inventorLog}`
     );
+
+    if (agentTelegramChatId) {
+      sendAgentNotification(
+        agentTelegramChatId,
+        `🛒 <b>New Sale!</b>\n\n` +
+        `📱 ${bundleMeta.network.toUpperCase()} ${actualSize} → <code>${phone}</code>\n` +
+        `💰 Sold for: GH₵${chargedAmount.toFixed(2)}\n` +
+        `💵 Your commission: GH₵${agentCommission.toFixed(2)}\n` +
+        `🔄 Status: Processing\n` +
+        `📎 Ref: <code>${paystackRef}</code>`
+      ).catch(() => {});
+    }
+
     supabase
       .from("api_ledger")
       .insert({
         type: "deduction",
-        amount: pricing.costPric
+        amount: pricing.costPrice,
+        note: `${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone} (processing)`,
+        order_reference: paystackRef,
+      })
+      .then(() => {});
+    return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
+  }
+
+  await supabase.from("orders").update({ status: "failed" }).eq("reference", paystackRef);
+
+  const failMsg = `${fmtFailed(paystackRef, phone, bundleMeta.network, bundleMeta.size, pricing.price)}\n\n${inventorLog}`;
+  await sendAdminAlert(failMsg);
+  await sendAdminBotMessage(failMsg, retryKeyboard(paystackRef));
+
+  return Response.json(
+    { error: "Bundle delivery failed. Support has been notified. You will be refunded." },
+    { status: 502 }
+  );
+}

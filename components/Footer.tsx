@@ -44,7 +44,7 @@ export default function Footer() {
                 </a>
               </li>
               <li><Link href="/track" className="hover:text-blue-400 transition-colors">Track My Order</Link></li>
-              <li><span className="text-gray-500">elitedata@gmail.com</span></li>
+              <li><span className="text-gray-500">support@elitedata.com.gh</span></li>
             </ul>
           </div>
         </div>

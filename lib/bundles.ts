@@ -49,6 +49,11 @@ export const bundles: Bundle[] = [
   { id: "at-50gb",  network: "airteltigo", size: "50GB",  sizeGB: 50,  price: 160, costPrice: 138.00, validity: "30 days" },
 ];
 
+export function sizeLabel(sizeGB: number): string {
+  if (sizeGB < 1) return `${Math.round(sizeGB * 1000)}MB`;
+  return `${sizeGB}GB`;
+}
+
 export const networkConfig = {
   mtn: {
     name: "MTN",

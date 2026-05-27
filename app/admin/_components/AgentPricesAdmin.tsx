@@ -61,27 +61,52 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
 
   async function handleSave() {
     if (!editing) return;
+    const newPrice = parseFloat(editPrice.price);
+    const newCostPrice = parseFloat(editPrice.costPrice);
     const tierPrice = editPrice.tierPrice ? parseFloat(editPrice.tierPrice) : null;
-    if (tierPrice === null || isNaN(tierPrice) || tierPrice <= 0) { setEditMsg("Enter a valid tier price."); return; }
-    if (tierPrice <= editing.costPrice) { setEditMsg(`Tier price must be above cost price (GH₵${editing.costPrice.toFixed(2)}).`); return; }
+
+    if (!editPrice.price || isNaN(newPrice) || newPrice <= 0) { setEditMsg("Enter a valid sell price."); return; }
+    if (!editPrice.costPrice || isNaN(newCostPrice) || newCostPrice <= 0) { setEditMsg("Enter a valid cost price."); return; }
+    if (newCostPrice >= newPrice) { setEditMsg("Cost price must be less than sell price."); return; }
+    if (tierPrice !== null && !isNaN(tierPrice) && tierPrice > 0 && tierPrice <= newCostPrice) {
+      setEditMsg(`Tier price must be above cost price (GH₵${newCostPrice.toFixed(2)}).`); return;
+    }
 
     setEditLoading(true); setEditMsg("");
 
-    const res = await fetch("/api/admin/agent-tier-prices", {
+    // Save sell price + cost price
+    const priceRes = await fetch("/api/admin/bundles", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bundleId: editing.id, price: tierPrice }),
+      body: JSON.stringify({ bundleId: editing.id, price: newPrice, costPrice: newCostPrice }),
     });
-    const d = await res.json();
-
-    setEditLoading(false);
-    if (d.success ?? res.ok) {
-      setTierPrices((p) => ({ ...p, [editing.id]: tierPrice }));
-      setEditMsg("Saved!");
-      setTimeout(() => { setEditing(null); setEditMsg(""); }, 1400);
-    } else {
-      setEditMsg(d.error || "Failed to save.");
+    const priceD = await priceRes.json();
+    if (!priceD.success) {
+      setEditLoading(false);
+      setEditMsg(priceD.error || "Failed to save prices.");
+      return;
     }
+
+    // Save tier price if provided
+    if (tierPrice !== null && !isNaN(tierPrice) && tierPrice > 0) {
+      const tierRes = await fetch("/api/admin/agent-tier-prices", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bundleId: editing.id, price: tierPrice }),
+      });
+      const tierD = await tierRes.json();
+      if (!(tierD.success ?? tierRes.ok)) {
+        setEditLoading(false);
+        setEditMsg(tierD.error || "Tier price failed to save.");
+        return;
+      }
+      setTierPrices((p) => ({ ...p, [editing.id]: tierPrice }));
+    }
+
+    setBundles((prev) => prev.map((b) => b.id === editing.id ? { ...b, price: newPrice, costPrice: newCostPrice } : b));
+    setEditLoading(false);
+    setEditMsg("Saved!");
+    setTimeout(() => { setEditing(null); setEditMsg(""); }, 1400);
   }
 
   async function handleAddBundle() {
@@ -387,20 +412,29 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
               Sets the base price custom-price agents see. Does <span className="text-white font-bold">not</span> affect commission agents or customer prices.
             </p>
             <div className="space-y-3">
-              {/* Read-only reference */}
-              <div className="rounded-lg px-3 py-3 border border-[#1e3050] space-y-1.5" style={{ background: "#0e1928" }}>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Reference (read-only)</p>
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-500">Customer sell price</span>
-                  <span className="text-white font-mono font-bold">GH₵{editing.price.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-500">Inventor cost</span>
-                  <span className="text-slate-400 font-mono">GH₵{editing.costPrice.toFixed(2)}</span>
-                </div>
+              {/* Editable: sell price */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Customer Sell Price (GH₵) — <span className="text-slate-500 font-normal">what customers pay</span>
+                </label>
+                <input type="number" step="0.01" min="0.01" value={editPrice.price}
+                  onChange={(e) => setEditPrice((p) => ({ ...p, price: e.target.value }))}
+                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
+                  style={{ background: "#0e1928" }} />
               </div>
 
-              {/* Editable: tier price only */}
+              {/* Editable: cost price */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Inventor Cost Price (GH₵) — <span className="text-slate-500 font-normal">what you pay Inventor</span>
+                </label>
+                <input type="number" step="0.01" min="0.01" value={editPrice.costPrice}
+                  onChange={(e) => setEditPrice((p) => ({ ...p, costPrice: e.target.value }))}
+                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500"
+                  style={{ background: "#0e1928" }} />
+              </div>
+
+              {/* Editable: tier price */}
               <div>
                 <label className="block text-xs font-semibold text-purple-300 mb-1">
                   Tier Price (GH₵) — <span className="text-slate-500 font-normal">what custom-price agents pay as their base</span>
@@ -410,11 +444,16 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
                   className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-purple-700/60 focus:outline-none focus:border-purple-500"
                   style={{ background: "#0e1928" }} />
               </div>
-              {editPrice.tierPrice && !isNaN(parseFloat(editPrice.tierPrice)) && parseFloat(editPrice.tierPrice) > editing.costPrice && (
-                <div className="rounded-lg px-3 py-2 text-xs space-y-0.5" style={{ background: "rgba(139,92,246,0.08)" }}>
-                  <p className="text-purple-300">
-                    Your profit per sale: GH₵{(parseFloat(editPrice.tierPrice) - editing.costPrice).toFixed(2)}
+              {editPrice.price && editPrice.costPrice && !isNaN(parseFloat(editPrice.price)) && !isNaN(parseFloat(editPrice.costPrice)) && parseFloat(editPrice.price) > parseFloat(editPrice.costPrice) && (
+                <div className="rounded-lg px-3 py-2 text-xs space-y-1" style={{ background: "rgba(139,92,246,0.08)" }}>
+                  <p className="text-green-400">
+                    Platform margin: GH₵{(parseFloat(editPrice.price) - parseFloat(editPrice.costPrice)).toFixed(2)}
                   </p>
+                  {editPrice.tierPrice && !isNaN(parseFloat(editPrice.tierPrice)) && parseFloat(editPrice.tierPrice) > parseFloat(editPrice.costPrice) && (
+                    <p className="text-purple-300">
+                      Your profit at tier price: GH₵{(parseFloat(editPrice.tierPrice) - parseFloat(editPrice.costPrice)).toFixed(2)}
+                    </p>
+                  )}
                 </div>
               )}
               {editMsg && (

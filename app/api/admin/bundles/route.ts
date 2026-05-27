@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
-import { bundles as defaultBundles } from "@/lib/bundles";
+import { bundles as defaultBundles, sizeLabel } from "@/lib/bundles";
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -39,8 +39,8 @@ export async function GET() {
     return {
       id: b.id,
       network: b.network,
-      size: ov?.size_label ?? b.size,
       sizeGB: ov?.size_gb ?? b.sizeGB,
+      size: ov?.size_label ?? (ov?.size_gb != null ? sizeLabel(ov.size_gb) : b.size),
       validity: ov?.validity ?? b.validity,
       price: ov ? ov.price : b.price,
       costPrice: ov ? ov.cost_price : b.costPrice,

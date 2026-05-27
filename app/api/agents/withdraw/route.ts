@@ -114,6 +114,14 @@ export async function POST(request: NextRequest) {
   const newBalance = parseFloat((Number(agent.commission_balance) - amt).toFixed(2));
   await supabase.from("agents").update({ commission_balance: newBalance }).eq("id", agentId);
 
+  // Log withdrawal transaction
+  supabase.from("agent_wallet_transactions").insert({
+    agent_id: agentId,
+    type: "withdrawal",
+    amount: -amt,
+    description: `Withdrawal via ${method} to ${accountNumber}`,
+  }).then(() => {});
+
   // 4. Notify admin
   await sendAdminAlert(
     `✅ AUTO WITHDRAWAL SENT\n` +

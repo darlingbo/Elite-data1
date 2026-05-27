@@ -33,6 +33,22 @@ async function checkInventorOrder(reference: string): Promise<"completed" | "pro
   }
 }
 
+async function creditAgent(agentId: string, commission: number, revenue: number) {
+  if (!agentId || !commission) return;
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("commission_balance, total_sales, total_revenue")
+    .eq("id", agentId)
+    .maybeSingle();
+  if (!agent) return;
+  await supabase.from("agents").update({
+    commission_balance: (Number(agent.commission_balance) || 0) + commission,
+    total_sales: (Number(agent.total_sales) || 0) + 1,
+    total_revenue: (Number(agent.total_revenue) || 0) + revenue,
+    updated_at: new Date().toISOString(),
+  }).eq("id", agentId);
+}
+
 async function retryDelivery(order: {
   reference: string;
   phone: string;
@@ -54,40 +70,49 @@ async function retryDelivery(order: {
       signal: AbortSignal.timeout(15000),
     });
     const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-    const ok =
-      res.ok ||
-      body.success === true ||
-      body.status === "success" ||
-      body.status === "00";
-    return ok;
+    return res.ok || body.success === true || body.status === "success" || body.status === "00";
   } catch {
     return false;
   }
 }
 
 export async function POST(request: Request) {
-  // Allow both admin cookie and internal cron calls
   const isCron = request.headers.get("x-cron-sync") === process.env.CRON_SECRET;
   if (!isCron && !(await isAdmin())) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-  const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString(); // 15 minutes ago
+  const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
-  const { data: orders } = await supabase
+  // Try full query with all columns; fall back if newer columns don't exist yet
+  type OrderRow = { reference: string; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null };
+
+  let orders: OrderRow[] | null = null;
+  const { data: full, error: fullErr } = await supabase
     .from("orders")
-    .select("reference, status, phone, network, bundle_size, bundle_size_gb, created_at")
+    .select("reference, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount")
     .in("status", ["pending", "processing"])
     .gte("created_at", cutoff48h);
 
+  if (!fullErr) {
+    orders = full as OrderRow[];
+  } else {
+    // Newer columns missing — fall back to basic columns
+    const { data: basic } = await supabase
+      .from("orders")
+      .select("reference, status, phone, network, bundle_size, created_at, agent_id")
+      .in("status", ["pending", "processing"])
+      .gte("created_at", cutoff48h);
+    orders = (basic ?? []).map(o => ({ ...o, bundle_size_gb: null, agent_commission: null, amount: null })) as OrderRow[];
+  }
+
   if (!orders?.length) return Response.json({ updated: 0, retried: 0, checked: 0 });
 
-  const chunks: typeof orders[] = [];
+  const chunks: OrderRow[][] = [];
   for (let i = 0; i < orders.length; i += 10) chunks.push(orders.slice(i, i + 10));
 
-  let updated = 0;
-  let retried = 0;
+  let updated = 0, retried = 0;
   const retriedOrders: string[] = [];
 
   for (const chunk of chunks) {
@@ -96,6 +121,10 @@ export async function POST(request: Request) {
 
       if (invStatus === "completed") {
         await supabase.from("orders").update({ status: "completed" }).eq("reference", order.reference);
+        // Credit agent commission now that order is confirmed complete
+        if (order.agent_id) {
+          await creditAgent(order.agent_id, Number(order.agent_commission) || 0, Number(order.amount) || 0);
+        }
         updated++;
         return;
       }
@@ -106,31 +135,33 @@ export async function POST(request: Request) {
         return;
       }
 
-      // Still processing/pending — check if stuck for >15 minutes
+      // Still unresolved — retry if stuck >15 min
+      const sizeGb = order.bundle_size_gb ?? (() => {
+        const m = (order.bundle_size ?? "").match(/(\d+(?:\.\d+)?)\s*gb/i);
+        return m ? parseFloat(m[1]) : 1;
+      })();
+
       const isStuck = order.created_at < stuckCutoff;
-      if (isStuck && order.phone && order.network && order.bundle_size_gb) {
+      if (isStuck && order.phone && order.network && sizeGb) {
         const success = await retryDelivery({
           reference: order.reference,
           phone: order.phone,
           network: order.network,
-          bundle_size_gb: Number(order.bundle_size_gb),
+          bundle_size_gb: Number(sizeGb),
           bundle_size: order.bundle_size,
         });
         if (success) {
           await supabase.from("orders").update({ status: "processing" }).eq("reference", order.reference);
           retried++;
-          retriedOrders.push(
-            `📱 ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (ref: ${order.reference})`
-          );
+          retriedOrders.push(`📱 ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size}`);
         }
       }
     }));
   }
 
-  // Alert admin if any orders were auto-retried
   if (retriedOrders.length > 0) {
     await sendAdminAlert(
-      `🔁 AUTO-RETRY: ${retried} stuck order(s) resent to Inventor\n\n${retriedOrders.join("\n")}`
+      `🔁 AUTO-RETRY: ${retried} stuck order(s) resent\n\n${retriedOrders.join("\n")}`
     ).catch(() => {});
   }
 

@@ -109,7 +109,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
     return /^0[2-5][0-9]{8}$/.test(p.replace(/\s/g, ""));
   }
 
-  function handlePay() {
+  async function handlePay() {
     setError("");
     if (!name.trim()) return setError("Please enter your name.");
     if (!email.trim() || !email.includes("@")) return setError("Please enter a valid email.");
@@ -123,6 +123,23 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
     }
 
     setLoading(true);
+
+    // For price-mode agent storefronts, check wallet balance before charging the customer
+    if (agentCode) {
+      try {
+        const check = await fetch(
+          `/api/agents/can-fulfill?agentCode=${encodeURIComponent(agentCode)}&bundleId=${encodeURIComponent(bundle.id)}`
+        );
+        const checkData = await check.json();
+        if (!checkData.canFulfill) {
+          setLoading(false);
+          setError("This agent does not have enough wallet credit to fulfill this order right now. Please contact them to top up their account.");
+          return;
+        }
+      } catch {
+        // Network error on pre-check — let the backend guard catch it
+      }
+    }
 
     try {
       const handler = window.PaystackPop.setup({
@@ -319,13 +336,13 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Full Name</label>
             <input type="text" placeholder="e.g. Kwame Mensah" value={name} onChange={(e) => setName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" />
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Email Address</label>
             <input type="email" placeholder="e.g. kwame@gmail.com" value={email} onChange={(e) => setEmail(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" />
           </div>
 
           <div>
@@ -333,7 +350,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
               {net.name} Phone Number <span className="text-gray-400">(bundle will be sent here)</span>
             </label>
             <input type="tel" placeholder="0241234567" value={phone} onChange={(e) => setPhone(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" />
             {creditChecked && referralCredit > 0 && (
               <p className="text-xs text-emerald-600 font-semibold mt-1">🎁 GH₵{referralCredit.toFixed(2)} referral credit applied!</p>
             )}
