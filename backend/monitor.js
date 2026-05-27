@@ -6,6 +6,11 @@
 import { createClient } from '@supabase/supabase-js'
 import WebSocket from 'ws'
 
+// Polyfill global WebSocket so Supabase skips the Node.js version check
+if (typeof globalThis.WebSocket === 'undefined') {
+  globalThis.WebSocket = WebSocket
+}
+
 const SUPABASE_URL  = process.env.SUPABASE_URL
 const SERVICE_KEY   = process.env.SUPABASE_SERVICE_KEY
 const TG_TOKEN      = process.env.TELEGRAM_BOT_TOKEN
@@ -25,9 +30,7 @@ if (missing.length) {
   process.exit(1)
 }
 
-const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
-  realtime: { transport: WebSocket },
-})
+const sb = createClient(SUPABASE_URL, SERVICE_KEY)
 
 async function tg(msg) {
   await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
