@@ -21,7 +21,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        run: npm install
+        run: npm install --prefer-online
 
       - name: Run monitor
         working-directory: backend

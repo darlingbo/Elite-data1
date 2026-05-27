@@ -4,6 +4,7 @@
  * Does NOT auto-deliver — that is handled by cron-job.org with admin approval.
  */
 import { createClient } from '@supabase/supabase-js'
+import WebSocket from 'ws'
 
 const SUPABASE_URL  = process.env.SUPABASE_URL
 const SERVICE_KEY   = process.env.SUPABASE_SERVICE_KEY
@@ -24,7 +25,9 @@ if (missing.length) {
   process.exit(1)
 }
 
-const sb = createClient(SUPABASE_URL, SERVICE_KEY)
+const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
+  realtime: { transport: WebSocket },
+})
 
 async function tg(msg) {
   await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
