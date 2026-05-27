@@ -26,7 +26,7 @@ interface AgentData {
 interface WalletTx {
   id: string; type: string; amount: number; description: string; created_at: string;
 }
-type Page = "dashboard" | "orders" | "customers" | "wallet" | "transactions" | "referrals" | "leaderboard" | "profile" | "settings" | "prices" | "place_order";
+type Page = "dashboard" | "orders" | "customers" | "wallet" | "transactions" | "referrals" | "leaderboard" | "profile" | "settings" | "prices" | "place_order" | "api";
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const SB = { bg: "#0d1b2e", border: "#1e3a5f", text: "#f8fafc", muted: "#94a3b8" };
@@ -1137,6 +1137,168 @@ function ProfilePage({ data }: { data: AgentData }) {
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
+// ─── API Page ─────────────────────────────────────────────────────────────────
+function ApiPage({ data }: { data: AgentData }) {
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [revealed, setRevealed] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  const siteUrl = typeof window !== "undefined" ? window.location.origin : "https://www.elitedata1.com";
+
+  useEffect(() => {
+    fetch(`/api/agents/api-key?agentId=${data.id}`)
+      .then(r => r.json())
+      .then(d => { setApiKey(d.key ?? null); setWalletBalance(Number(d.wallet_balance ?? 0)); })
+      .finally(() => setLoading(false));
+  }, [data.id]);
+
+  function copy(text: string, label: string) {
+    navigator.clipboard.writeText(text).then(() => { setCopied(label); setTimeout(() => setCopied(null), 2000); });
+  }
+
+  const maskedKey = apiKey ? apiKey.slice(0, 10) + "••••••••••••••••••••••••••••••••••••" : "";
+  const exampleBody = `{
+  "network": "MTN",
+  "phone": "0241234567",
+  "datasize": 1,
+  "reference": "YOUR-UNIQUE-REF-001"
+}`;
+  const exampleResponse = `{
+  "success": true,
+  "status": "completed",
+  "network": "MTN",
+  "phone": "0241234567",
+  "datasize": "1GB",
+  "amount_charged": 4.25,
+  "wallet_balance": 95.75
+}`;
+
+  if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 60 }}><div style={{ width: 32, height: 32, border: "3px solid #3b82f6", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} /></div>;
+
+  return (
+    <div style={{ maxWidth: 760, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* Header */}
+      <div style={{ background: "linear-gradient(135deg,#1e3a5f,#0d2137)", border: `1px solid ${M.border}`, borderRadius: 20, padding: "24px 28px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+          <div>
+            <p style={{ fontSize: 22, fontWeight: 900, color: "#f8fafc", margin: "0 0 6px" }}>Developer API</p>
+            <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Use this key to integrate Elite Data bundles into your own website or app.</p>
+          </div>
+          <div style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 12, padding: "8px 14px", textAlign: "center", flexShrink: 0 }}>
+            <p style={{ fontSize: 18, fontWeight: 900, color: "#60a5fa", margin: 0 }}>GH₵{walletBalance.toFixed(2)}</p>
+            <p style={{ fontSize: 10, color: "#64748b", margin: "2px 0 0", fontWeight: 600, textTransform: "uppercase" }}>API Wallet</p>
+          </div>
+        </div>
+      </div>
+
+      {/* API Key card */}
+      <div style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: M.muted, textTransform: "uppercase", letterSpacing: 1, margin: "0 0 12px" }}>Your API Key</p>
+        <div style={{ background: "#f8fafc", border: `1px solid ${M.border}`, borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <code style={{ flex: 1, fontSize: 13, color: "#0f172a", fontFamily: "monospace", wordBreak: "break-all" }}>
+            {revealed ? apiKey : maskedKey}
+          </code>
+          <button onClick={() => setRevealed(v => !v)} style={{ background: "#f1f5f9", border: `1px solid ${M.border}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600, color: M.muted, cursor: "pointer", flexShrink: 0 }}>
+            {revealed ? "Hide" : "Reveal"}
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={() => copy(apiKey ?? "", "key")} style={{ flex: 1, background: copied === "key" ? "#dcfce7" : "linear-gradient(90deg,#3b82f6,#7c3aed)", border: "none", borderRadius: 10, padding: "11px", fontSize: 13, fontWeight: 700, color: copied === "key" ? "#16a34a" : "white", cursor: "pointer" }}>
+            {copied === "key" ? "✅ Copied!" : "📋 Copy API Key"}
+          </button>
+        </div>
+        <p style={{ fontSize: 12, color: "#ef4444", margin: "12px 0 0" }}>⚠️ Keep this key private. Anyone with it can place orders on your wallet.</p>
+      </div>
+
+      {/* How to use */}
+      <div style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
+        <p style={{ fontSize: 15, fontWeight: 800, color: M.text, margin: "0 0 16px" }}>How to use it</p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Step 1 */}
+          <div>
+            <p style={{ fontSize: 12, fontWeight: 700, color: M.muted, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Step 1 — Top up your API wallet first</p>
+            <p style={{ fontSize: 13, color: M.muted, margin: 0 }}>Go to the <strong>Wallet</strong> tab → click <strong>Top Up Wallet</strong> → pay via Paystack. Your orders will be funded from this balance.</p>
+          </div>
+
+          {/* Step 2 */}
+          <div>
+            <p style={{ fontSize: 12, fontWeight: 700, color: M.muted, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Step 2 — Send a POST request to purchase a bundle</p>
+            <div style={{ background: "#0f172a", borderRadius: 12, padding: "4px 0", overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px 6px" }}>
+                <code style={{ fontSize: 11, color: "#94a3b8" }}>POST {siteUrl}/api/v1/agent-purchase</code>
+                <button onClick={() => copy(`${siteUrl}/api/v1/agent-purchase`, "url")} style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, color: "#94a3b8", cursor: "pointer" }}>
+                  {copied === "url" ? "✅" : "Copy"}
+                </button>
+              </div>
+              <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "10px 16px 4px" }}>
+                <p style={{ fontSize: 10, color: "#64748b", fontWeight: 600, textTransform: "uppercase", margin: "0 0 6px" }}>Headers</p>
+                <code style={{ fontSize: 12, color: "#7dd3fc", display: "block" }}>Authorization: Bearer {revealed ? apiKey : maskedKey}</code>
+                <code style={{ fontSize: 12, color: "#7dd3fc", display: "block" }}>Content-Type: application/json</code>
+              </div>
+              <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "10px 16px 14px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                  <p style={{ fontSize: 10, color: "#64748b", fontWeight: 600, textTransform: "uppercase", margin: 0 }}>Body (JSON)</p>
+                  <button onClick={() => copy(exampleBody, "body")} style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, color: "#94a3b8", cursor: "pointer" }}>
+                    {copied === "body" ? "✅ Copied" : "Copy"}
+                  </button>
+                </div>
+                <pre style={{ fontSize: 12, color: "#86efac", margin: 0, fontFamily: "monospace" }}>{exampleBody}</pre>
+              </div>
+            </div>
+          </div>
+
+          {/* Response */}
+          <div>
+            <p style={{ fontSize: 12, fontWeight: 700, color: M.muted, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Response</p>
+            <div style={{ background: "#0f172a", borderRadius: 12, padding: "14px 16px" }}>
+              <pre style={{ fontSize: 12, color: "#86efac", margin: 0, fontFamily: "monospace" }}>{exampleResponse}</pre>
+            </div>
+          </div>
+
+          {/* Networks */}
+          <div style={{ background: "#f8fafc", border: `1px solid ${M.border}`, borderRadius: 12, padding: "14px 16px" }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: M.muted, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 10px" }}>Supported networks & datasize values</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+              {[
+                { net: "MTN", sizes: "1, 2, 3, 5, 10, 15, 20, 25, 30, 40, 50", color: "#f59e0b" },
+                { net: "TELECEL", sizes: "1, 2, 3, 5, 10, 15, 20, 25, 30, 40, 50", color: "#ef4444" },
+                { net: "AIRTELTIGO", sizes: "1, 2, 3, 5, 10, 15, 20, 25, 30, 40, 50", color: "#8b5cf6" },
+              ].map(n => (
+                <div key={n.net} style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 10, padding: "10px 12px" }}>
+                  <p style={{ fontSize: 12, fontWeight: 800, color: n.color, margin: "0 0 4px" }}>{n.net}</p>
+                  <p style={{ fontSize: 11, color: M.muted, margin: 0 }}>datasize: {n.sizes} (GB)</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* reference note */}
+          <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 12, padding: "12px 16px" }}>
+            <p style={{ fontSize: 13, color: "#92400e", margin: 0 }}><strong>reference</strong> must be unique for every order. Use your own order ID or a timestamp e.g. <code>ORD-{Date.now()}</code>. Duplicate references are ignored (idempotent).</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Get bundles list */}
+      <div style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
+        <p style={{ fontSize: 15, fontWeight: 800, color: M.text, margin: "0 0 8px" }}>Get available bundles &amp; prices</p>
+        <p style={{ fontSize: 13, color: M.muted, margin: "0 0 12px" }}>Call this endpoint to get real-time bundle prices to show on your website:</p>
+        <div style={{ background: "#0f172a", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <code style={{ fontSize: 12, color: "#7dd3fc" }}>GET {siteUrl}/api/v1/bundles</code>
+          <button onClick={() => copy(`${siteUrl}/api/v1/bundles`, "bundles")} style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, color: "#94a3b8", cursor: "pointer" }}>
+            {copied === "bundles" ? "✅" : "Copy"}
+          </button>
+        </div>
+        <p style={{ fontSize: 12, color: M.muted, margin: "10px 0 0" }}>No authentication needed. Returns all active bundles with network, size and price.</p>
+      </div>
+
+    </div>
+  );
+}
+
 function Sidebar({ page, setPage, data, onLogout, onWithdraw, open, onClose }: { page: Page; setPage: (p: Page) => void; data: AgentData; onLogout: () => void; onWithdraw: () => void; open: boolean; onClose: () => void }) {
   const isPriceMode = data.agent_type === "custom_price";
   const initial1 = (data.name ?? "A").charAt(0).toUpperCase();
@@ -1152,6 +1314,7 @@ function Sidebar({ page, setPage, data, onLogout, onWithdraw, open, onClose }: {
     { id: "wallet",      label: "Wallet",       icon: "💳" },
     { id: "transactions",label: "Transactions", icon: "🔄" },
     { id: "leaderboard", label: "Leaderboard",  icon: "🏆" },
+    { id: "api",         label: "Developer API", icon: "🔌" },
     { id: "profile",     label: "Agent Profile",icon: "👤" },
     { id: "settings",    label: "Settings",     icon: "⚙️" },
   ];
@@ -1260,7 +1423,7 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
   const pageTitle: Record<Page, string> = {
     dashboard: "Agent Dashboard", orders: "My Orders", customers: "My Customers",
     wallet: "Wallet", transactions: "Transaction History", referrals: "My Referrals & Store",
-    leaderboard: "Leaderboard", profile: "Agent Profile", settings: "Settings",
+    leaderboard: "Leaderboard", api: "Developer API", profile: "Agent Profile", settings: "Settings",
     prices: data.agent_type === "custom_price" ? "My Selling Prices" : "My Referrals & Store",
     place_order: "Place Order",
   };
@@ -1301,6 +1464,7 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
           {page === "transactions" && <TransactionsPage data={data} onAddFunds={() => setShowAddFunds(true)} onWithdraw={() => setShowWithdraw(true)} />}
           {page === "referrals"    && <ReferralsPage data={data} />}
           {page === "leaderboard"  && <LeaderboardPage myCode={data.referral_code} />}
+          {page === "api"          && <ApiPage data={data} />}
           {page === "profile"      && <ProfilePage data={data} />}
           {page === "settings"     && <SettingsPage />}
           {page === "prices"       && (data.agent_type === "custom_price" ? <PricesPage data={data} /> : <ReferralsPage data={data} />)}
