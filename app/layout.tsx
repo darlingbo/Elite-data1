@@ -27,11 +27,13 @@ export const metadata: Metadata = {
     siteName: "Elite Data",
     locale: "en_GH",
     type: "website",
+    images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: "Elite Data — Cheap Data Bundles in Ghana" }],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "Elite Data — Cheap Data Bundles in Ghana",
     description: "MTN, Telecel & AirtelTigo bundles at the best prices. Instant delivery.",
+    images: ["/opengraph-image"],
   },
   robots: { index: true, follow: true },
 };

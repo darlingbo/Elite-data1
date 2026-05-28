@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 
 const navLinks = [
@@ -96,9 +97,7 @@ export default function PublicNav() {
       <nav className="sticky top-0 z-40 bg-blue-900/95 backdrop-blur border-b border-blue-800/60 h-14 flex items-center px-4 gap-3">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 shrink-0 mr-2">
-          <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center">
-            <span className="text-white font-black text-xs">ED</span>
-          </div>
+          <Image src="/logo.svg" alt="Elite Data" width={34} height={34} className="rounded-xl" priority />
           <span className="text-white font-black text-base leading-none hidden sm:block">Elite Data</span>
         </Link>
 
@@ -157,9 +156,7 @@ export default function PublicNav() {
         {/* Header */}
         <div className="px-5 py-5 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center">
-              <span className="text-white font-black text-sm">ED</span>
-            </div>
+            <Image src="/logo.svg" alt="Elite Data" width={38} height={38} className="rounded-xl" />
             <div>
               <p className="text-white font-black text-base leading-none">Elite Data</p>
               <p className="text-blue-300 text-xs mt-0.5">Cheap data bundles in Ghana</p>
