@@ -518,9 +518,60 @@ export async function POST(request: NextRequest) {
     const { id, from, data } = update.callback_query;
     if (String(from.id) !== ADMIN_CHAT_ID) { await answerCb(id, "⛔ Unauthorized"); return Response.json({ ok: true }); }
     await answerCb(id, "Processing…");
+    const chatId = String(from.chat_id ?? from.id);
+
     if (data?.startsWith("retry:")) {
-      await retryOrder(String(from.chat_id ?? from.id), data.replace("retry:", ""));
+      await retryOrder(chatId, data.replace("retry:", ""));
+
+    } else if (data?.startsWith("approve_retry:")) {
+      const ref = data.replace("approve_retry:", "");
+      const { data: order } = await supabase.from("orders").select("*").eq("reference", ref).maybeSingle();
+      if (!order) { await reply(chatId, `❌ Order <code>${ref}</code> not found.`); return Response.json({ ok: true }); }
+
+      const networkApiMap: Record<string, string> = { mtn: "MTN", telecel: "TELECEL", airteltigo: "AT ISHARE" };
+      const sizeGb = order.bundle_size_gb ?? (() => {
+        const m = (order.bundle_size ?? "").match(/(\d+(?:\.\d+)?)\s*gb/i);
+        return m ? parseFloat(m[1]) : 1;
+      })();
+
+      try {
+        const retryRef = `${ref}-rs`;
+        const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
+          body: JSON.stringify({
+            network: networkApiMap[order.network] ?? order.network.toUpperCase(),
+            Phone: order.phone,
+            Datasize: sizeGb,
+            reference: retryRef,
+          }),
+          signal: AbortSignal.timeout(20000),
+        });
+        const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+        const ok = res.ok || body.success === true || body.status === "success" || body.status === "00" || res.status === 409;
+
+        if (ok) {
+          await supabase.from("orders").update({ status: "processing" }).eq("reference", ref);
+          await reply(chatId,
+            `✅ <b>Sent!</b>\n\n` +
+            `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
+            `📎 Ref: <code>${retryRef}</code>\n\nBundle is on its way.`
+          );
+        } else {
+          await reply(chatId,
+            `❌ <b>Delivery failed</b>\n\nInventor: <code>${JSON.stringify(body).slice(0, 200)}</code>`
+          );
+        }
+      } catch (err) {
+        await reply(chatId, `❌ Error: ${String(err)}`);
+      }
+
+    } else if (data?.startsWith("skip_retry:")) {
+      const ref = data.replace("skip_retry:", "");
+      await supabase.from("orders").update({ status: "completed" }).eq("reference", ref);
+      await reply(chatId, `✅ Marked <code>${ref}</code> as <b>COMPLETED</b> — no re-delivery.`);
     }
+
     return Response.json({ ok: true });
   }
 
