@@ -22,4 +22,5 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           INVENTOR_API_KEY: ${{ secrets.INVENTOR_API_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: node monitor.js

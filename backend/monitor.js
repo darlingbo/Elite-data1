@@ -1,6 +1,6 @@
 /**
  * Standalone monitor — runs in GitHub Actions every 5 min.
- * Checks site health, stuck orders, and sends Telegram alerts.
+ * Checks site health, syncs orders with Inventor, and sends Telegram alerts.
  * Uses Supabase REST API directly — no WebSocket/realtime dependency.
  */
 
@@ -8,6 +8,7 @@ const SUPABASE_URL  = process.env.SUPABASE_URL
 const SERVICE_KEY   = process.env.SUPABASE_SERVICE_KEY
 const TG_TOKEN      = process.env.TELEGRAM_BOT_TOKEN
 const TG_CHAT       = process.env.TELEGRAM_CHAT_ID
+const CRON_SECRET   = process.env.CRON_SECRET   // optional — used to call site's sync API
 const SITE_URL      = 'https://www.elitedata1.com'
 
 const missing = [
@@ -22,7 +23,7 @@ if (missing.length) {
   process.exit(1)
 }
 
-// ─── Supabase REST helper (no JS client, no WebSocket) ────────────────────────
+// ─── Supabase REST helper ─────────────────────────────────────────────────────
 async function db(table, query = '') {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
     headers: {
@@ -57,33 +58,34 @@ async function checkSiteHealth() {
   }
 }
 
-async function checkStuckOrders() {
+// ─── Sync orders with Inventor ────────────────────────────────────────────────
+// Calls the site's /api/cron/sync-orders endpoint which:
+//   1. Checks Inventor for every pending/processing order
+//   2. Marks completed/failed orders automatically
+//   3. Only sends a YES/NO Telegram alert for orders Inventor still can't resolve
+async function syncOrders() {
   try {
-    const cutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString()
-    const orders = await db('orders',
-      `select=reference,phone,network,bundle_size,status,created_at` +
-      `&status=in.(pending,processing)` +
-      `&created_at=lt.${cutoff}` +
-      `&limit=10`
-    )
+    const headers = {}
+    if (CRON_SECRET) headers['Authorization'] = `Bearer ${CRON_SECRET}`
 
-    if (!orders.length) { console.log('[Orders] No stuck orders'); return }
+    const res = await fetch(`${SITE_URL}/api/cron/sync-orders`, {
+      headers,
+      signal: AbortSignal.timeout(55000), // give it almost the full 1-min window
+    })
 
-    console.log(`[Orders] Found ${orders.length} stuck order(s)`)
-    const lines = orders.map(o => {
-      const age = Math.round((Date.now() - new Date(o.created_at).getTime()) / 60000)
-      return `• ${o.network?.toUpperCase()} ${o.bundle_size} → ${o.phone} (${age} min, ${o.status})`
-    }).join('\n')
+    if (!res.ok) {
+      console.error(`[Sync] HTTP ${res.status}`)
+      return
+    }
 
-    await tg(
-      `⚠️ <b>${orders.length} order(s) stuck for 20+ min</b>\n\n${lines}\n\n` +
-      `Check admin panel for details.`
-    )
+    const data = await res.json()
+    console.log(`[Sync] checked=${data.checked ?? 0} updated=${data.updated ?? 0} awaiting_approval=${data.retried ?? 0}`)
   } catch (err) {
-    console.error('[Orders] Error:', err.message)
+    console.error('[Sync] Error:', err.message)
   }
 }
 
+// ─── Daily summary ────────────────────────────────────────────────────────────
 async function sendDailySummary() {
   const hour = new Date().getUTCHours()
   if (hour !== 20) return
@@ -113,7 +115,7 @@ async function sendDailySummary() {
 
 async function run() {
   console.log(`[Monitor] Starting — ${new Date().toISOString()}`)
-  await Promise.all([checkSiteHealth(), checkStuckOrders(), sendDailySummary()])
+  await Promise.all([checkSiteHealth(), syncOrders(), sendDailySummary()])
   console.log('[Monitor] Done')
 }
 
