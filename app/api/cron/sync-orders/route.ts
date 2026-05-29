@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendAdminAlert } from "@/lib/telegram";
+import { sendAdminAlert, sendSwiftAlert } from "@/lib/telegram";
 
 const networkApiMap: Record<string, string> = {
   mtn: "MTN",
@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
       if (isStuck && order.phone && order.network && sizeGb) {
         // Ask admin for approval before sending — prevents double delivery
         await supabase.from("orders").update({ status: "pending_approval" }).eq("reference", order.reference);
-        await sendAdminAlert(
+        await sendSwiftAlert(
           `⚠️ <b>STUCK ORDER — Approve Send?</b>\n\n` +
           `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
           `📎 Ref: <code>${order.reference}</code>\n\n` +

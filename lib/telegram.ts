@@ -27,19 +27,18 @@ export async function sendAgentNotification(agentChatId: string, message: string
   } catch { /* never crash the main flow */ }
 }
 
-// ── Admin alerts — sent to BOTH assistant bot and @SWIFTDATAGH_BOT ───────────
+// ── Assistant bot — all general alerts ───────────────────────────────────────
 export async function sendAdminAlert(message: string, markup?: object): Promise<void> {
-  await Promise.all([
-    tgSend(ASSISTANT_TOKEN!, message, markup),
-    tgSend(SWIFT_TOKEN!, message, markup),
-  ]);
+  await tgSend(ASSISTANT_TOKEN!, message, markup);
 }
 
 export async function sendAdminBotMessage(message: string, replyMarkup?: object): Promise<void> {
-  await Promise.all([
-    tgSend(ASSISTANT_TOKEN!, message, replyMarkup),
-    tgSend(SWIFT_TOKEN!, message, replyMarkup),
-  ]);
+  await tgSend(ASSISTANT_TOKEN!, message, replyMarkup);
+}
+
+// ── @SWIFTDATAGH_BOT — stuck order approval alerts only ──────────────────────
+export async function sendSwiftAlert(message: string, markup?: object): Promise<void> {
+  await tgSend(SWIFT_TOKEN!, message, markup);
 }
 
 // ── Message formatters ────────────────────────────────────────────────────────
