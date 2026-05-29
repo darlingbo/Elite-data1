@@ -1,6 +1,7 @@
 const BOT_TOKEN       = process.env.TELEGRAM_BOT_TOKEN;
 const ADMIN_BOT_TOKEN = process.env.TELEGRAM_ADMIN_BOT_TOKEN;
 const ASSISTANT_TOKEN = process.env.TELEGRAM_ASSISTANT_BOT_TOKEN;
+const SWIFT_TOKEN     = process.env.TELEGRAM_SWIFT_BOT_TOKEN;
 const CHAT_ID         = process.env.TELEGRAM_ADMIN_CHAT_ID;
 
 async function tgSend(token: string, message: string, markup?: object): Promise<void> {
@@ -26,14 +27,19 @@ export async function sendAgentNotification(agentChatId: string, message: string
   } catch { /* never crash the main flow */ }
 }
 
-// ── Assistant bot (@Darlingboy99_bot) — all alerts go here ───────────────────
+// ── Admin alerts — sent to BOTH assistant bot and @SWIFTDATAGH_BOT ───────────
 export async function sendAdminAlert(message: string, markup?: object): Promise<void> {
-  await tgSend(ASSISTANT_TOKEN!, message, markup);
+  await Promise.all([
+    tgSend(ASSISTANT_TOKEN!, message, markup),
+    tgSend(SWIFT_TOKEN!, message, markup),
+  ]);
 }
 
-// ── Assistant bot — with inline buttons (for failed order retry buttons) ──────
 export async function sendAdminBotMessage(message: string, replyMarkup?: object): Promise<void> {
-  await tgSend(ASSISTANT_TOKEN!, message, replyMarkup);
+  await Promise.all([
+    tgSend(ASSISTANT_TOKEN!, message, replyMarkup),
+    tgSend(SWIFT_TOKEN!, message, replyMarkup),
+  ]);
 }
 
 // ── Message formatters ────────────────────────────────────────────────────────
