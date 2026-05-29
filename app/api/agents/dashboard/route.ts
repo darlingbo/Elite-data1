@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleAgentResponse(
-  agent: { id: string; name: string; email: string; phone?: string | null; referral_code: string | null; commission_balance: number; wallet_balance?: number; total_sales: number; total_revenue?: number; status: string; agent_type?: string; business_name?: string | null; telegram_chat_id?: string | null },
+  agent: { id: string; name: string; email: string; phone?: string | null; referral_code: string | null; commission_balance: number; wallet_balance?: number; paystack_wallet_balance?: number; total_sales: number; total_revenue?: number; status: string; agent_type?: string; business_name?: string | null; telegram_chat_id?: string | null },
   storedHash: string | null,
   password: string | null
 ) {
