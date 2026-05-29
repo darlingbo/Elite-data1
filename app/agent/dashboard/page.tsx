@@ -213,25 +213,35 @@ function LoginForm({ onLogin }: { onLogin: (d: AgentData) => void }) {
 // ─── Add Funds Modal ──────────────────────────────────────────────────────────
 function AddFundsModal({ agentId, agentEmail, onClose, onSuccess }: { agentId: string; agentEmail: string; onClose: () => void; onSuccess: () => void }) {
   const [amount, setAmount] = useState("100"); const [loading, setLoading] = useState(false); const [error, setError] = useState("");
+
   function handlePay() {
     const amt = Number(amount);
     if (!amt || amt < 10) { setError("Minimum deposit is GH₵10."); return; }
-    if (!window.PaystackPop) { setError("Payment not ready. Try again."); return; }
-    setLoading(true);
-    const handler = window.PaystackPop.setup({
-      key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY!,
-      email: agentEmail, amount: Math.round(amt * 100), currency: "GHS",
-      callback: async (response: { reference: string }) => {
-        try {
-          const res = await fetch("/api/agents/wallet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId, paystackRef: response.reference }) });
-          const d = await res.json();
-          if (d.success) { onSuccess(); onClose(); } else setError(d.error ?? "Top-up failed.");
-        } catch { setError("Network error."); }
-        setLoading(false);
-      },
-      onClose: () => setLoading(false),
-    });
-    handler.openIframe();
+
+    const ps = (window as unknown as { PaystackPop?: { newTransaction: (opts: Record<string, unknown>) => { openIframe: () => void } } }).PaystackPop;
+    if (!ps) { setError("Payment gateway not ready. Please wait a moment and try again."); return; }
+
+    setLoading(true); setError("");
+    try {
+      const handler = ps.newTransaction({
+        key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
+        email: agentEmail,
+        amount: Math.round(amt * 100),
+        currency: "GHS",
+        onSuccess: async (response: { reference: string }) => {
+          try {
+            const res = await fetch("/api/agents/wallet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId, paystackRef: response.reference }) });
+            const d = await res.json();
+            if (d.success) { onSuccess(); onClose(); } else { setError(d.error ?? "Top-up failed."); setLoading(false); }
+          } catch { setError("Network error. Your payment went through — contact support with your reference."); setLoading(false); }
+        },
+        onCancel: () => setLoading(false),
+      });
+      handler.openIframe();
+    } catch (err) {
+      setError(`Could not open payment. ${String(err)}`);
+      setLoading(false);
+    }
   }
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -1415,9 +1425,13 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
   const [showWithdraw, setShowWithdraw] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined" || window.PaystackPop) return;
+    if (typeof window === "undefined") return;
+    if ((window as unknown as Record<string, unknown>).PaystackPop) return;
     if (document.querySelector('script[src*="paystack"]')) return;
-    const s = document.createElement("script"); s.src = "https://js.paystack.co/v1/inline.js"; s.async = true; document.body.appendChild(s);
+    const s = document.createElement("script");
+    s.src = "https://js.paystack.co/v1/inline.js";
+    s.async = true;
+    document.body.appendChild(s);
   }, []);
 
   const pageTitle: Record<Page, string> = {
