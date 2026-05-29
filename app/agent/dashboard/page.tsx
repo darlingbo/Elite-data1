@@ -218,28 +218,28 @@ function AddFundsModal({ agentId, agentEmail, onClose, onSuccess }: { agentId: s
     const amt = Number(amount);
     if (!amt || amt < 10) { setError("Minimum deposit is GH₵10."); return; }
 
-    const ps = (window as unknown as { PaystackPop?: { newTransaction: (opts: Record<string, unknown>) => { openIframe: () => void } } }).PaystackPop;
+    const ps = (window as unknown as { PaystackPop?: { setup: (opts: Record<string, unknown>) => { openIframe: () => void } } }).PaystackPop;
     if (!ps) { setError("Payment gateway not ready. Please wait a moment and try again."); return; }
 
     setLoading(true); setError("");
     try {
-      const handler = ps.newTransaction({
+      const handler = ps.setup({
         key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
         email: agentEmail,
         amount: Math.round(amt * 100),
         currency: "GHS",
-        onSuccess: async (response: { reference: string }) => {
+        callback: async (response: { reference: string }) => {
           try {
             const res = await fetch("/api/agents/wallet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId, paystackRef: response.reference }) });
             const d = await res.json();
             if (d.success) { onSuccess(); onClose(); } else { setError(d.error ?? "Top-up failed."); setLoading(false); }
           } catch { setError("Network error. Your payment went through — contact support with your reference."); setLoading(false); }
         },
-        onCancel: () => setLoading(false),
+        onClose: () => setLoading(false),
       });
       handler.openIframe();
     } catch (err) {
-      setError(`Could not open payment. ${String(err)}`);
+      setError(`Could not open payment: ${String(err)}`);
       setLoading(false);
     }
   }
