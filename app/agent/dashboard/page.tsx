@@ -228,12 +228,11 @@ function AddFundsModal({ agentId, agentEmail, onClose, onSuccess }: { agentId: s
         email: agentEmail,
         amount: Math.round(amt * 100),
         currency: "GHS",
-        callback: async (response: { reference: string }) => {
-          try {
-            const res = await fetch("/api/agents/wallet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId, paystackRef: response.reference }) });
-            const d = await res.json();
-            if (d.success) { onSuccess(); onClose(); } else { setError(d.error ?? "Top-up failed."); setLoading(false); }
-          } catch { setError("Network error. Your payment went through — contact support with your reference."); setLoading(false); }
+        callback: (response: { reference: string }) => {
+          fetch("/api/agents/wallet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId, paystackRef: response.reference }) })
+            .then(r => r.json())
+            .then(d => { if (d.success) { onSuccess(); onClose(); } else { setError(d.error ?? "Top-up failed."); setLoading(false); } })
+            .catch(() => { setError("Network error. Payment went through — contact support with your ref."); setLoading(false); });
         },
         onClose: () => setLoading(false),
       });
