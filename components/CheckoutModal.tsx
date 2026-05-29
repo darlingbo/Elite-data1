@@ -68,7 +68,6 @@ function copyToClipboard(text: string, onDone: () => void) {
 
 export default function CheckoutModal({ bundle, agentCode, referralVia, onClose }: Props) {
   const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -112,7 +111,6 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   async function handlePay() {
     setError("");
     if (!name.trim()) return setError("Please enter your name.");
-    if (!email.trim() || !email.includes("@")) return setError("Please enter a valid email.");
     if (!validatePhone(phone)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
     if (!paystackReady) return setError("Payment is still loading. Please try again in a moment.");
 
@@ -141,10 +139,12 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
       }
     }
 
+    const autoEmail = `${phone.replace(/\s/g, "")}@elitedata1.com`;
+
     try {
       const handler = window.PaystackPop.setup({
         key,
-        email,
+        email: autoEmail,
         amount: Math.round(totalAmount * 100),
         currency: "GHS",
         ref: `elite-${Date.now()}`,
@@ -161,7 +161,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               name,
-              email,
+              email: autoEmail,
               phone,
               bundleId: bundle.id,
               paystackRef: response.reference,
@@ -336,12 +336,6 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Full Name</label>
             <input type="text" placeholder="e.g. Kwame Mensah" value={name} onChange={(e) => setName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Email Address</label>
-            <input type="email" placeholder="e.g. kwame@gmail.com" value={email} onChange={(e) => setEmail(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" />
           </div>
 
