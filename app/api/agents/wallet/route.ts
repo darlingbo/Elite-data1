@@ -36,10 +36,14 @@ export async function POST(request: NextRequest) {
   const amountGhc = parseFloat((amountKobo / 100).toFixed(2));
   if (amountGhc <= 0) return Response.json({ error: "Invalid payment amount." }, { status: 400 });
 
-  // Credit wallet
-  const { data: existing2 } = await supabase.from("agents").select("wallet_balance").eq("id", agentId).maybeSingle();
+  // Credit wallet (both total and Paystack-tracked portion)
+  const { data: existing2 } = await supabase.from("agents").select("wallet_balance, paystack_wallet_balance").eq("id", agentId).maybeSingle();
   const current = Number((existing2 as { wallet_balance?: number } | null)?.wallet_balance ?? 0);
-  const { error: updateErr } = await supabase.from("agents").update({ wallet_balance: current + amountGhc }).eq("id", agentId);
+  const currentPaystack = Number((existing2 as { paystack_wallet_balance?: number } | null)?.paystack_wallet_balance ?? 0);
+  const { error: updateErr } = await supabase.from("agents").update({
+    wallet_balance: current + amountGhc,
+    paystack_wallet_balance: currentPaystack + amountGhc,
+  }).eq("id", agentId);
   if (updateErr) return Response.json({ error: updateErr.message }, { status: 500 });
 
   // Log transaction

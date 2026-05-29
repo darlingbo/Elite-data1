@@ -15,6 +15,7 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS inventor_order_id text;
 
 -- Agents table: add missing columns
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS wallet_balance numeric DEFAULT 0;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS paystack_wallet_balance numeric DEFAULT 0;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS total_revenue numeric DEFAULT 0;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS agent_type text DEFAULT 'commission';
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS password_hash text;

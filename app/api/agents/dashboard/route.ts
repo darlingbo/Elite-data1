@@ -17,7 +17,7 @@ function checkRateLimit(ip: string): boolean {
 
 type AgentRow = {
   id: string; name: string; email: string; phone?: string | null; referral_code: string | null;
-  commission_balance: number; wallet_balance?: number; total_sales: number;
+  commission_balance: number; wallet_balance?: number; paystack_wallet_balance?: number; total_sales: number;
   total_revenue?: number; status: string; agent_type?: string;
   business_name?: string | null; telegram_chat_id?: string | null;
   password_hash?: string;
@@ -25,13 +25,13 @@ type AgentRow = {
 
 async function lookupAgent(code: string | null, email: string | null): Promise<{ agent: AgentRow | null; hash: string | null }> {
   const q = code
-    ? supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id, password_hash").eq("referral_code", code.toUpperCase())
-    : supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id, password_hash").eq("email", email!.toLowerCase().trim());
+    ? supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id, password_hash").eq("referral_code", code.toUpperCase())
+    : supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id, password_hash").eq("email", email!.toLowerCase().trim());
   const { data: agent, error } = await q.maybeSingle();
   if (error) {
     const q2 = code
-      ? supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id").eq("referral_code", code.toUpperCase())
-      : supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id").eq("email", email!.toLowerCase().trim());
+      ? supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id").eq("referral_code", code.toUpperCase())
+      : supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id").eq("email", email!.toLowerCase().trim());
     const { data: agent2 } = await q2.maybeSingle();
     return { agent: (agent2 as AgentRow | null) ?? null, hash: null };
   }
@@ -125,6 +125,7 @@ async function handleAgentResponse(
       referral_code: agent.referral_code,
       commission_balance: agent.commission_balance ?? 0,
       wallet_balance: agent.wallet_balance ?? 0,
+      paystack_wallet_balance: agent.paystack_wallet_balance ?? 0,
       pending_commission: parseFloat(pendingCommission.toFixed(2)),
       total_sales: agent.total_sales ?? 0,
       total_revenue: agent.total_revenue ?? 0,

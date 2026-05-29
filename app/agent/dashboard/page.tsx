@@ -17,7 +17,7 @@ interface ManualOrder {
 }
 interface AgentData {
   id: string; name: string; email: string; phone?: string | null; referral_code: string;
-  wallet_balance: number; commission_balance: number; pending_commission?: number;
+  wallet_balance: number; commission_balance: number; paystack_wallet_balance?: number; pending_commission?: number;
   total_sales: number; total_revenue: number;
   agent_type: "commission" | "custom_price" | null;
   business_name?: string | null;
@@ -792,13 +792,46 @@ function WalletPage({ data, onAddFunds, onWithdraw }: { data: AgentData; onAddFu
   }, [data.id]);
   const totalDep = txns.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const totalWith = txns.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
+
+  const isPriceModeAgent = data.agent_type === "custom_price";
+  const paystackBal = data.paystack_wallet_balance ?? 0;
+  const commissionBal = data.commission_balance ?? 0;
+  const withdrawable = isPriceModeAgent ? commissionBal + paystackBal : commissionBal;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <h2 style={{ color: M.text, fontSize: 18, fontWeight: 900, margin: 0 }}>Wallet</h2>
+
+      {isPriceModeAgent ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="wallet-grid">
+          {/* Working Capital */}
+          <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: "20px" }}>
+            <p style={{ fontSize: 12, color: M.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, margin: "0 0 8px" }}>Working Capital</p>
+            <p style={{ fontSize: 28, fontWeight: 900, color: M.blue, margin: "0 0 4px", lineHeight: 1 }}>GH₵{(data.wallet_balance ?? 0).toFixed(2)}</p>
+            <p style={{ fontSize: 12, color: M.muted, margin: "0 0 4px" }}>For buying data bundles</p>
+            <div style={{ background: "#f1f5f9", borderRadius: 8, padding: "8px 10px", marginBottom: 14 }}>
+              <p style={{ fontSize: 11, color: M.muted, margin: "0 0 2px" }}>Paystack deposits: <b style={{ color: M.blue }}>GH₵{paystackBal.toFixed(2)}</b> <span style={{ color: "#94a3b8" }}>(withdrawable)</span></p>
+              <p style={{ fontSize: 11, color: M.muted, margin: 0 }}>Admin credited: <b style={{ color: M.muted }}>GH₵{Math.max(0, (data.wallet_balance ?? 0) - paystackBal).toFixed(2)}</b> <span style={{ color: "#94a3b8" }}>(buying power only)</span></p>
+            </div>
+            <button onClick={onAddFunds} style={{ width: "100%", background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 10, padding: "11px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ Add Funds</button>
+          </div>
+          {/* Withdrawable */}
+          <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: "20px" }}>
+            <p style={{ fontSize: 12, color: M.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, margin: "0 0 8px" }}>Withdrawable</p>
+            <p style={{ fontSize: 28, fontWeight: 900, color: "#16a34a", margin: "0 0 4px", lineHeight: 1 }}>GH₵{withdrawable.toFixed(2)}</p>
+            <p style={{ fontSize: 12, color: M.muted, margin: "0 0 4px" }}>Available to withdraw now</p>
+            <div style={{ background: "#f0fdf4", borderRadius: 8, padding: "8px 10px", marginBottom: 14 }}>
+              <p style={{ fontSize: 11, color: M.muted, margin: "0 0 2px" }}>Profit from sales: <b style={{ color: "#16a34a" }}>GH₵{commissionBal.toFixed(2)}</b></p>
+              <p style={{ fontSize: 11, color: M.muted, margin: 0 }}>Paystack deposits: <b style={{ color: "#16a34a" }}>GH₵{paystackBal.toFixed(2)}</b></p>
+            </div>
+            <button onClick={onWithdraw} style={{ width: "100%", background: "linear-gradient(90deg,#16a34a,#15803d)", color: "white", border: "none", borderRadius: 10, padding: "11px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Withdraw</button>
+          </div>
+        </div>
+      ) : (
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }} className="wallet-grid">
         {[
           { label: "Working Capital", value: `GH₵${(data.wallet_balance ?? 0).toFixed(2)}`, sub: "For buying data", color: M.blue, action: onAddFunds, btnLabel: "+ Add Funds", btnStyle: "blue" },
-          { label: "Earnings Balance", value: `GH₵${(data.commission_balance ?? 0).toFixed(2)}`, sub: "Available to withdraw", color: "#16a34a", action: onWithdraw, btnLabel: "Withdraw", btnStyle: "green" },
+          { label: "Earnings Balance", value: `GH₵${commissionBal.toFixed(2)}`, sub: "Available to withdraw", color: "#16a34a", action: onWithdraw, btnLabel: "Withdraw", btnStyle: "green" },
           { label: "Total Revenue", value: `GH₵${(data.total_revenue ?? 0).toFixed(2)}`, sub: "All-time sales", color: M.purple, action: null, btnLabel: "", btnStyle: "" },
         ].map(c => (
           <div key={c.label} style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: "20px" }}>
@@ -809,6 +842,7 @@ function WalletPage({ data, onAddFunds, onWithdraw }: { data: AgentData; onAddFu
           </div>
         ))}
       </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         {[{ label: "Total Deposited", value: `GH₵${totalDep.toFixed(2)}`, color: "#16a34a", icon: "↓" }, { label: "Total Withdrawn", value: `GH₵${totalWith.toFixed(2)}`, color: M.red, icon: "↑" }].map(r => (
           <div key={r.label} style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
@@ -1486,7 +1520,7 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
       </div>
 
       {showAddFunds && <AddFundsModal agentId={data.id} agentEmail={data.email} onClose={() => setShowAddFunds(false)} onSuccess={onRefresh} />}
-      {showWithdraw && <WithdrawModal agentId={data.id} referralCode={data.referral_code} profitBalance={data.commission_balance ?? 0} onClose={() => setShowWithdraw(false)} onSuccess={onRefresh} />}
+      {showWithdraw && <WithdrawModal agentId={data.id} referralCode={data.referral_code} profitBalance={data.agent_type === "custom_price" ? (data.commission_balance ?? 0) + (data.paystack_wallet_balance ?? 0) : (data.commission_balance ?? 0)} onClose={() => setShowWithdraw(false)} onSuccess={onRefresh} />}
 
       <style>{`
         @media (min-width: 768px) {

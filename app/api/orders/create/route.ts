@@ -541,24 +541,34 @@ export async function POST(request: NextRequest) {
 
     if (agentId) {
       if (agentType === "custom_price") {
-        // Price mode: consume wallet (cost price), credit commission with full selling price
+        // Price mode: deduct cost from wallet, credit agent only their markup profit
         const { data: ag } = await supabase
           .from("agents")
-          .select("wallet_balance, commission_balance, total_sales")
+          .select("wallet_balance, paystack_wallet_balance, commission_balance, total_sales")
           .eq("id", agentId)
           .maybeSingle();
         if (ag) {
+          const agentProfit = parseFloat(Math.max(0, chargedAmount - pricing.costPrice).toFixed(2));
           await supabase.from("agents").update({
             wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - pricing.costPrice),
-            commission_balance: Number(ag.commission_balance ?? 0) + chargedAmount,
+            paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - pricing.costPrice),
+            commission_balance: Number(ag.commission_balance ?? 0) + agentProfit,
             total_sales: Number(ag.total_sales ?? 0) + 1,
           }).eq("id", agentId);
-          supabase.from("agent_wallet_transactions").insert({
-            agent_id: agentId,
-            type: "sale",
-            amount: chargedAmount,
-            description: `Sale: ${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone}`,
-          }).then(() => {});
+          supabase.from("agent_wallet_transactions").insert([
+            {
+              agent_id: agentId,
+              type: "sale_deduction",
+              amount: -pricing.costPrice,
+              description: `Cost: ${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone}`,
+            },
+            {
+              agent_id: agentId,
+              type: "sale_profit",
+              amount: agentProfit,
+              description: `Profit: ${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone}`,
+            },
+          ]).then(() => {});
         }
       } else {
         const { data: ag } = await supabase

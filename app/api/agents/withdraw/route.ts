@@ -35,22 +35,29 @@ export async function POST(request: NextRequest) {
 
   const { data: agent } = await supabase
     .from("agents")
-    .select("commission_balance, name, referral_code, status")
+    .select("commission_balance, paystack_wallet_balance, wallet_balance, agent_type, name, referral_code, status")
     .eq("id", agentId)
     .maybeSingle();
 
   if (!agent) return Response.json({ error: "Agent not found." }, { status: 404 });
   if (agent.status !== "approved") return Response.json({ error: "Only approved agents can withdraw." }, { status: 403 });
 
-  // Verify referralCode matches this agentId — prevents anyone with just an ID from stealing funds
+  // Verify referralCode matches this agentId
   if (!referralCode || agent.referral_code?.toUpperCase() !== String(referralCode).toUpperCase()) {
     return Response.json({ error: "Unauthorized." }, { status: 403 });
   }
 
-  if (Number(agent.commission_balance) < amt) {
-    return Response.json({
-      error: `Insufficient balance. Available: GH₵${Number(agent.commission_balance).toFixed(2)}`,
-    }, { status: 400 });
+  // For custom_price agents: can withdraw commission (profit) + Paystack-deposited wallet funds
+  // For commission agents: can only withdraw commission balance
+  const commissionBal = Number(agent.commission_balance ?? 0);
+  const paystackBal = agent.agent_type === "custom_price" ? Number(agent.paystack_wallet_balance ?? 0) : 0;
+  const withdrawable = parseFloat((commissionBal + paystackBal).toFixed(2));
+
+  if (withdrawable < amt) {
+    const msg = agent.agent_type === "custom_price"
+      ? `Insufficient balance. Withdrawable: GH₵${withdrawable.toFixed(2)} (Profit: GH₵${commissionBal.toFixed(2)} + Paystack deposits: GH₵${paystackBal.toFixed(2)})`
+      : `Insufficient balance. Available: GH₵${commissionBal.toFixed(2)}`;
+    return Response.json({ error: msg }, { status: 400 });
   }
 
   const bankCode = methodToBankCode[method];
@@ -110,9 +117,19 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: `Transfer error: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
   }
 
-  // 3. Deduct from agent's commission balance
-  const newBalance = parseFloat((Number(agent.commission_balance) - amt).toFixed(2));
-  await supabase.from("agents").update({ commission_balance: newBalance }).eq("id", agentId);
+  // 3. Deduct from commission first, then from Paystack wallet portion
+  const fromCommission = Math.min(amt, commissionBal);
+  const fromPaystack = parseFloat((amt - fromCommission).toFixed(2));
+  const newCommission = parseFloat((commissionBal - fromCommission).toFixed(2));
+  const newPaystackBal = parseFloat(Math.max(0, paystackBal - fromPaystack).toFixed(2));
+  const newWalletBal = parseFloat(Math.max(0, Number(agent.wallet_balance ?? 0) - fromPaystack).toFixed(2));
+
+  const updateFields: Record<string, number> = { commission_balance: newCommission };
+  if (agent.agent_type === "custom_price" && fromPaystack > 0) {
+    updateFields.paystack_wallet_balance = newPaystackBal;
+    updateFields.wallet_balance = newWalletBal;
+  }
+  await supabase.from("agents").update(updateFields).eq("id", agentId);
 
   // Log withdrawal transaction
   supabase.from("agent_wallet_transactions").insert({
@@ -129,7 +146,7 @@ export async function POST(request: NextRequest) {
     `💰 GH₵${amt.toFixed(2)} via ${method}\n` +
     `📞 ${accountNumber} (${accountName})\n` +
     `🏦 Paystack: ${transferCode ?? "—"} [${transferStatus ?? "pending"}]\n` +
-    `💳 New agent balance: GH₵${newBalance.toFixed(2)}`
+    `💳 New commission balance: GH₵${newCommission.toFixed(2)}`
   ).catch(() => {});
 
   return Response.json({ success: true, transferCode, status: transferStatus });
