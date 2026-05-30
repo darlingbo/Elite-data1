@@ -84,8 +84,12 @@ CREATE TABLE IF NOT EXISTS agent_bundle_prices (
   custom_price numeric NOT NULL,
   active boolean NOT NULL DEFAULT true,
   referral_code text,
-  updated_at timestamptz DEFAULT now()
+  updated_at timestamptz DEFAULT now(),
+  UNIQUE (agent_id, bundle_id)
 );
+-- Add unique constraint if table already exists
+ALTER TABLE agent_bundle_prices DROP CONSTRAINT IF EXISTS agent_bundle_prices_agent_id_bundle_id_key;
+ALTER TABLE agent_bundle_prices ADD CONSTRAINT agent_bundle_prices_agent_id_bundle_id_key UNIQUE (agent_id, bundle_id);
 
 -- API balance ledger (each row = one balance snapshot/deposit entry)
 CREATE TABLE IF NOT EXISTS api_ledger (

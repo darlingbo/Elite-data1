@@ -78,14 +78,10 @@ export async function GET(request: NextRequest) {
         .eq("active", true);
       const agentMap = new Map((agentPrices ?? []).map((p: { bundle_id: string; custom_price: number }) => [p.bundle_id, p.custom_price]));
 
-      // Agent's price if set, else fall back to tier price, else keep platform price
-      allBundles = allBundles.map(b => {
-        const agentPrice = agentMap.get(b.id);
-        if (agentPrice !== undefined) return { ...b, price: agentPrice };
-        const tierPrice = tierMap.get(b.id);
-        if (tierPrice !== undefined) return { ...b, price: tierPrice };
-        return b;
-      });
+      // Only show bundles the agent has explicitly priced — apply their price
+      allBundles = allBundles
+        .filter(b => agentMap.has(b.id))
+        .map(b => ({ ...b, price: agentMap.get(b.id)! }));
     }
   }
 
