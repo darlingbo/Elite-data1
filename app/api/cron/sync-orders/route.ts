@@ -125,6 +125,7 @@ export async function GET(request: NextRequest) {
       if (invStatus === "completed") {
         await supabase.from("orders").update({ status: "completed" }).eq("reference", order.reference);
         if (order.agent_id) {
+          // agent_commission now stores correct value for both commission and custom_price agents
           await creditAgent(order.agent_id, Number(order.agent_commission) || 0, Number(order.amount) || 0);
         }
         const profit = order.amount ? (Number(order.amount) - (Number(order.amount) * 0.8)).toFixed(2) : null;

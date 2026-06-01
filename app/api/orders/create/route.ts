@@ -430,8 +430,9 @@ export async function POST(request: NextRequest) {
     agentCommission = 0;
     adminCommission = parseFloat(Math.max(0, effectivePriceFromPayment - pricing.costPrice).toFixed(2));
   } else if (agentType === "custom_price") {
-    agentCommission = parseFloat(Math.max(0, effectivePriceFromPayment - tierPrice).toFixed(2));
-    adminCommission = parseFloat(Math.max(0, tierPrice - pricing.costPrice).toFixed(2));
+    // Price-mode agent keeps full markup above Inventor cost; stored in order for sync
+    agentCommission = parseFloat(Math.max(0, chargedAmount - pricing.costPrice).toFixed(2));
+    adminCommission = 0;
   } else {
     const profit = Math.max(0, effectivePriceFromPayment - pricing.costPrice);
     agentCommission = parseFloat((profit * agentSplitRate).toFixed(2));
@@ -622,6 +623,21 @@ export async function POST(request: NextRequest) {
     await sendAdminAlert(
       `⏳ ORDER PROCESSING\nRef: ${paystackRef}\nPhone: ${phone}\n${bundleMeta.network.toUpperCase()} ${actualSize}\n${inventorLog}`
     );
+
+    // Deduct wallet for price-mode agents immediately — commission credited when sync confirms delivery
+    if (agentId && agentType === "custom_price") {
+      const { data: ag } = await supabase
+        .from("agents")
+        .select("wallet_balance, paystack_wallet_balance")
+        .eq("id", agentId)
+        .maybeSingle();
+      if (ag) {
+        await supabase.from("agents").update({
+          wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - pricing.costPrice),
+          paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - pricing.costPrice),
+        }).eq("id", agentId);
+      }
+    }
 
     if (agentTelegramChatId) {
       sendAgentNotification(
