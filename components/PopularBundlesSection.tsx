@@ -1,7 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { bundles, type Network } from "@/lib/bundles";
+import { type Network } from "@/lib/bundles";
+
+type BundleItem = { id: string; network: Network; size: string; sizeGB: number; validity: string; price: number; popular?: boolean };
 
 const NETS: { id: Network; label: string; color: string; textOnColor: string; activeBg: string; lightBg: string }[] = [
   { id: "mtn",        label: "MTN",        color: "#f59e0b", textOnColor: "#78350f", activeBg: "#f59e0b", lightBg: "#fffbeb" },
@@ -11,10 +13,18 @@ const NETS: { id: Network; label: string; color: string; textOnColor: string; ac
 
 export default function PopularBundlesSection() {
   const [activeNet, setActiveNet] = useState<Network>("mtn");
+  const [allBundles, setAllBundles] = useState<BundleItem[]>([]);
+
+  useEffect(() => {
+    fetch("/api/bundles")
+      .then(r => r.json())
+      .then(d => setAllBundles(d.bundles ?? []))
+      .catch(() => {});
+  }, []);
 
   const net = NETS.find(n => n.id === activeNet)!;
-  const popular = bundles.filter(b => b.network === activeNet && b.popular);
-  const all = bundles.filter(b => b.network === activeNet);
+  const popular = allBundles.filter(b => b.network === activeNet && b.popular);
+  const all = allBundles.filter(b => b.network === activeNet);
   const shown = popular.length >= 3 ? popular : all.slice(0, 6);
 
   return (

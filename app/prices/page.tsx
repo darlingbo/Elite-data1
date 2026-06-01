@@ -1,7 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { bundles, type Network } from "@/lib/bundles";
+import { type Network } from "@/lib/bundles";
+
+type BundleItem = { id: string; network: Network; size: string; sizeGB: number; validity: string; price: number; costPrice: number; popular?: boolean };
 
 const NETS: { id: Network; label: string; color: string; textOnColor: string; bg: string; border: string; lightBg: string }[] = [
   { id: "mtn",        label: "MTN",        color: "#f59e0b", textOnColor: "#78350f", bg: "#fef3c7", border: "#fcd34d", lightBg: "#fffbeb" },
@@ -22,7 +24,8 @@ function valuePerGB(price: number, sizeGB: number) {
   return (price / sizeGB).toFixed(2);
 }
 
-function bestValue(netBundles: typeof bundles) {
+function bestValue(netBundles: BundleItem[]) {
+  if (!netBundles.length) return "";
   let best = netBundles[0];
   for (const b of netBundles) {
     if (b.price / b.sizeGB < best.price / best.sizeGB) best = b;
@@ -32,17 +35,26 @@ function bestValue(netBundles: typeof bundles) {
 
 export default function PricesPage() {
   const [activeNet, setActiveNet] = useState<Network>("mtn");
+  const [allBundles, setAllBundles] = useState<BundleItem[]>([]);
+  const [loadingBundles, setLoadingBundles] = useState(true);
   const [usageHours, setUsageHours] = useState<Record<string, number>>({
     whatsapp: 0, social: 0, youtube: 0, netflix: 0, browsing: 0, zoom: 0,
   });
   const [calcNet, setCalcNet] = useState<Network>("mtn");
 
+  useEffect(() => {
+    fetch("/api/bundles")
+      .then(r => r.json())
+      .then(d => { setAllBundles(d.bundles ?? []); setLoadingBundles(false); })
+      .catch(() => setLoadingBundles(false));
+  }, []);
+
   const net = NETS.find(n => n.id === activeNet)!;
-  const shown = bundles.filter(b => b.network === activeNet);
+  const shown = allBundles.filter(b => b.network === activeNet);
   const bestValueId = bestValue(shown);
 
   const totalGB = USAGE.reduce((sum, u) => sum + u.gbPerHour * (usageHours[u.id] ?? 0) * 30, 0);
-  const calcBundles = bundles.filter(b => b.network === calcNet && b.sizeGB >= totalGB).sort((a, b) => a.price - b.price);
+  const calcBundles = allBundles.filter(b => b.network === calcNet && b.sizeGB >= totalGB).sort((a, b) => a.price - b.price);
   const recommended = calcBundles[0] ?? null;
 
   return (
@@ -84,6 +96,11 @@ export default function PricesPage() {
 
       {/* Bundle grid */}
       <div className="max-w-5xl mx-auto px-4 py-10">
+        {loadingBundles && (
+          <div className="flex justify-center py-16">
+            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
           {shown.map(b => {
             const isBest = b.id === bestValueId;
@@ -150,7 +167,7 @@ export default function PricesPage() {
                 </thead>
                 <tbody>
                   {[0.5, 1, 2, 5, 10, 20, 50].map((gb, i) => {
-                    const row = NETS.map(n => bundles.find(b => b.network === n.id && b.sizeGB === gb));
+                    const row = NETS.map(n => allBundles.find(b => b.network === n.id && b.sizeGB === gb));
                     const prices = row.map(b => b?.price ?? Infinity);
                     const minPrice = Math.min(...prices);
                     const cheapestNet = NETS[prices.indexOf(minPrice)];
