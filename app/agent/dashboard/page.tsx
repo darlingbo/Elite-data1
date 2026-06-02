@@ -1328,14 +1328,49 @@ function ApiPage({ data }: { data: AgentData }) {
       {/* Get bundles list */}
       <div style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
         <p style={{ fontSize: 15, fontWeight: 800, color: M.text, margin: "0 0 8px" }}>Get available bundles &amp; prices</p>
-        <p style={{ fontSize: 13, color: M.muted, margin: "0 0 12px" }}>Call this endpoint to get real-time bundle prices to show on your website:</p>
+        <p style={{ fontSize: 13, color: M.muted, margin: "0 0 12px" }}>Returns all active bundles with network, size and price. No authentication needed.</p>
         <div style={{ background: "#0f172a", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <code style={{ fontSize: 12, color: "#7dd3fc" }}>GET {siteUrl}/api/v1/bundles</code>
           <button onClick={() => copy(`${siteUrl}/api/v1/bundles`, "bundles")} style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, color: "#94a3b8", cursor: "pointer" }}>
             {copied === "bundles" ? "✅" : "Copy"}
           </button>
         </div>
-        <p style={{ fontSize: 12, color: M.muted, margin: "10px 0 0" }}>No authentication needed. Returns all active bundles with network, size and price.</p>
+      </div>
+
+      {/* Check wallet balance */}
+      <div style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
+        <p style={{ fontSize: 15, fontWeight: 800, color: M.text, margin: "0 0 8px" }}>Check your wallet balance</p>
+        <p style={{ fontSize: 13, color: M.muted, margin: "0 0 12px" }}>Returns your current API wallet balance and recent transactions.</p>
+        <div style={{ background: "#0f172a", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <code style={{ fontSize: 12, color: "#7dd3fc" }}>GET {siteUrl}/api/v1/balance</code>
+          <button onClick={() => copy(`${siteUrl}/api/v1/balance`, "balance")} style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, color: "#94a3b8", cursor: "pointer" }}>
+            {copied === "balance" ? "✅" : "Copy"}
+          </button>
+        </div>
+        <p style={{ fontSize: 12, color: M.muted, margin: "10px 0 0" }}>Requires <code>Authorization: Bearer YOUR_API_KEY</code> header.</p>
+      </div>
+
+      {/* Check order status */}
+      <div style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
+        <p style={{ fontSize: 15, fontWeight: 800, color: M.text, margin: "0 0 8px" }}>Check order delivery status</p>
+        <p style={{ fontSize: 13, color: M.muted, margin: "0 0 12px" }}>Check the delivery status of any order using its reference.</p>
+        <div style={{ background: "#0f172a", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <code style={{ fontSize: 12, color: "#7dd3fc" }}>GET {siteUrl}/api/v1/orders/YOUR-REF</code>
+          <button onClick={() => copy(`${siteUrl}/api/v1/orders/YOUR-REF`, "orderstatus")} style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, color: "#94a3b8", cursor: "pointer" }}>
+            {copied === "orderstatus" ? "✅" : "Copy"}
+          </button>
+        </div>
+        <div style={{ background: "#0f172a", borderRadius: 12, padding: "14px 16px", marginTop: 8 }}>
+          <pre style={{ fontSize: 12, color: "#86efac", margin: 0, fontFamily: "monospace" }}>{`{
+  "success": true,
+  "reference": "YOUR-REF",
+  "status": "completed",
+  "network": "MTN",
+  "phone": "0241234567",
+  "bundle_size": "1GB"
+}`}</pre>
+        </div>
+        <p style={{ fontSize: 12, color: M.muted, margin: "10px 0 0" }}>Requires <code>Authorization: Bearer YOUR_API_KEY</code> header. Status: <code>pending</code> / <code>processing</code> / <code>completed</code> / <code>failed</code></p>
       </div>
 
     </div>
