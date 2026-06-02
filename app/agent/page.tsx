@@ -40,6 +40,13 @@ export default function AgentPage() {
         router.replace("/agent/dashboard");
       }
     } catch {}
+    // Load Paystack script
+    if (!document.querySelector('script[src*="paystack"]')) {
+      const s = document.createElement("script");
+      s.src = "https://js.paystack.co/v1/inline.js";
+      s.async = true;
+      document.body.appendChild(s);
+    }
   }, [router]);
 
   function set(field: string, value: string) {
@@ -59,32 +66,51 @@ export default function AgentPage() {
     if (form.password.length < 6) return setError("Password must be at least 6 characters.");
     if (form.password !== form.confirmPassword) return setError("Passwords do not match.");
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ps = (window as any).PaystackPop;
+    if (!ps) return setError("Payment not ready yet. Please wait a moment and try again.");
+
     setLoading(true);
     try {
-      const res = await fetch("/api/agents/apply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name,
-          email: form.email,
-          phone: form.phone,
-          whatsapp: form.whatsapp,
-          business_name: form.business_name,
-          password: form.password,
-          agent_type: agentType,
-        }),
+      const handler = ps.setup({
+        key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
+        email: form.email,
+        amount: 4000, // GH₵40 in pesewas
+        currency: "GHS",
+        label: "Elite Data Agent Registration Fee",
+        callback: (response: { reference: string }) => {
+          fetch("/api/agents/apply", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: form.name,
+              email: form.email,
+              phone: form.phone,
+              whatsapp: form.whatsapp,
+              business_name: form.business_name,
+              password: form.password,
+              agent_type: agentType,
+              paystackRef: response.reference,
+            }),
+          })
+            .then(r => r.json())
+            .then(data => {
+              setLoading(false);
+              if (data.success) {
+                try { localStorage.setItem("elite_agent_applied", "true"); } catch {}
+                setSuccess(true);
+              } else {
+                setError(data.error || "Registration failed. Contact support on WhatsApp.");
+              }
+            })
+            .catch(() => { setLoading(false); setError("Network error. Contact support on WhatsApp."); });
+        },
+        onClose: () => setLoading(false),
       });
-      const data = await res.json();
-      if (data.success) {
-        try { localStorage.setItem("elite_agent_applied", "true"); } catch {}
-        setSuccess(true);
-      } else {
-        setError(data.error || "Something went wrong. Please try again.");
-      }
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
+      handler.openIframe();
+    } catch (err) {
       setLoading(false);
+      setError(`Payment error: ${String(err)}`);
     }
   }
 
@@ -97,14 +123,14 @@ export default function AgentPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="text-3xl font-black text-gray-900 mb-2">Successful Registration!</h1>
-          <p className="text-lg font-semibold text-green-600 mb-6">Your application has been received.</p>
+          <h1 className="text-3xl font-black text-gray-900 mb-2">You&apos;re Approved! 🎉</h1>
+          <p className="text-lg font-semibold text-green-600 mb-6">Your account is ready — log in now.</p>
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 px-6 py-6 mb-6 text-left space-y-3">
             <p className="text-gray-700 text-sm leading-relaxed">
-              Hello <span className="font-bold text-gray-900">{form.name}</span>, your agent application has been submitted successfully.
+              Welcome <span className="font-bold text-gray-900">{form.name}</span>! Your GH₵40 registration fee has been received and your agent account is now active.
             </p>
             <p className="text-gray-700 text-sm leading-relaxed">
-              Please contact the <span className="font-bold text-blue-700">Admin</span> on WhatsApp to discuss your application and get approved.
+              Log in to your dashboard using your email and password to start selling.
             </p>
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
               <p className="text-amber-800 text-xs font-bold uppercase tracking-wide mb-1">Important</p>
@@ -137,7 +163,7 @@ export default function AgentPage() {
           <h1 className="text-4xl font-black mb-3">Earn Money Selling Data Bundles</h1>
           <p className="text-blue-100 text-lg mb-6">Join Elite Data as an agent. Share your link, make sales, earn 80% of every profit.</p>
           <a href="#apply" className="bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-8 py-3.5 rounded-xl text-lg transition-colors shadow-lg inline-block">
-            Apply Now — It&apos;s Free
+            Apply Now — GH₵40 Registration Fee
           </a>
         </div>
       </section>
@@ -298,7 +324,7 @@ export default function AgentPage() {
 
               <button type="submit" disabled={loading}
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl transition-colors text-sm">
-                {loading ? "Submitting..." : "Submit Application"}
+                {loading ? "Opening payment…" : "Pay GH₵40 & Activate Account"}
               </button>
             </form>
           </div>

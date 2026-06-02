@@ -3,9 +3,11 @@ import bcrypt from "bcryptjs";
 import { supabase } from "@/lib/supabase";
 import { sendAdminAlert, fmtAgentApplied } from "@/lib/telegram";
 
+const REGISTRATION_FEE_GHC = 40;
+
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { name, email, phone, whatsapp, business_name, password, agent_type } = body;
+  const { name, email, phone, whatsapp, business_name, password, agent_type, paystackRef } = body;
   const agentType = agent_type === "custom_price" ? "custom_price" : "commission";
 
   if (!name?.trim() || !email?.trim() || !phone?.trim() || !whatsapp?.trim()) {
@@ -16,6 +18,28 @@ export async function POST(request: NextRequest) {
   }
   if (!password || password.length < 6) {
     return Response.json({ error: "Password must be at least 6 characters." }, { status: 400 });
+  }
+  if (!paystackRef) {
+    return Response.json({ error: "Registration fee payment is required." }, { status: 400 });
+  }
+
+  // Verify GH₵40 registration fee payment
+  try {
+    const psRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(paystackRef)}`, {
+      headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    const psData = await psRes.json() as Record<string, unknown>;
+    const txn = psData.data as Record<string, unknown>;
+    const amountKobo = Number(txn?.amount ?? 0);
+    if (psData.status !== true || txn?.status !== "success" || amountKobo < REGISTRATION_FEE_GHC * 100) {
+      return Response.json({ error: "Payment not confirmed. Please try again or contact support." }, { status: 400 });
+    }
+    // Prevent duplicate registrations using same payment reference
+    const { data: dupRef } = await supabase.from("agents").select("id").eq("registration_ref", paystackRef).maybeSingle();
+    if (dupRef) return Response.json({ error: "This payment has already been used." }, { status: 409 });
+  } catch {
+    return Response.json({ error: "Could not verify payment. Please try again." }, { status: 502 });
   }
 
   // Check duplicate
@@ -42,7 +66,7 @@ export async function POST(request: NextRequest) {
 
   const password_hash = await bcrypt.hash(password, 10);
 
-  // Tier 1: full insert
+  // Tier 1: full insert — auto-approved after fee payment
   const { error: err1 } = await supabase.from("agents").insert({
     name: name.trim(),
     email: email.toLowerCase().trim(),
@@ -51,14 +75,15 @@ export async function POST(request: NextRequest) {
     business_name: business_name?.trim() || null,
     password_hash,
     agent_type: agentType,
-    status: "pending",
+    status: "approved",
+    registration_ref: paystackRef,
     commission_balance: 0,
     total_sales: 0,
     total_revenue: 0,
   });
 
   if (!err1) {
-    await sendAdminAlert(fmtAgentApplied(name.trim(), email.trim(), phone.trim(), business_name?.trim()));
+    await sendAdminAlert(`✅ <b>New Agent Approved</b>\n\n👤 ${name.trim()}\n📧 ${email.trim()}\n📞 ${phone.trim()}\n💰 Paid GH₵${REGISTRATION_FEE_GHC} registration fee\n📎 Ref: ${paystackRef}`);
     return Response.json({ success: true });
   }
 
@@ -70,14 +95,15 @@ export async function POST(request: NextRequest) {
     whatsapp: whatsapp.trim(),
     business_name: business_name?.trim() || null,
     agent_type: agentType,
-    status: "pending",
+    status: "approved",
+    registration_ref: paystackRef,
     commission_balance: 0,
     total_sales: 0,
     total_revenue: 0,
   });
 
   if (!err2) {
-    await sendAdminAlert(fmtAgentApplied(name.trim(), email.trim(), phone.trim(), business_name?.trim()));
+    await sendAdminAlert(`✅ <b>New Agent Approved</b>\n\n👤 ${name.trim()}\n📧 ${email.trim()}\n📞 ${phone.trim()}\n💰 Paid GH₵${REGISTRATION_FEE_GHC} registration fee\n📎 Ref: ${paystackRef}`);
     return Response.json({ success: true });
   }
 
@@ -87,13 +113,13 @@ export async function POST(request: NextRequest) {
     email: email.toLowerCase().trim(),
     phone: phone.trim(),
     business_name: business_name?.trim() || null,
-    status: "pending",
+    status: "approved",
     commission_balance: 0,
     total_sales: 0,
   });
 
   if (!err3) {
-    await sendAdminAlert(fmtAgentApplied(name.trim(), email.trim(), phone.trim(), business_name?.trim()));
+    await sendAdminAlert(`✅ New Agent Approved: ${name.trim()} (${email.trim()}) — paid GH₵${REGISTRATION_FEE_GHC}`);
     return Response.json({ success: true });
   }
 
@@ -102,13 +128,13 @@ export async function POST(request: NextRequest) {
     name: name.trim(),
     email: email.toLowerCase().trim(),
     phone: phone.trim(),
-    status: "pending",
+    status: "approved",
     commission_balance: 0,
     total_sales: 0,
   });
 
   if (!err4) {
-    await sendAdminAlert(fmtAgentApplied(name.trim(), email.trim(), phone.trim(), business_name?.trim()));
+    await sendAdminAlert(`✅ New Agent Approved: ${name.trim()} (${email.trim()}) — paid GH₵${REGISTRATION_FEE_GHC}`);
     return Response.json({ success: true });
   }
 
