@@ -3,9 +3,9 @@ import { authenticateApiKey } from "@/lib/apiKeyAuth";
 import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName, type Network } from "@/lib/bundles";
 
-// API price = costPrice * 1.06 (admin earns 6% markup over cost on every API order)
-function apiPrice(costPrice: number): number {
-  return parseFloat((costPrice * 1.06).toFixed(2));
+// API price = sellingPrice * 1.06 (developer pays normal bundle price + 6%)
+function apiPrice(sellingPrice: number): number {
+  return parseFloat((sellingPrice * 1.06).toFixed(2));
 }
 
 const NET_MAP: Record<string, Network> = {
@@ -58,23 +58,24 @@ export async function POST(request: NextRequest) {
   const staticBundle = bundles.find(b => b.network === network && b.sizeGB === sizeGB);
   const { data: dbBundle } = await supabase
     .from("bundle_prices")
-    .select("id, network, size_label, size_gb, cost_price, active")
+    .select("id, network, size_label, size_gb, price, cost_price, active")
     .eq("network", network)
     .eq("size_gb", sizeGB)
     .eq("active", true)
     .maybeSingle();
 
   const costPrice = dbBundle?.cost_price ?? staticBundle?.costPrice;
+  const sellingPrice = dbBundle?.price ?? staticBundle?.price ?? costPrice;
   const sizeLabel = dbBundle?.size_label ?? staticBundle?.size ?? `${sizeGB}GB`;
 
-  if (!costPrice) {
+  if (!costPrice || !sellingPrice) {
     return NextResponse.json({
       success: false,
       error: `No bundle found for ${String(rawNetwork).toUpperCase()} ${sizeGB}GB. Use GET /api/v1/bundles to see available options.`,
     }, { status: 404 });
   }
 
-  const price = apiPrice(costPrice);
+  const price = apiPrice(sellingPrice);
 
   // Check wallet balance
   if (auth.walletBalance < price) {
