@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 
 interface BundleRow {
   id: string; network: string; size: string; sizeGB: number; validity: string;
-  price: number; costPrice: number; hasOverride: boolean; active: boolean; isCustom?: boolean;
+  price: number; costPrice: number; apiPrice?: number | null; hasOverride: boolean; active: boolean; isCustom?: boolean;
 }
 
 const netBadge: Record<string, { bg: string; color: string }> = {
@@ -16,7 +16,7 @@ export default function PricesView() {
   const [bundles, setBundles] = useState<BundleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<BundleRow | null>(null);
-  const [editPrice, setEditPrice] = useState({ price: "", costPrice: "" });
+  const [editPrice, setEditPrice] = useState({ price: "", costPrice: "", apiPrice: "" });
   const [editMeta, setEditMeta] = useState({ sizeLabel: "", sizeGB: "", validity: "" });
   const [editLoading, setEditLoading] = useState(false);
   const [editMsg, setEditMsg] = useState("");
@@ -67,7 +67,7 @@ export default function PricesView() {
     if (!editPrice.price || !editPrice.costPrice || isNaN(parseFloat(editPrice.price)) || isNaN(parseFloat(editPrice.costPrice))) { setEditMsg("Enter valid numbers for both prices."); return; }
     if (editMeta.sizeGB && (isNaN(parseFloat(editMeta.sizeGB)) || parseFloat(editMeta.sizeGB) <= 0)) { setEditMsg("Size (GB) must be a positive number."); return; }
     setEditLoading(true); setEditMsg("");
-    const body: Record<string, unknown> = { bundleId: editing.id, price: parseFloat(editPrice.price), costPrice: parseFloat(editPrice.costPrice), active: editing.active };
+    const body: Record<string, unknown> = { bundleId: editing.id, price: parseFloat(editPrice.price), costPrice: parseFloat(editPrice.costPrice), apiPrice: editPrice.apiPrice ? parseFloat(editPrice.apiPrice) : null, active: editing.active };
     if (editMeta.sizeLabel.trim()) body.sizeLabel = editMeta.sizeLabel.trim();
     if (editMeta.sizeGB) body.sizeGB = parseFloat(editMeta.sizeGB);
     if (editMeta.validity.trim()) body.validity = editMeta.validity.trim();
@@ -226,7 +226,7 @@ export default function PricesView() {
                       </td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
-                          <button onClick={() => { setEditing(b); setEditPrice({ price: String(b.price), costPrice: String(b.costPrice) }); setEditMeta({ sizeLabel: b.size, sizeGB: String(b.sizeGB), validity: b.validity }); setEditMsg(""); }}
+                          <button onClick={() => { setEditing(b); setEditPrice({ price: String(b.price), costPrice: String(b.costPrice), apiPrice: b.apiPrice != null ? String(b.apiPrice) : "" }); setEditMeta({ sizeLabel: b.size, sizeGB: String(b.sizeGB), validity: b.validity }); setEditMsg(""); }}
                             className="text-xs font-bold px-3 py-1.5 rounded-lg transition-colors text-blue-400 border border-blue-500/30 hover:border-blue-400" style={{ background: "rgba(59,130,246,0.1)" }}>
                             Edit
                           </button>
@@ -294,6 +294,11 @@ export default function PricesView() {
                   <span className="opacity-60 ml-1">({(((parseFloat(editPrice.price) - parseFloat(editPrice.costPrice)) / parseFloat(editPrice.price)) * 100).toFixed(0)}% of sale)</span>
                 </div>
               )}
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">API Price (GH₵) <span className="text-slate-600">(charged to developer API users — leave blank to use selling price + 6%)</span></label>
+                <input type="number" step="0.01" min="0.01" placeholder={editPrice.price ? `Default: GH₵${(parseFloat(editPrice.price) * 1.06).toFixed(2)}` : "e.g. 6.00"} value={editPrice.apiPrice} onChange={(e) => setEditPrice((p) => ({ ...p, apiPrice: e.target.value }))}
+                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500" style={{ background: "#0e1928" }} />
+              </div>
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider pt-2">Bundle Details</p>
               {[
                 { label: "Display Size Label", key: "sizeLabel" as const, placeholder: editing.size, hint: "(e.g. 2GB, 500MB)" },

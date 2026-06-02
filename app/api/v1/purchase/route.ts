@@ -3,8 +3,8 @@ import { authenticateApiKey } from "@/lib/apiKeyAuth";
 import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName, type Network } from "@/lib/bundles";
 
-// API price = sellingPrice * 1.06 (developer pays normal bundle price + 6%)
-function apiPrice(sellingPrice: number): number {
+// API price fallback = sellingPrice * 1.06 (used only when no api_price is set)
+function defaultApiPrice(sellingPrice: number): number {
   return parseFloat((sellingPrice * 1.06).toFixed(2));
 }
 
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
   const staticBundle = bundles.find(b => b.network === network && b.sizeGB === sizeGB);
   const { data: dbBundle } = await supabase
     .from("bundle_prices")
-    .select("id, network, size_label, size_gb, price, cost_price, active")
+    .select("id, network, size_label, size_gb, price, cost_price, api_price, active")
     .eq("network", network)
     .eq("size_gb", sizeGB)
     .eq("active", true)
@@ -75,7 +75,10 @@ export async function POST(request: NextRequest) {
     }, { status: 404 });
   }
 
-  const price = apiPrice(sellingPrice);
+  // Use admin-set API price if configured, otherwise fall back to selling price + 6%
+  const price = dbBundle?.api_price
+    ? parseFloat(Number(dbBundle.api_price).toFixed(2))
+    : defaultApiPrice(sellingPrice);
 
   // Check wallet balance
   if (auth.walletBalance < price) {

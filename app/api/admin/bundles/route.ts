@@ -9,7 +9,7 @@ async function isAdmin(): Promise<boolean> {
 }
 
 type DbBundle = {
-  id: string; price: number; cost_price: number; active: boolean;
+  id: string; price: number; cost_price: number; api_price?: number | null; active: boolean;
   size_label?: string; size_gb?: number; validity?: string; network?: string;
 };
 
@@ -22,7 +22,7 @@ export async function GET() {
 
   const fullRes = await supabase
     .from("bundle_prices")
-    .select("id, price, cost_price, active, size_label, size_gb, validity, network");
+    .select("id, price, cost_price, api_price, active, size_label, size_gb, validity, network");
 
   if (!fullRes.error) {
     overrides = fullRes.data ?? [];
@@ -44,6 +44,7 @@ export async function GET() {
       validity: ov?.validity ?? b.validity,
       price: ov ? ov.price : b.price,
       costPrice: ov ? ov.cost_price : b.costPrice,
+      apiPrice: ov?.api_price ?? null,
       active: ov ? ov.active !== false : true,
       hasOverride: !!ov,
       isCustom: false,
@@ -60,6 +61,7 @@ export async function GET() {
       validity: o.validity ?? "30 days",
       price: o.price,
       costPrice: o.cost_price,
+      apiPrice: o.api_price ?? null,
       active: o.active !== false,
       hasOverride: true,
       isCustom: true,
@@ -140,7 +142,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { bundleId, price, costPrice, active, sizeLabel, sizeGB, validity } = body;
+  const { bundleId, price, costPrice, apiPrice, active, sizeLabel, sizeGB, validity } = body;
 
   if (!bundleId) {
     return Response.json({ error: "bundleId is required." }, { status: 400 });
@@ -203,6 +205,7 @@ export async function PATCH(request: NextRequest) {
     id: bundleId,
     price,
     cost_price: costPrice,
+    api_price: apiPrice !== undefined ? (apiPrice === null || apiPrice === "" ? null : Number(apiPrice)) : undefined,
     active: resolvedActive,
     updated_at: new Date().toISOString(),
   };
