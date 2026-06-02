@@ -295,8 +295,8 @@ export default function PricesView() {
                 </div>
               )}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">API Price (GH₵) <span className="text-slate-600">(charged to developer API users — leave blank to use selling price + 6%)</span></label>
-                <input type="number" step="0.01" min="0.01" placeholder={editPrice.price ? `Default: GH₵${(parseFloat(editPrice.price) * 1.06).toFixed(2)}` : "e.g. 6.00"} value={editPrice.apiPrice} onChange={(e) => setEditPrice((p) => ({ ...p, apiPrice: e.target.value }))}
+                <label className="block text-xs font-semibold text-slate-400 mb-1">API Price (GH₵) <span className="text-slate-600">(charged to developer API users — leave blank to use selling price)</span></label>
+                <input type="number" step="0.01" min="0.01" placeholder={editPrice.price ? `Default: GH₵${parseFloat(editPrice.price).toFixed(2)}` : "e.g. 6.00"} value={editPrice.apiPrice} onChange={(e) => setEditPrice((p) => ({ ...p, apiPrice: e.target.value }))}
                   className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-[#1e3050] focus:outline-none focus:border-blue-500" style={{ background: "#0e1928" }} />
               </div>
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider pt-2">Bundle Details</p>

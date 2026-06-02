@@ -3,10 +3,6 @@ import { authenticateApiKey } from "@/lib/apiKeyAuth";
 import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName, type Network } from "@/lib/bundles";
 
-// API price fallback = sellingPrice * 1.06 (used only when no api_price is set)
-function defaultApiPrice(sellingPrice: number): number {
-  return parseFloat((sellingPrice * 1.06).toFixed(2));
-}
 
 const NET_MAP: Record<string, Network> = {
   mtn: "mtn", MTN: "mtn",
@@ -75,10 +71,10 @@ export async function POST(request: NextRequest) {
     }, { status: 404 });
   }
 
-  // Use admin-set API price if configured, otherwise fall back to selling price + 6%
+  // Use admin-set API price; fall back to selling price if not set
   const price = dbBundle?.api_price
     ? parseFloat(Number(dbBundle.api_price).toFixed(2))
-    : defaultApiPrice(sellingPrice);
+    : parseFloat(Number(sellingPrice).toFixed(2));
 
   // Check wallet balance
   if (auth.walletBalance < price) {
