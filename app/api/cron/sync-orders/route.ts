@@ -89,12 +89,12 @@ export async function GET(request: NextRequest) {
   const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
   const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
-  type OrderRow = { reference: string; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null };
+  type OrderRow = { reference: string; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null; cost_price: number | null };
 
   let orders: OrderRow[] | null = null;
   const { data: full, error: fullErr } = await supabase
     .from("orders")
-    .select("reference, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount")
+    .select("reference, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount, cost_price")
     .in("status", ["pending", "processing"])
     .gte("created_at", cutoff48h);
 
@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
           // agent_commission now stores correct value for both commission and custom_price agents
           await creditAgent(order.agent_id, Number(order.agent_commission) || 0, Number(order.amount) || 0);
         }
-        const profit = order.amount ? (Number(order.amount) - (Number(order.amount) * 0.8)).toFixed(2) : null;
+        const profit = (order.amount && order.cost_price) ? (Number(order.amount) - Number(order.cost_price)).toFixed(2) : null;
         completedOrders.push(
           `✅ ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → ${order.phone}` +
           (profit ? ` | Profit: GH₵${profit}` : "")

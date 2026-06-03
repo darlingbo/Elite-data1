@@ -1,9 +1,19 @@
 import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { supabase } from "@/lib/supabase";
-import { sendAdminAlert, fmtAgentApplied } from "@/lib/telegram";
+import { sendAdminAlert } from "@/lib/telegram";
 
 const REGISTRATION_FEE_GHC = 40;
+
+async function generateUniqueReferralCode(name: string): Promise<string> {
+  const prefix = name.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, "X");
+  for (let i = 0; i < 10; i++) {
+    const code = prefix + Math.random().toString(36).substring(2, 7).toUpperCase();
+    const { data } = await supabase.from("agents").select("id").eq("referral_code", code).maybeSingle();
+    if (!data) return code;
+  }
+  return prefix + Date.now().toString(36).toUpperCase().slice(-5);
+}
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -65,6 +75,7 @@ export async function POST(request: NextRequest) {
   }
 
   const password_hash = await bcrypt.hash(password, 10);
+  const referral_code = await generateUniqueReferralCode(name.trim());
 
   // Tier 1: full insert — auto-approved after fee payment
   const { error: err1 } = await supabase.from("agents").insert({
@@ -76,6 +87,7 @@ export async function POST(request: NextRequest) {
     password_hash,
     agent_type: agentType,
     status: "approved",
+    referral_code,
     registration_ref: paystackRef,
     commission_balance: 0,
     total_sales: 0,
@@ -83,8 +95,8 @@ export async function POST(request: NextRequest) {
   });
 
   if (!err1) {
-    await sendAdminAlert(`✅ <b>New Agent Approved</b>\n\n👤 ${name.trim()}\n📧 ${email.trim()}\n📞 ${phone.trim()}\n💰 Paid GH₵${REGISTRATION_FEE_GHC} registration fee\n📎 Ref: ${paystackRef}`);
-    return Response.json({ success: true });
+    await sendAdminAlert(`✅ <b>New Agent Approved</b>\n\n👤 ${name.trim()}\n📧 ${email.trim()}\n📞 ${phone.trim()}\n🔗 Code: <code>${referral_code}</code>\n💰 Paid GH₵${REGISTRATION_FEE_GHC}\n📎 Ref: ${paystackRef}`);
+    return Response.json({ success: true, referral_code });
   }
 
   // Tier 2: without password_hash
@@ -96,6 +108,7 @@ export async function POST(request: NextRequest) {
     business_name: business_name?.trim() || null,
     agent_type: agentType,
     status: "approved",
+    referral_code,
     registration_ref: paystackRef,
     commission_balance: 0,
     total_sales: 0,
@@ -103,8 +116,8 @@ export async function POST(request: NextRequest) {
   });
 
   if (!err2) {
-    await sendAdminAlert(`✅ <b>New Agent Approved</b>\n\n👤 ${name.trim()}\n📧 ${email.trim()}\n📞 ${phone.trim()}\n💰 Paid GH₵${REGISTRATION_FEE_GHC} registration fee\n📎 Ref: ${paystackRef}`);
-    return Response.json({ success: true });
+    await sendAdminAlert(`✅ <b>New Agent Approved</b>\n\n👤 ${name.trim()}\n📧 ${email.trim()}\n📞 ${phone.trim()}\n🔗 Code: <code>${referral_code}</code>\n💰 Paid GH₵${REGISTRATION_FEE_GHC}\n📎 Ref: ${paystackRef}`);
+    return Response.json({ success: true, referral_code });
   }
 
   // Tier 3: without whatsapp + total_revenue
@@ -114,13 +127,14 @@ export async function POST(request: NextRequest) {
     phone: phone.trim(),
     business_name: business_name?.trim() || null,
     status: "approved",
+    referral_code,
     commission_balance: 0,
     total_sales: 0,
   });
 
   if (!err3) {
-    await sendAdminAlert(`✅ New Agent Approved: ${name.trim()} (${email.trim()}) — paid GH₵${REGISTRATION_FEE_GHC}`);
-    return Response.json({ success: true });
+    await sendAdminAlert(`✅ New Agent Approved: ${name.trim()} (${email.trim()}) — Code: ${referral_code} — paid GH₵${REGISTRATION_FEE_GHC}`);
+    return Response.json({ success: true, referral_code });
   }
 
   // Tier 4: absolute minimum
@@ -129,13 +143,14 @@ export async function POST(request: NextRequest) {
     email: email.toLowerCase().trim(),
     phone: phone.trim(),
     status: "approved",
+    referral_code,
     commission_balance: 0,
     total_sales: 0,
   });
 
   if (!err4) {
-    await sendAdminAlert(`✅ New Agent Approved: ${name.trim()} (${email.trim()}) — paid GH₵${REGISTRATION_FEE_GHC}`);
-    return Response.json({ success: true });
+    await sendAdminAlert(`✅ New Agent Approved: ${name.trim()} (${email.trim()}) — Code: ${referral_code} — paid GH₵${REGISTRATION_FEE_GHC}`);
+    return Response.json({ success: true, referral_code });
   }
 
   // Return actual Supabase error so we can diagnose
