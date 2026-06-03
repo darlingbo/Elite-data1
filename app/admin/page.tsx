@@ -710,6 +710,8 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
   const [retrying, setRetrying] = useState<string | null>(null);
   const [retryMsg, setRetryMsg] = useState<{ ref: string; ok: boolean; text: string } | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
+  const [deletingFailed, setDeletingFailed] = useState(false);
+  const [deleteFailedMsg, setDeleteFailedMsg] = useState("");
   // AI chat
   const [aiOpen, setAiOpen] = useState(false);
   const [aiInput, setAiInput] = useState("");
@@ -754,6 +756,18 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
       if (d.updated > 0) onRefresh();
     } catch { setSyncMsg("Sync failed"); }
     finally { setSyncing(false); setTimeout(() => setSyncMsg(""), 4000); }
+  }
+
+  async function handleDeleteFailed() {
+    if (!window.confirm(`Delete ALL failed orders from the database? This cannot be undone.`)) return;
+    setDeletingFailed(true); setDeleteFailedMsg("");
+    try {
+      const res = await fetch("/api/admin/orders/patch", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "failed" }) });
+      const d = await res.json();
+      if (d.success) { setDeleteFailedMsg(`✓ Deleted ${d.deleted ?? "all"} failed orders`); onRefresh(); }
+      else setDeleteFailedMsg(d.error ?? "Delete failed");
+    } catch { setDeleteFailedMsg("Network error"); }
+    finally { setDeletingFailed(false); setTimeout(() => setDeleteFailedMsg(""), 5000); }
   }
 
   async function handleRecalculate() {
@@ -850,9 +864,11 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
           <button onClick={onRefresh} className="text-sm font-medium text-slate-400 hover:text-white border px-3 py-2 rounded-xl transition-colors" style={{ background: CARD, borderColor: BORDER }}>↻ Refresh</button>
           <button onClick={handleSync} disabled={syncing} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl transition-colors" style={{ background: "rgba(59,130,246,0.1)", borderColor: "#3b82f660", color: "#60a5fa" }}>{syncing ? "Syncing…" : "⚡ Sync"}</button>
           <button onClick={handleRecalculate} disabled={recalculating} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl" style={{ background: "rgba(34,197,94,0.1)", borderColor: "#22c55e60", color: "#4ade80" }}>{recalculating ? "Fixing…" : "💰 Fix Commissions"}</button>
+          <button onClick={handleDeleteFailed} disabled={deletingFailed} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl" style={{ background: "rgba(239,68,68,0.1)", borderColor: "#ef444460", color: "#f87171" }}>{deletingFailed ? "Deleting…" : "🗑️ Delete Failed"}</button>
           <button onClick={() => setAiOpen(v => !v)} className="text-sm font-bold border px-3 py-2 rounded-xl transition-all" style={{ background: aiOpen ? "rgba(139,92,246,0.2)" : "rgba(139,92,246,0.1)", borderColor: "rgba(139,92,246,0.5)", color: "#a78bfa" }}>🤖 Ask AI</button>
           {syncMsg && <span className="text-xs font-semibold text-green-400">{syncMsg}</span>}
           {recalcMsg && <span className="text-xs font-semibold text-green-400">{recalcMsg}</span>}
+          {deleteFailedMsg && <span className="text-xs font-semibold" style={{ color: deleteFailedMsg.startsWith("✓") ? "#4ade80" : "#f87171" }}>{deleteFailedMsg}</span>}
         </div>
       </div>
 

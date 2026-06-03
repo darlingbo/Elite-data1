@@ -73,3 +73,25 @@ export async function POST(req: NextRequest) {
 
   return Response.json({ success: true, patched: Object.keys(patch) });
 }
+
+// DELETE — remove all orders with a given status (e.g. failed)
+export async function DELETE(req: NextRequest) {
+  if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { status } = await req.json() as { status: string };
+  if (!status) return Response.json({ error: "status required" }, { status: 400 });
+
+  const allowedStatuses = ["failed", "pending", "processing"];
+  if (!allowedStatuses.includes(status)) {
+    return Response.json({ error: `Can only delete orders with status: ${allowedStatuses.join(", ")}` }, { status: 400 });
+  }
+
+  const { data: toDelete } = await supabase.from("orders").select("reference").eq("status", status);
+  const count = toDelete?.length ?? 0;
+  if (count === 0) return Response.json({ success: true, deleted: 0 });
+
+  const { error } = await supabase.from("orders").delete().eq("status", status);
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  return Response.json({ success: true, deleted: count });
+}
