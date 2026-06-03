@@ -148,9 +148,10 @@ export async function POST(request: NextRequest) {
   });
 
   const invData = (invBody.data as Record<string, unknown>) ?? {};
-  const rawStatus = String(invData.status ?? invBody.status ?? "").toLowerCase();
-  const isCompleted = invOk && (rawStatus.includes("complet") || rawStatus.includes("success") || rawStatus.includes("deliver") || rawStatus === "00" || invBody.success === true);
+  const invOrder = (invData.order as Record<string, unknown>) ?? invData;
+  const rawStatus = String(invOrder.status ?? invData.status ?? invBody.status ?? "").toLowerCase();
   const isProcessing = rawStatus.includes("process") || rawStatus.includes("progress") || rawStatus.includes("dispatch") || rawStatus.includes("pending");
+  const isCompleted = invOk && !isProcessing && (rawStatus.includes("complet") || rawStatus.includes("success") || rawStatus.includes("deliver") || rawStatus === "00");
   const deliveryStatus = isCompleted ? "completed" : isProcessing ? "processing" : "failed";
 
   await supabase.from("orders").update({ status: deliveryStatus }).eq("reference", reference);
