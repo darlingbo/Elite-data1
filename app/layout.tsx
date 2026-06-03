@@ -51,6 +51,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {!isStandalone && <Footer />}
         {!isStandalone && <WhatsAppButton />}
         {!isStandalone && <ChatWidget />}
+        {/* Aura AI chat widget */}
+        <script src="https://my-ai-backend-itf0.onrender.com/widget.js?biz=elitedata" async />
       </body>
     </html>
   );
