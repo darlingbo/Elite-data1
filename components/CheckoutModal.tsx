@@ -153,6 +153,8 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
             { display_name: "Customer Name", variable_name: "name", value: name },
             { display_name: "Phone Number", variable_name: "phone", value: phone },
             { display_name: "Bundle", variable_name: "bundle", value: `${net.name} ${bundle.size}` },
+            { display_name: "Bundle ID", variable_name: "bundle_id", value: bundle.id },
+            { display_name: "Agent Code", variable_name: "agent_code", value: agentCode ?? "" },
           ],
         },
         callback: function(response: { reference: string }) {
