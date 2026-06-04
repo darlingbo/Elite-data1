@@ -17,8 +17,8 @@ async function generateUniqueReferralCode(name: string): Promise<string> {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { name, email, phone, whatsapp, business_name, password, agent_type, paystackRef } = body;
-  const agentType = agent_type === "custom_price" ? "custom_price" : "commission";
+  const { name, email, phone, whatsapp, business_name, password, paystackRef } = body;
+  const agentType = "custom_price"; // all new agents set their own prices
 
   if (!name?.trim() || !email?.trim() || !phone?.trim() || !whatsapp?.trim()) {
     return Response.json({ error: "Name, email, phone, and WhatsApp number are all required." }, { status: 400 });

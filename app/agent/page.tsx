@@ -4,10 +4,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 const perks = [
-  { icon: "💰", title: "Earn 80% Profit", desc: "Keep 80% of every sale's margin. The more you sell, the more you earn." },
-  { icon: "🔗", title: "Unique Referral Link", desc: "Share your personal link. Every sale through it is tracked automatically." },
-  { icon: "📊", title: "Live Dashboard", desc: "See your sales, commissions, and balance in real time." },
-  { icon: "⚡", title: "Instant Fulfillment", desc: "Bundles are delivered automatically — no manual work needed from you." },
+  { icon: "🏷️", title: "Set Your Own Prices", desc: "You decide what to charge customers. Add any markup you want above the admin base price." },
+  { icon: "💳", title: "Wallet-Based System", desc: "Top up your wallet, each sale deducts the base cost, you keep the difference as profit." },
+  { icon: "🔗", title: "Your Own Shop Link", desc: "Get a personal shop page and link. Customers buy from your shop at your prices." },
+  { icon: "💰", title: "Withdraw Anytime", desc: "Your profits + Paystack deposits are always withdrawable to your MoMo." },
 ];
 
 const EyeIcon = ({ open }: { open: boolean }) =>
@@ -24,7 +24,6 @@ const EyeIcon = ({ open }: { open: boolean }) =>
 
 export default function AgentPage() {
   const router = useRouter();
-  const [agentType, setAgentType] = useState<"commission" | "custom_price">("commission");
   const [form, setForm] = useState({
     name: "", email: "", phone: "", whatsapp: "", business_name: "", password: "", confirmPassword: "",
   });
@@ -89,7 +88,7 @@ export default function AgentPage() {
               whatsapp: form.whatsapp,
               business_name: form.business_name,
               password: form.password,
-              agent_type: agentType,
+              agent_type: "custom_price",
               paystackRef: response.reference,
             }),
           })
@@ -124,30 +123,30 @@ export default function AgentPage() {
             </svg>
           </div>
           <h1 className="text-3xl font-black text-gray-900 mb-2">You&apos;re Approved! 🎉</h1>
-          <p className="text-lg font-semibold text-green-600 mb-6">Your account is ready — log in now.</p>
-          <div className="bg-white rounded-2xl shadow-md border border-gray-100 px-6 py-6 mb-6 text-left space-y-3">
+          <p className="text-lg font-semibold text-green-600 mb-6">Your account is active — log in now and start selling.</p>
+          <div className="bg-white rounded-2xl shadow-md border border-gray-100 px-6 py-6 mb-6 text-left space-y-4">
             <p className="text-gray-700 text-sm leading-relaxed">
-              Welcome <span className="font-bold text-gray-900">{form.name}</span>! Your GH₵40 registration fee has been received and your agent account is now active.
+              Welcome <span className="font-bold text-gray-900">{form.name}</span>! Your GH₵40 registration fee has been received and your agent account is now fully active.
             </p>
-            <p className="text-gray-700 text-sm leading-relaxed">
-              Log in to your dashboard using your email and password to start selling.
-            </p>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-              <p className="text-amber-800 text-xs font-bold uppercase tracking-wide mb-1">Important</p>
-              <p className="text-amber-700 text-sm">Message the admin now — your account will be activated after approval.</p>
+            <div className="space-y-3">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">What to do next:</p>
+              {[
+                { step: "1", text: "Log in to your dashboard using your email and password" },
+                { step: "2", text: "Go to Wallet → Top Up to fund your account" },
+                { step: "3", text: "Go to My Prices → set your selling prices for each bundle" },
+                { step: "4", text: "Share your shop link with customers and start earning!" },
+              ].map(s => (
+                <div key={s.step} className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">{s.step}</div>
+                  <p className="text-sm text-gray-700">{s.text}</p>
+                </div>
+              ))}
             </div>
           </div>
-          <a
-            href={`https://wa.me/233509794503?text=${encodeURIComponent(`Hello Admin, I just registered as an Elite Data agent. My name is ${form.name} and my email is ${form.email}. Please review my application. Thank you.`)}`}
-            target="_blank" rel="noreferrer"
-            className="flex items-center justify-center gap-3 w-full bg-green-500 hover:bg-green-600 text-white font-black px-6 py-4 rounded-2xl text-base transition-colors shadow-lg mb-4"
-          >
-            <svg className="w-6 h-6 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zM12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.526 5.845L.057 23.882l6.174-1.447A11.944 11.944 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.797 9.797 0 01-5.003-1.372l-.36-.213-3.664.86.902-3.559-.234-.375A9.797 9.797 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/>
-            </svg>
-            Contact Admin on WhatsApp Now
-          </a>
-          <p className="text-xs text-gray-400 mb-6">+233 509 794 503</p>
+          <Link href="/agent/dashboard"
+            className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white font-black px-6 py-4 rounded-2xl text-base transition-colors shadow-lg mb-4">
+            Go to My Dashboard →
+          </Link>
           <Link href="/" className="text-blue-600 hover:underline text-sm font-semibold">Back to Home</Link>
         </div>
       </div>
@@ -160,41 +159,97 @@ export default function AgentPage() {
       <section className="bg-gradient-to-br from-blue-700 to-blue-500 text-white py-14 px-4 text-center">
         <div className="max-w-2xl mx-auto">
           <span className="inline-block bg-white/20 text-xs font-semibold px-3 py-1 rounded-full mb-4 uppercase tracking-wider">Agent Programme</span>
-          <h1 className="text-4xl font-black mb-3">Earn Money Selling Data Bundles</h1>
-          <p className="text-blue-100 text-lg mb-6">Join Elite Data as an agent. Share your link, make sales, earn 80% of every profit.</p>
+          <h1 className="text-4xl font-black mb-3">Start Your Own Data Bundle Business</h1>
+          <p className="text-blue-100 text-lg mb-6">Set your own prices, build your own customer base, keep all your profit. Pay once — sell forever.</p>
           <a href="#apply" className="bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-8 py-3.5 rounded-xl text-lg transition-colors shadow-lg inline-block">
-            Apply Now — GH₵40 Registration Fee
+            Register Now — GH₵40 One-Time Fee
           </a>
         </div>
       </section>
 
+      {/* How it works */}
+      <section className="py-14 px-4 bg-white">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl font-black text-gray-800 mb-2">How It Works</h2>
+            <p className="text-gray-500">Everything you need to know before registering</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Step 1 */}
+            <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-9 h-9 rounded-full bg-blue-600 text-white font-black flex items-center justify-center shrink-0">1</div>
+                <h3 className="font-black text-gray-800">Pay GH₵40 Registration Fee</h3>
+              </div>
+              <p className="text-gray-600 text-sm leading-relaxed">Pay once via Paystack and your account is instantly approved — no waiting, no manual review. This fee gives you lifetime access to the agent platform.</p>
+            </div>
+            {/* Step 2 */}
+            <div className="bg-green-50 border border-green-100 rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-9 h-9 rounded-full bg-green-600 text-white font-black flex items-center justify-center shrink-0">2</div>
+                <h3 className="font-black text-gray-800">Top Up Your Wallet</h3>
+              </div>
+              <p className="text-gray-600 text-sm leading-relaxed">After logging in, go to <strong>Wallet → Add Funds</strong> and top up via Paystack. This is your buying power — each sale deducts the bundle&apos;s base cost from your wallet automatically.</p>
+            </div>
+            {/* Step 3 */}
+            <div className="bg-purple-50 border border-purple-100 rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-9 h-9 rounded-full bg-purple-600 text-white font-black flex items-center justify-center shrink-0">3</div>
+                <h3 className="font-black text-gray-800">Set Your Own Selling Prices</h3>
+              </div>
+              <p className="text-gray-600 text-sm leading-relaxed">Go to <strong>My Prices</strong> and set the price you want to charge customers for each bundle. You add your markup on top of the admin base price — that markup is 100% yours.</p>
+            </div>
+            {/* Step 4 */}
+            <div className="bg-amber-50 border border-amber-100 rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-9 h-9 rounded-full bg-amber-500 text-white font-black flex items-center justify-center shrink-0">4</div>
+                <h3 className="font-black text-gray-800">Share Your Shop & Earn</h3>
+              </div>
+              <p className="text-gray-600 text-sm leading-relaxed">You get a personal shop link (e.g. <strong>elitedata1.com/shop/YOURCODE</strong>). Share it on WhatsApp, social media, or anywhere. Customers buy at your price — data is delivered automatically, your profit is recorded instantly.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Earnings example */}
+      <section className="py-10 px-4 bg-gray-50">
+        <div className="max-w-2xl mx-auto">
+          <h2 className="text-2xl font-black text-gray-800 text-center mb-6">How Your Earnings Work</h2>
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <p className="text-gray-500 text-sm mb-4 text-center">Example: Admin base price for MTN 2GB = <strong>GH₵10</strong>. You sell at <strong>GH₵13</strong>.</p>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-gray-600">Customer pays</span><span className="font-bold">GH₵13.00</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Deducted from your wallet</span><span className="font-bold text-red-500">−GH₵10.00</span></div>
+              <div className="border-t border-gray-100 pt-2 flex justify-between text-green-700 font-black text-base"><span>Your profit</span><span>GH₵3.00 ✅</span></div>
+            </div>
+            <p className="text-xs text-gray-400 mt-4 text-center">The more you sell, the more you earn. No limits on how much you can make.</p>
+          </div>
+
+          {/* Wallet & Withdrawal */}
+          <div className="mt-6 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <h3 className="font-black text-gray-800 mb-3">Wallet &amp; Withdrawals</h3>
+            <div className="space-y-2 text-sm text-gray-600">
+              <p>💳 <strong>Wallet balance</strong> — used to fund deliveries. Top up via Paystack anytime.</p>
+              <p>💰 <strong>Profit balance</strong> — your earnings from sales. Always withdrawable.</p>
+              <p>📤 <strong>Withdraw to MoMo</strong> — go to Wallet → Withdraw. Minimum GH₵50. Sent instantly via Paystack to your MTN MoMo, Telecel Cash, or AirtelTigo.</p>
+              <p>⚠️ <strong>Note:</strong> Only Paystack top-ups are withdrawable as wallet funds. Admin manual credits are for buying power only.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Perks */}
-      <section className="py-14 px-4 bg-gray-50">
+      <section className="py-14 px-4 bg-white">
         <div className="max-w-5xl mx-auto">
-          <h2 className="text-2xl font-black text-gray-800 text-center mb-8">Why Become an Agent?</h2>
+          <h2 className="text-2xl font-black text-gray-800 text-center mb-8">Why Join Elite Data?</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
             {perks.map((p) => (
-              <div key={p.title} className="bg-white rounded-2xl p-6 shadow-sm text-center">
+              <div key={p.title} className="bg-gray-50 rounded-2xl p-6 shadow-sm text-center">
                 <div className="text-4xl mb-3">{p.icon}</div>
                 <h3 className="font-bold text-gray-800 mb-2">{p.title}</h3>
                 <p className="text-gray-500 text-sm">{p.desc}</p>
               </div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Commission Example */}
-      <section className="py-10 px-4">
-        <div className="max-w-2xl mx-auto bg-blue-50 border border-blue-200 rounded-2xl p-6">
-          <h3 className="font-black text-blue-800 text-lg mb-3">How Your Earnings Work</h3>
-          <p className="text-blue-700 text-sm mb-3">Example: Customer buys MTN 2GB at GH₵12</p>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-gray-600">Sale Price</span><span className="font-bold">GH₵12.00</span></div>
-            <div className="flex justify-between"><span className="text-gray-600">Fulfillment Cost</span><span className="font-bold text-red-500">-GH₵7.50</span></div>
-            <div className="border-t border-blue-200 pt-2 flex justify-between"><span className="text-gray-600">Gross Profit</span><span className="font-bold">GH₵4.50</span></div>
-            <div className="flex justify-between"><span className="text-gray-600">Admin Commission (20%)</span><span className="text-gray-500">-GH₵0.90</span></div>
-            <div className="flex justify-between text-green-700 font-black text-base"><span>Your Earnings (80%)</span><span>GH₵3.60</span></div>
           </div>
         </div>
       </section>
@@ -214,35 +269,8 @@ export default function AgentPage() {
           </div>
 
           <div className="text-center mb-8">
-            <h2 className="text-2xl font-black text-gray-800 mb-2">Apply to Become an Agent</h2>
-            <p className="text-gray-500 text-sm">We review all applications within 24 hours</p>
-          </div>
-
-          {/* Agent type selector */}
-          <div className="mb-6">
-            <p className="text-sm font-bold text-gray-700 mb-3 text-center">Choose your agent type</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button type="button" onClick={() => setAgentType("commission")}
-                className={`p-4 rounded-2xl border-2 text-left transition-all ${agentType === "commission" ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-white hover:border-blue-300"}`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${agentType === "commission" ? "border-blue-500" : "border-gray-300"}`}>
-                    {agentType === "commission" && <div className="w-2 h-2 rounded-full bg-blue-500" />}
-                  </div>
-                  <span className="font-black text-gray-800 text-sm">Commission Agent</span>
-                </div>
-                <p className="text-xs text-gray-500 leading-relaxed">Earn <span className="font-bold text-green-600">80% of every sale&apos;s profit</span>. We handle all pricing — just share your link.</p>
-              </button>
-              <button type="button" onClick={() => setAgentType("custom_price")}
-                className={`p-4 rounded-2xl border-2 text-left transition-all ${agentType === "custom_price" ? "border-purple-500 bg-purple-50" : "border-gray-200 bg-white hover:border-purple-300"}`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${agentType === "custom_price" ? "border-purple-500" : "border-gray-300"}`}>
-                    {agentType === "custom_price" && <div className="w-2 h-2 rounded-full bg-purple-500" />}
-                  </div>
-                  <span className="font-black text-gray-800 text-sm">Set My Own Prices</span>
-                </div>
-                <p className="text-xs text-gray-500 leading-relaxed"><span className="font-bold text-purple-600">You control your margins</span>. Set custom prices for each bundle and keep 100% of your markup.</p>
-              </button>
-            </div>
+            <h2 className="text-2xl font-black text-gray-800 mb-2">Create Your Agent Account</h2>
+            <p className="text-gray-500 text-sm">Pay GH₵40 once — account activated instantly, no waiting</p>
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
