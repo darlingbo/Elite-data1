@@ -522,7 +522,11 @@ export async function POST(request: NextRequest) {
     ? inventorPlanName.replace(new RegExp(`^${bundleMeta.network}\\s+`, "i"), "").trim()
     : bundleMeta.size;
 
+  // 409 = Inventor already has this order (webhook + client both fired) — treat as processing
+  const inventorDuplicate = inventorHttpStatus === 409;
+
   const invIsProcessing =
+    inventorDuplicate ||
     rawInvStatus.includes("process") ||
     rawInvStatus.includes("progress") ||
     rawInvStatus.includes("dispatch") ||

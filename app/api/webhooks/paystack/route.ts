@@ -6,7 +6,7 @@ import { sendAdminAlert, fmtDelivered, fmtFailed } from "@/lib/telegram";
 
 const INVENTOR_TIMEOUT_MS = 15_000;
 
-async function callInventor(payload: Record<string, unknown>) {
+async function callInventor(payload: Record<string, unknown>): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
   try {
     const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
       method: "POST",
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
   ).catch(() => {});
 
   // Deliver via Inventor
-  const { ok: invOk, body: invBody } = await callInventor({
+  const { ok: invOk, status: invHttpStatus, body: invBody } = await callInventor({
     network: networkApiName[network],
     Phone: phone,
     Datasize: sizeGB,
@@ -153,7 +153,9 @@ export async function POST(request: NextRequest) {
   const invData = (invBody.data as Record<string, unknown>) ?? {};
   const invOrder = (invData.order as Record<string, unknown>) ?? invData;
   const rawStatus = String(invOrder.status ?? invData.status ?? invBody.status ?? "").toLowerCase();
-  const isProcessing = rawStatus.includes("process") || rawStatus.includes("progress") || rawStatus.includes("dispatch") || rawStatus.includes("pending");
+  // 409 = order already submitted (race between webhook + client callback) — treat as processing
+  const isDuplicate = invHttpStatus === 409;
+  const isProcessing = isDuplicate || rawStatus.includes("process") || rawStatus.includes("progress") || rawStatus.includes("dispatch") || rawStatus.includes("pending");
   const isCompleted = invOk && !isProcessing && (rawStatus.includes("complet") || rawStatus.includes("success") || rawStatus.includes("deliver") || rawStatus === "00");
   const deliveryStatus = isCompleted ? "completed" : isProcessing ? "processing" : "failed";
 
