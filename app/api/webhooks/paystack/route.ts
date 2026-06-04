@@ -102,12 +102,15 @@ export async function POST(request: NextRequest) {
       agentId = agent.id;
       agentName = agent.name;
       if (agent.agent_type === "custom_price") {
-        agentCommission = parseFloat(Math.max(0, chargedAmount - costPrice).toFixed(2));
-        adminCommission = 0;
-        // Deduct wallet
+        // Use admin tier price as wallet deduction, not Inventor cost
+        const { data: tierRow } = await supabase.from("custom_tier_prices").select("price").eq("bundle_id", bundleId).maybeSingle();
+        const adminTierPrice = tierRow?.price ? Number(tierRow.price) : costPrice;
+        agentCommission = parseFloat(Math.max(0, chargedAmount - adminTierPrice).toFixed(2));
+        adminCommission = parseFloat(Math.max(0, adminTierPrice - costPrice).toFixed(2));
+        // Deduct wallet using admin tier price
         await supabase.from("agents").update({
-          wallet_balance: Math.max(0, Number(agent.wallet_balance ?? 0) - costPrice),
-          paystack_wallet_balance: Math.max(0, Number(agent.paystack_wallet_balance ?? 0) - costPrice),
+          wallet_balance: Math.max(0, Number(agent.wallet_balance ?? 0) - adminTierPrice),
+          paystack_wallet_balance: Math.max(0, Number(agent.paystack_wallet_balance ?? 0) - adminTierPrice),
         }).eq("id", agent.id);
       } else {
         const profit = Math.max(0, chargedAmount - costPrice);

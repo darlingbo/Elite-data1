@@ -310,10 +310,11 @@ export async function POST(request: NextRequest) {
     referralCreditId = credit.id;
   }
 
-  // For custom_price agents: fetch their personal markup price
+  // For custom_price agents: adminTierPrice = what admin charges agent (wallet deduction)
+  // agentSellingPrice is stored in agent_bundle_prices but only used for display
+  let adminTierPrice = pricing.costPrice; // fallback to Inventor cost if no tier price set
   let tierPrice = pricing.price;
   if (agentId && agentType === "custom_price") {
-    // These two are independent — run in parallel
     const [tierResult, agentPriceResult] = await Promise.all([
       supabase
         .from("custom_tier_prices")
@@ -329,8 +330,12 @@ export async function POST(request: NextRequest) {
         .maybeSingle(),
     ]);
 
-    if (tierResult.data?.price) tierPrice = Number(tierResult.data.price);
-    if (agentPriceResult.data?.custom_price) tierPrice = Number(agentPriceResult.data.custom_price);
+    // adminTierPrice = your price to the agent (wallet deduction)
+    if (tierResult.data?.price) adminTierPrice = Number(tierResult.data.price);
+    // tierPrice = agent's own selling price to customers (for commission calc)
+    tierPrice = agentPriceResult.data?.custom_price
+      ? Number(agentPriceResult.data.custom_price)
+      : adminTierPrice;
   }
 
   // Verify Paystack payment
@@ -392,9 +397,9 @@ export async function POST(request: NextRequest) {
       .select("wallet_balance")
       .eq("id", agentId)
       .maybeSingle();
-    if (walletAgent && Number(walletAgent.wallet_balance) < pricing.costPrice) {
+    if (walletAgent && Number(walletAgent.wallet_balance) < adminTierPrice) {
       await sendAdminAlert(
-        `⚠️ PRICE-MODE AGENT WALLET INSUFFICIENT\nRef: ${paystackRef}\nAgent: ${agentName ?? agentId}\nWallet: GH₵${Number(walletAgent.wallet_balance).toFixed(2)}\nCost needed: GH₵${pricing.costPrice.toFixed(2)}\n\nCustomer was charged but order NOT delivered. Manual refund required.`
+        `⚠️ PRICE-MODE AGENT WALLET INSUFFICIENT\nRef: ${paystackRef}\nAgent: ${agentName ?? agentId}\nWallet: GH₵${Number(walletAgent.wallet_balance).toFixed(2)}\nAmount needed: GH₵${adminTierPrice.toFixed(2)}\n\nCustomer was charged but order NOT delivered. Manual refund required.`
       ).catch(() => {});
       return Response.json(
         { error: "The agent's account does not have enough credit to fulfill this order. Please contact them. A refund will be issued." },
@@ -430,9 +435,9 @@ export async function POST(request: NextRequest) {
     agentCommission = 0;
     adminCommission = parseFloat(Math.max(0, effectivePriceFromPayment - pricing.costPrice).toFixed(2));
   } else if (agentType === "custom_price") {
-    // Price-mode agent keeps full markup above Inventor cost; stored in order for sync
-    agentCommission = parseFloat(Math.max(0, chargedAmount - pricing.costPrice).toFixed(2));
-    adminCommission = 0;
+    // Agent keeps markup above admin tier price; admin keeps tier price minus Inventor cost
+    agentCommission = parseFloat(Math.max(0, chargedAmount - adminTierPrice).toFixed(2));
+    adminCommission = parseFloat(Math.max(0, adminTierPrice - pricing.costPrice).toFixed(2));
   } else {
     const profit = Math.max(0, effectivePriceFromPayment - pricing.costPrice);
     agentCommission = parseFloat((profit * agentSplitRate).toFixed(2));
@@ -549,10 +554,10 @@ export async function POST(request: NextRequest) {
           .eq("id", agentId)
           .maybeSingle();
         if (ag) {
-          const agentProfit = parseFloat(Math.max(0, chargedAmount - pricing.costPrice).toFixed(2));
+          const agentProfit = parseFloat(Math.max(0, chargedAmount - adminTierPrice).toFixed(2));
           await supabase.from("agents").update({
-            wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - pricing.costPrice),
-            paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - pricing.costPrice),
+            wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - adminTierPrice),
+            paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - adminTierPrice),
             commission_balance: Number(ag.commission_balance ?? 0) + agentProfit,
             total_sales: Number(ag.total_sales ?? 0) + 1,
           }).eq("id", agentId);
@@ -633,8 +638,8 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
       if (ag) {
         await supabase.from("agents").update({
-          wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - pricing.costPrice),
-          paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - pricing.costPrice),
+          wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - adminTierPrice),
+          paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - adminTierPrice),
         }).eq("id", agentId);
       }
     }
