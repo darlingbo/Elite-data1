@@ -49,7 +49,7 @@ export async function getAllAgentBundleCosts(
     const { data } = await supabase
       .from("custom_tier_prices")
       .select("bundle_id, price");
-    return (data ?? []).map(r => ({ bundle_id: r.bundle_id, price: Number(r.price) }));
+    return (data ?? []).map((r: any) => ({ bundle_id: r.bundle_id, price: Number(r.price) }));
   }
 
   // Free agent: replicate /api/bundles active-bundle logic, price each × 0.96
