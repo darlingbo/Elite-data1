@@ -13,10 +13,10 @@ export async function GET() {
 
   const [ordersRes, agentsRes] = await Promise.all([
     supabase.from("orders").select("status, amount, cost_price, admin_commission, agent_commission, agent_id, created_at, network, bundle_size, phone, reference, customer_name"),
-    supabase.from("agents").select("id, name, email, phone, whatsapp, business_name, referral_code, status, agent_type, commission_balance, wallet_balance, total_sales, total_revenue, created_at"),
+    supabase.from("agents").select("id, name, email, phone, whatsapp, business_name, referral_code, status, agent_type, commission_balance, wallet_balance, total_sales, total_revenue, created_at, registration_ref"),
   ]);
 
-  type AgentRow = { id: string; name: string; email: string; phone: string; whatsapp: string; business_name: string; referral_code: string; status: string; agent_type?: string; commission_balance: number; wallet_balance: number; total_sales: number; total_revenue: number; created_at: string };
+  type AgentRow = { id: string; name: string; email: string; phone: string; whatsapp: string; business_name: string; referral_code: string; status: string; agent_type?: string; commission_balance: number; wallet_balance: number; total_sales: number; total_revenue: number; created_at: string; registration_ref?: string | null };
   type OrderRow = { status: string; amount: number; cost_price: number; admin_commission: number; agent_commission: number; agent_id: string | null; created_at: string; network: string; bundle_size: string; phone: string; reference: string; customer_name: string; agent_name: string | null; agent_code: string | null };
 
   const agents = (agentsRes.data ?? []) as AgentRow[];

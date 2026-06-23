@@ -1,0 +1,29 @@
+import { NextRequest } from "next/server";
+import { cookies } from "next/headers";
+import { supabase } from "@/lib/supabase";
+
+async function isAdmin(): Promise<boolean> {
+  const cookieStore = await cookies();
+  return cookieStore.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
+}
+
+export async function POST(req: NextRequest) {
+  if (!(await isAdmin())) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { agentId, plan } = await req.json();
+
+  if (!agentId || !["free", "pro"].includes(plan)) {
+    return Response.json({ error: "Invalid request." }, { status: 400 });
+  }
+
+  // "FREE" sentinel = Free plan; null = Pro plan (legacy-compatible)
+  const { error } = await supabase
+    .from("agents")
+    .update({ registration_ref: plan === "free" ? "FREE" : null })
+    .eq("id", agentId);
+
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+  return Response.json({ success: true });
+}

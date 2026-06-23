@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import type { Bundle } from "@/lib/bundles";
 import CheckoutModal from "@/components/CheckoutModal";
 import VoucherModal from "@/components/VoucherModal";
+import type { AgentSession } from "@/app/shop/[code]/page";
 
 interface Palette {
   from: string;
@@ -39,24 +40,47 @@ interface Props {
   agentName: string;
   agentWhatsapp: string;
   agentCode: string;
+  agentSession?: AgentSession | null;
+  onAgentLoginRequest?: () => void;
+  onAgentLogout?: () => void;
+  onWalletBalanceChange?: (newBalance: number) => void;
 }
 
 const MAIN_WHATSAPP = "233509794503";
 
-export default function AgentStorefront({ shopName, agentWhatsapp, agentCode }: Props) {
-  // Use agent's own WhatsApp if available, otherwise fall back to main site number
+export default function AgentStorefront({
+  shopName,
+  agentWhatsapp,
+  agentCode,
+  agentSession,
+  onAgentLoginRequest,
+  onAgentLogout,
+  onWalletBalanceChange,
+}: Props) {
   const supportNumber = agentWhatsapp && agentWhatsapp.length > 5 ? agentWhatsapp : MAIN_WHATSAPP;
   const palette = getShopPalette(shopName);
   const [bundles, setBundles] = useState<Bundle[]>([]);
+  const [tierPrices, setTierPrices] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [network, setNetwork] = useState<"mtn" | "telecel" | "airteltigo">("mtn");
   const [selected, setSelected] = useState<Bundle | null>(null);
+  const [walletSelected, setWalletSelected] = useState<{ bundle: Bundle; tierPrice: number } | null>(null);
   const [voucherOpen, setVoucherOpen] = useState(false);
 
+  // Is this agent viewing their own shop?
+  const isOwnShop = !!agentSession && agentSession.referralCode === agentCode;
+
   useEffect(() => {
-    fetch(`/api/bundles?agent=${encodeURIComponent(agentCode)}`)
-      .then((r) => r.json())
-      .then((d) => { setBundles(d.bundles ?? []); setLoading(false); });
+    Promise.all([
+      fetch(`/api/bundles?agent=${encodeURIComponent(agentCode)}`).then(r => r.json()),
+      fetch(`/api/agent-tier-prices?agentCode=${encodeURIComponent(agentCode)}`).then(r => r.json()),
+    ]).then(([bd, td]) => {
+      setBundles(bd.bundles ?? []);
+      const tm: Record<string, number> = {};
+      for (const p of (td.prices ?? [])) tm[p.bundle_id] = Number(p.price);
+      setTierPrices(tm);
+      setLoading(false);
+    });
   }, [agentCode]);
 
   const filtered = bundles
@@ -75,13 +99,44 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode }: 
             <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center font-black text-white text-xl border border-white/30 shrink-0">
               {initial}
             </div>
-            <div>
+            <div className="flex-1">
               <h1 className="text-white font-black text-xl leading-tight">{shopName}</h1>
               <p className="text-white/70 text-sm">Data Bundles · Fast Delivery</p>
             </div>
+            {/* Agent login/logout button */}
+            {isOwnShop ? (
+              <button
+                onClick={onAgentLogout}
+                style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.4)", borderRadius: 10, color: "white", padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+              >
+                Agent ✓
+              </button>
+            ) : (
+              <button
+                onClick={onAgentLoginRequest}
+                style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, color: "white", padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+              >
+                Agent Login
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Wallet balance bar for own-shop agents */}
+      {isOwnShop && agentSession && (
+        <div style={{ background: "#f0fdf4", borderBottom: "1px solid #bbf7d0" }}>
+          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div>
+              <p style={{ color: "#16a34a", fontWeight: 900, fontSize: 16, margin: 0 }}>
+                Wallet: GH₵{agentSession.walletBalance.toFixed(2)}
+              </p>
+              <p style={{ color: "#4ade80", fontSize: 11, margin: 0 }}>Tap a bundle to pay instantly from wallet</p>
+            </div>
+            <span style={{ background: "#dcfce7", color: "#15803d", padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 800 }}>Agent Mode</span>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="max-w-2xl mx-auto px-4 py-5 pb-16 space-y-5">
@@ -113,16 +168,26 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode }: 
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {filtered.map((b) => (
-              <button key={b.id} onClick={() => setSelected(b)}
+              <button key={b.id}
+                onClick={() => {
+                  if (isOwnShop) {
+                    const tp = tierPrices[b.id] ?? b.costPrice;
+                    setWalletSelected({ bundle: b, tierPrice: tp });
+                  } else {
+                    setSelected(b);
+                  }
+                }}
                 className="bg-white rounded-2xl shadow-sm p-4 text-left hover:shadow-md transition-all border border-transparent hover:border-white/80 group">
                 <div className="text-xs font-black mb-2 px-2 py-0.5 rounded-full inline-block text-white"
                   style={gradStyle}>
                   {b.network === "airteltigo" ? "AT" : b.network.toUpperCase()}
                 </div>
                 <p className="font-black text-gray-800 text-lg leading-none mb-0.5">{b.size}</p>
-                <p className="font-black text-xl" style={{ color: palette.btn }}>GH₵{b.price.toFixed(2)}</p>
+                <p className="font-black text-xl" style={{ color: palette.btn }}>
+                  GH₵{isOwnShop ? (tierPrices[b.id] ?? b.costPrice).toFixed(2) : b.price.toFixed(2)}
+                </p>
                 <div className="mt-3 w-full py-1.5 rounded-xl text-xs font-bold text-white text-center" style={gradStyle}>
-                  Buy Now
+                  {isOwnShop ? "⚡ Pay with Wallet" : "Buy Now"}
                 </div>
               </button>
             ))}
@@ -152,7 +217,7 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode }: 
           </button>
         </div>
 
-        {/* WhatsApp support — shows agent's own number, falls back to main site number */}
+        {/* WhatsApp support */}
         <a href={`https://wa.me/${supportNumber}`} target="_blank" rel="noreferrer"
           className="flex items-center gap-3 bg-white rounded-2xl shadow-sm p-4 hover:shadow-md transition-all">
           <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center shrink-0">
@@ -180,18 +245,155 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode }: 
           ))}
         </div>
 
-        {/* Info note */}
         <p className="text-center text-xs text-gray-400">
           All bundles are delivered within 1–5 minutes after payment.
         </p>
       </div>
 
+      {/* Paystack checkout (non-agent customers) */}
       {selected && (
         <CheckoutModal bundle={selected} agentCode={agentCode} onClose={() => setSelected(null)} />
       )}
+
+      {/* Wallet checkout (own-shop agent mode) */}
+      {walletSelected && agentSession && (
+        <WalletCheckoutModal
+          bundle={walletSelected.bundle}
+          tierPrice={walletSelected.tierPrice}
+          agentSession={agentSession}
+          palette={palette}
+          onClose={() => setWalletSelected(null)}
+          onSuccess={(newBalance) => {
+            setWalletSelected(null);
+            onWalletBalanceChange?.(newBalance);
+          }}
+        />
+      )}
+
       {voucherOpen && (
         <VoucherModal agentCode={agentCode} onClose={() => setVoucherOpen(false)} />
       )}
+    </div>
+  );
+}
+
+// ─── Wallet Checkout Modal ────────────────────────────────────────────────────
+function WalletCheckoutModal({
+  bundle,
+  tierPrice,
+  agentSession,
+  palette,
+  onClose,
+  onSuccess,
+}: {
+  bundle: Bundle;
+  tierPrice: number;
+  agentSession: AgentSession;
+  palette: Palette;
+  onClose: () => void;
+  onSuccess: (newBalance: number) => void;
+}) {
+  const [phone, setPhone] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState<{ phone: string; pending?: boolean } | null>(null);
+  const gradStyle = { background: `linear-gradient(135deg, ${palette.from}, ${palette.to})` };
+
+  async function pay() {
+    const cleaned = phone.replace(/\s/g, "");
+    if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setError("Enter a valid Ghana phone number (e.g. 0241234567)."); return; }
+    if (agentSession.walletBalance < tierPrice) {
+      setError(`Insufficient wallet balance. Need GH₵${tierPrice.toFixed(2)}, you have GH₵${agentSession.walletBalance.toFixed(2)}.`);
+      return;
+    }
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/agents/wallet-purchase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: agentSession.id,
+          referralCode: agentSession.referralCode,
+          phone: cleaned,
+          bundleId: bundle.id,
+          network: bundle.network,
+          bundleSize: bundle.size,
+          sizeGB: bundle.sizeGB,
+        }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        onSuccess(d.newWalletBalance ?? agentSession.walletBalance - tierPrice);
+        setSuccess({ phone: cleaned, pending: d.pending });
+      } else {
+        setError(d.error ?? "Payment failed. Try again.");
+      }
+    } catch { setError("Network error. Try again."); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 0 env(safe-area-inset-bottom)" }}>
+      <div style={{ background: "white", borderRadius: "24px 24px 0 0", padding: "24px 24px 32px", width: "100%", maxWidth: 480, boxShadow: "0 -10px 40px rgba(0,0,0,0.2)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <div>
+            <p style={{ fontWeight: 900, fontSize: 18, color: "#1e293b", margin: 0 }}>Wallet Checkout</p>
+            <p style={{ color: "#64748b", fontSize: 13, margin: "2px 0 0" }}>Agent Mode — Instant Delivery</p>
+          </div>
+          <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 10, padding: "8px 12px", fontSize: 18, cursor: "pointer", color: "#64748b" }}>✕</button>
+        </div>
+
+        {success ? (
+          <div style={{ textAlign: "center", padding: "16px 0" }}>
+            <p style={{ fontSize: 48, margin: "0 0 12px" }}>{success.pending ? "⏳" : "✅"}</p>
+            <p style={{ fontWeight: 900, fontSize: 18, color: "#1e293b", margin: "0 0 6px" }}>
+              {success.pending ? "Order Sent!" : "Data Delivered!"}
+            </p>
+            <p style={{ color: "#64748b", fontSize: 14, margin: "0 0 4px" }}>
+              {bundle.network.toUpperCase()} {bundle.size} → {success.phone}
+            </p>
+            {success.pending && <p style={{ color: "#92400e", fontSize: 12, margin: "6px 0 0" }}>Delivery in 1–5 minutes</p>}
+            <button onClick={onClose} style={{ marginTop: 20, ...gradStyle, color: "white", border: "none", borderRadius: 12, padding: "12px 32px", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>Done</button>
+          </div>
+        ) : (
+          <>
+            {/* Bundle summary */}
+            <div style={{ background: "#f8fafc", borderRadius: 14, padding: "14px 16px", marginBottom: 18, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <p style={{ fontWeight: 900, fontSize: 17, color: "#1e293b", margin: 0 }}>{bundle.size} — {bundle.network.toUpperCase()}</p>
+                <p style={{ color: "#64748b", fontSize: 12, margin: "2px 0 0" }}>{bundle.validity}</p>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <p style={{ fontWeight: 900, fontSize: 18, color: palette.btn, margin: 0 }}>GH₵{tierPrice.toFixed(2)}</p>
+                <p style={{ color: "#94a3b8", fontSize: 11, margin: 0 }}>from wallet</p>
+              </div>
+            </div>
+
+            {/* Wallet balance */}
+            <div style={{ background: "#f0fdf4", borderRadius: 10, padding: "10px 14px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 13, color: "#166534", fontWeight: 600 }}>Wallet Balance</span>
+              <span style={{ fontSize: 15, fontWeight: 900, color: "#16a34a" }}>GH₵{agentSession.walletBalance.toFixed(2)}</span>
+            </div>
+
+            <p style={{ fontSize: 12, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, margin: "0 0 6px" }}>Recipient Phone Number</p>
+            <input
+              type="tel"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="0241234567"
+              style={{ border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "12px 14px", fontSize: 16, fontWeight: 700, width: "100%", outline: "none", color: "#1e293b", boxSizing: "border-box", marginBottom: 14 }}
+            />
+            {error && <p style={{ color: "#dc2626", fontSize: 13, fontWeight: 600, margin: "0 0 12px" }}>{error}</p>}
+            <button
+              onClick={pay}
+              disabled={loading}
+              style={{ width: "100%", ...gradStyle, color: "white", border: "none", borderRadius: 12, padding: "14px", fontSize: 16, fontWeight: 900, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}
+            >
+              {loading ? "Processing…" : `⚡ Pay GH₵${tierPrice.toFixed(2)} from Wallet`}
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

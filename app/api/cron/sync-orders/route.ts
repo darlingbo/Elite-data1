@@ -122,17 +122,22 @@ export async function GET(request: NextRequest) {
     await Promise.all(chunk.map(async (order) => {
       const invStatus = await checkInventorOrder(order.reference);
 
+      // Wallet purchases are auto-fulfilled — never notify admin, just handle silently
+      const isWalletOrder = order.reference.startsWith("AGTWALLET-");
+
       if (invStatus === "completed") {
         await supabase.from("orders").update({ status: "completed" }).eq("reference", order.reference);
         if (order.agent_id) {
-          // agent_commission now stores correct value for both commission and custom_price agents
           await creditAgent(order.agent_id, Number(order.agent_commission) || 0, Number(order.amount) || 0);
         }
-        const profit = (order.amount && order.cost_price) ? (Number(order.amount) - Number(order.cost_price)).toFixed(2) : null;
-        completedOrders.push(
-          `✅ ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → ${order.phone}` +
-          (profit ? ` | Profit: GH₵${profit}` : "")
-        );
+        // Skip admin notification for wallet purchases — agent handled it themselves
+        if (!isWalletOrder) {
+          const profit = (order.amount && order.cost_price) ? (Number(order.amount) - Number(order.cost_price)).toFixed(2) : null;
+          completedOrders.push(
+            `✅ ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → ${order.phone}` +
+            (profit ? ` | Profit: GH₵${profit}` : "")
+          );
+        }
         updated++;
         return;
       }
@@ -150,23 +155,34 @@ export async function GET(request: NextRequest) {
 
       const isStuck = order.created_at < stuckCutoff;
       if (isStuck && order.phone && order.network && sizeGb) {
-        // Ask admin for approval before sending — prevents double delivery
-        await supabase.from("orders").update({ status: "pending_approval" }).eq("reference", order.reference);
-        await sendAdminAlert(
-          `⚠️ <b>STUCK ORDER — Approve Send?</b>\n\n` +
-          `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
-          `📎 Ref: <code>${order.reference}</code>\n\n` +
-          `This order has been stuck for 15+ min. Did you already send this manually?\n` +
-          `Tap <b>YES</b> to send now, or <b>NO</b> if already done.`,
-          {
-            inline_keyboard: [[
-              { text: "✅ YES — Send Now", callback_data: `approve_retry:${order.reference}` },
-              { text: "❌ NO — Already Done", callback_data: `skip_retry:${order.reference}` },
-            ]],
+        if (isWalletOrder) {
+          // Wallet orders: auto-retry without asking admin
+          const retryResult = await retryDelivery({ ...order, bundle_size_gb: sizeGb });
+          if (retryResult === "sent" || retryResult === "already_processing") {
+            await supabase.from("orders").update({ status: "processing" }).eq("reference", order.reference);
+          } else {
+            await supabase.from("orders").update({ status: "failed" }).eq("reference", order.reference);
           }
-        );
-        retried++;
-        retriedOrders.push(`⚠️ ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (awaiting approval)`);
+          retried++;
+        } else {
+          // Normal orders: ask admin for approval before sending
+          await supabase.from("orders").update({ status: "pending_approval" }).eq("reference", order.reference);
+          await sendAdminAlert(
+            `⚠️ <b>STUCK ORDER — Approve Send?</b>\n\n` +
+            `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
+            `📎 Ref: <code>${order.reference}</code>\n\n` +
+            `This order has been stuck for 15+ min. Did you already send this manually?\n` +
+            `Tap <b>YES</b> to send now, or <b>NO</b> if already done.`,
+            {
+              inline_keyboard: [[
+                { text: "✅ YES — Send Now", callback_data: `approve_retry:${order.reference}` },
+                { text: "❌ NO — Already Done", callback_data: `skip_retry:${order.reference}` },
+              ]],
+            }
+          );
+          retried++;
+          retriedOrders.push(`⚠️ ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (awaiting approval)`);
+        }
       }
     }));
   }

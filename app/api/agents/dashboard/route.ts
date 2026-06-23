@@ -75,7 +75,7 @@ async function handleAgentResponse(
   password: string | null
 ) {
   if (agent.status === "pending") {
-    return Response.json({ error: "Your application is still under review. Contact admin on WhatsApp." }, { status: 403 });
+    return Response.json({ error: "Your Free Agent application is still under review. Contact admin on WhatsApp: https://wa.me/233509794503", status: "pending" }, { status: 403 });
   }
   if (agent.status !== "approved") {
     return Response.json({ error: "Agent not found or not yet approved." }, { status: 404 });
@@ -129,7 +129,7 @@ async function handleAgentResponse(
       pending_commission: parseFloat(pendingCommission.toFixed(2)),
       total_sales: agent.total_sales ?? 0,
       total_revenue: agent.total_revenue ?? 0,
-      agent_type: agent.agent_type ?? "commission",
+      agent_type: agent.agent_type ?? "custom_price",
       business_name: agent.business_name ?? null,
       telegram_chat_id: agent.telegram_chat_id ?? null,
       orders: allOrders,

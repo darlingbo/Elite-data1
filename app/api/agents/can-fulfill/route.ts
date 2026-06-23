@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { bundles as staticBundles } from "@/lib/bundles";
+import { getAgentBundleCost } from "@/lib/agent-pricing";
 
 export async function GET(request: NextRequest) {
   const agentCode = request.nextUrl.searchParams.get("agentCode");
@@ -10,36 +10,22 @@ export async function GET(request: NextRequest) {
     return Response.json({ canFulfill: true });
   }
 
-  const [agentResult, costResult] = await Promise.all([
-    supabase
-      .from("agents")
-      .select("wallet_balance, agent_type, status")
-      .eq("referral_code", agentCode.toUpperCase())
-      .eq("status", "approved")
-      .maybeSingle(),
-    supabase
-      .from("bundle_prices")
-      .select("cost_price")
-      .eq("id", bundleId)
-      .eq("active", true)
-      .maybeSingle(),
-  ]);
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("wallet_balance, agent_type, status, registration_ref")
+    .eq("referral_code", agentCode.toUpperCase())
+    .eq("status", "approved")
+    .maybeSingle();
 
-  const agent = agentResult.data;
   if (!agent || agent.agent_type !== "custom_price") {
     return Response.json({ canFulfill: true });
   }
 
-  // Try DB cost price first, fall back to static bundle list
-  const rawCost = costResult.data?.cost_price
-    ?? staticBundles.find((b) => b.id === bundleId)?.costPrice;
-
-  if (rawCost == null) {
-    return Response.json({ canFulfill: true });
-  }
+  const cost = await getAgentBundleCost(bundleId, agent.registration_ref);
+  if (cost == null) return Response.json({ canFulfill: true });
 
   const walletBalance = Number(agent.wallet_balance ?? 0);
-  const canFulfill = walletBalance >= Number(rawCost);
+  const canFulfill = walletBalance >= cost;
 
   return Response.json({
     canFulfill,

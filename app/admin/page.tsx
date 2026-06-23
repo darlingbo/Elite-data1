@@ -30,7 +30,7 @@ interface Order {
 interface Agent {
   id: string; name: string; email: string; phone: string; whatsapp?: string; business_name: string;
   referral_code: string; status: string; agent_type?: string; commission_balance: number; wallet_balance?: number;
-  total_sales: number; total_revenue: number; created_at: string;
+  total_sales: number; total_revenue: number; created_at: string; registration_ref?: string | null;
 }
 interface StatsData {
   orders: { all: Order[]; total: number; completed: number; processing: number; pending: number; failed: number };
@@ -1050,6 +1050,7 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
   const [switchModal, setSwitchModal] = useState<{ id: string; name: string; currentType: string } | null>(null);
   const [switching, setSwitching] = useState(false);
   const [switchMsg, setSwitchMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [planToggling, setPlanToggling] = useState<string | null>(null);
 
   useEffect(() => { setAgentTab(defaultTab); }, [defaultTab]);
 
@@ -1064,6 +1065,16 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
       else setSwitchMsg({ text: d.error ?? "Failed", ok: false });
     } catch { setSwitchMsg({ text: "Network error", ok: false }); }
     finally { setSwitching(false); setSwitchModal(null); setTimeout(() => setSwitchMsg(null), 5000); }
+  }
+
+  async function togglePlan(agentId: string, currentRef: string | null | undefined) {
+    const currentPlan = currentRef === "FREE" ? "free" : "pro";
+    const newPlan = currentPlan === "pro" ? "free" : "pro";
+    setPlanToggling(agentId);
+    try {
+      await fetch("/api/admin/agents/set-plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId, plan: newPlan }) });
+      onRefresh();
+    } finally { setPlanToggling(null); }
   }
 
   async function handleAction() {
@@ -1104,11 +1115,15 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
                 <th className="px-4 py-3 text-left font-semibold">Business</th>
                 {agentTab === "approved" && <>
                   <th className="px-4 py-3 text-left font-semibold">Type</th>
+                  <th className="px-4 py-3 text-left font-semibold">Plan</th>
                   <th className="px-4 py-3 text-left font-semibold">Sales</th>
                   <th className="px-4 py-3 text-left font-semibold">Balance</th>
                   <th className="px-4 py-3 text-left font-semibold">Ref Code</th>
                 </>}
-                {agentTab === "pending" && <th className="px-4 py-3 text-left font-semibold">Applied</th>}
+                {agentTab === "pending" && <>
+                  <th className="px-4 py-3 text-left font-semibold">Plan</th>
+                  <th className="px-4 py-3 text-left font-semibold">Applied</th>
+                </>}
                 <th className="px-4 py-3 text-left font-semibold">Actions</th>
               </tr>
             </thead>
@@ -1126,11 +1141,25 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
                         {a.agent_type === "custom_price" ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>Price Mode ⇄</span> : <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", border: "1px solid rgba(16,185,129,0.25)" }}>Commission ⇄</span>}
                       </button>
                     </td>
+                    <td className="px-4 py-3.5">
+                      <button onClick={() => togglePlan(a.id, a.registration_ref)} disabled={planToggling === a.id} title="Click to switch plan" className="hover:opacity-70 transition-opacity disabled:opacity-40">
+                        {a.registration_ref === "FREE"
+                          ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", border: "1px solid rgba(16,185,129,0.25)" }}>Free ⇄</span>
+                          : <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>Pro ⇄</span>}
+                      </button>
+                    </td>
                     <td className="px-4 py-3.5 font-bold text-white">{a.total_sales}</td>
                     <td className="px-4 py-3.5 font-black" style={{ color: "#4ade80" }}>GH₵{(a.commission_balance ?? 0).toFixed(2)}</td>
                     <td className="px-4 py-3.5 font-mono text-xs font-bold" style={{ color: "#60a5fa" }}>{a.referral_code}</td>
                   </>}
-                  {agentTab === "pending" && <td className="px-4 py-3.5 text-slate-500 text-xs">{new Date(a.created_at).toLocaleDateString("en-GH")}</td>}
+                  {agentTab === "pending" && <>
+                    <td className="px-4 py-3.5">
+                      {a.registration_ref && a.registration_ref !== "FREE"
+                        ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>⚡ Pro</span>
+                        : <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", border: "1px solid rgba(16,185,129,0.25)" }}>Free</span>}
+                    </td>
+                    <td className="px-4 py-3.5 text-slate-500 text-xs">{new Date(a.created_at).toLocaleDateString("en-GH")}</td>
+                  </>}
                   <td className="px-4 py-3.5">
                     {agentTab === "pending" && (
                       <div className="flex gap-2">

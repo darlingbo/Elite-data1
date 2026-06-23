@@ -152,10 +152,18 @@ function SalesChart({ data }: { data: { label: string; revenue: number }[] }) {
 function LoginForm({ onLogin }: { onLogin: (d: AgentData) => void }) {
   const [tab, setTab] = useState<"email" | "code">("email");
   const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [code, setCode] = useState("");
-  const [loading, setLoading] = useState(false); const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [isPending, setIsPending] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMsg, setForgotMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [forgotNewPass, setForgotNewPass] = useState<string | null>(null);
+  const [passCopied, setPassCopied] = useState(false);
 
   async function handleLogin() {
-    setError(""); setLoading(true);
+    setError(""); setIsPending(false); setLoading(true);
     try {
       let res: Response;
       if (tab === "code") {
@@ -167,12 +175,95 @@ function LoginForm({ onLogin }: { onLogin: (d: AgentData) => void }) {
       }
       const j = await res.json();
       if (j.success) onLogin(j.agent);
-      else setError(j.error || "Login failed. Check your details.");
+      else {
+        if (j.status === "pending") setIsPending(true);
+        setError(j.error || "Login failed. Check your details.");
+      }
     } catch { setError("Network error. Try again."); }
     finally { setLoading(false); }
   }
 
+  async function handleForgot() {
+    if (!forgotEmail.trim()) { setForgotMsg({ text: "Enter your email address.", ok: false }); return; }
+    setForgotLoading(true); setForgotMsg(null); setForgotNewPass(null);
+    try {
+      const res = await fetch("/api/agents/forgot-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: forgotEmail.trim().toLowerCase() }) });
+      const j = await res.json();
+      if (j.success && j.show && j.tempPassword) {
+        setForgotNewPass(j.tempPassword);
+        setForgotMsg({ text: j.message || "New password created. Copy it below then log in.", ok: true });
+      } else {
+        setForgotMsg({ text: j.error ?? j.message ?? "Done.", ok: !!j.success });
+      }
+    } catch { setForgotMsg({ text: "Network error. Try again.", ok: false }); }
+    finally { setForgotLoading(false); }
+  }
+
   const inp: React.CSSProperties = { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "11px 14px", color: "#0f172a", fontSize: 14, width: "100%", outline: "none", boxSizing: "border-box" };
+
+  if (showForgot) {
+    return (
+      <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#0d1b2e,#1e1b4b)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+        <div style={{ width: "100%", maxWidth: 400 }}>
+          <div style={{ textAlign: "center", marginBottom: 32 }}>
+            <div style={{ width: 56, height: 56, borderRadius: 18, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", fontSize: 22, fontWeight: 900, color: "white" }}>E</div>
+            <h1 style={{ fontSize: 24, fontWeight: 900, color: "#f8fafc", margin: "0 0 6px" }}>Reset Password</h1>
+            <p style={{ fontSize: 14, color: "#94a3b8", margin: 0 }}>Enter your email — your new password will appear right here</p>
+          </div>
+          <div style={{ background: "white", borderRadius: 20, padding: 28, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+            {forgotNewPass ? (
+              /* Step 2 — show the new password */
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+                  <p style={{ fontWeight: 900, fontSize: 17, color: "#0f172a", margin: "0 0 4px" }}>Account Confirmed!</p>
+                  <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>Here is your new temporary password:</p>
+                </div>
+                <div style={{ background: "#f8fafc", border: "2px dashed #3b82f6", borderRadius: 14, padding: "18px 20px", textAlign: "center" }}>
+                  <p style={{ fontSize: 28, fontWeight: 900, letterSpacing: 6, color: "#1e293b", margin: "0 0 8px", fontFamily: "monospace" }}>{forgotNewPass}</p>
+                  <button
+                    onClick={() => { navigator.clipboard?.writeText(forgotNewPass ?? ""); setPassCopied(true); setTimeout(() => setPassCopied(false), 2500); }}
+                    style={{ background: passCopied ? "#16a34a" : "#3b82f6", color: "white", border: "none", borderRadius: 8, padding: "7px 20px", fontSize: 13, fontWeight: 800, cursor: "pointer" }}
+                  >
+                    {passCopied ? "✓ Copied!" : "Copy Password"}
+                  </button>
+                </div>
+                <p style={{ color: "#f59e0b", fontSize: 12, fontWeight: 600, textAlign: "center", margin: 0 }}>
+                  Save this password before leaving this screen.
+                </p>
+                <button
+                  onClick={() => { setShowForgot(false); setForgotNewPass(null); setForgotMsg(null); setTab("email"); setEmail(forgotEmail); setPassword(forgotNewPass ?? ""); setForgotEmail(""); }}
+                  style={{ background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 12, padding: "13px", fontSize: 15, fontWeight: 800, cursor: "pointer" }}
+                >
+                  Go to Login
+                </button>
+              </div>
+            ) : (
+              /* Step 1 — enter email */
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>Your Email Address</label>
+                  <input style={inp} type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} placeholder="you@example.com" onKeyDown={e => e.key === "Enter" && handleForgot()} />
+                </div>
+                {forgotMsg && !forgotMsg.ok && (
+                  <div style={{ padding: "10px 12px", borderRadius: 10, background: "#fee2e2", color: "#dc2626", fontSize: 13, fontWeight: 600 }}>
+                    {forgotMsg.text}
+                  </div>
+                )}
+                <button onClick={handleForgot} disabled={forgotLoading} style={{ background: forgotLoading ? "#94a3b8" : "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 12, padding: "13px", fontSize: 15, fontWeight: 800, cursor: forgotLoading ? "not-allowed" : "pointer" }}>
+                  {forgotLoading ? "Checking…" : "Get New Password"}
+                </button>
+                <button onClick={() => { setShowForgot(false); setForgotMsg(null); setForgotNewPass(null); }} style={{ background: "none", border: "none", color: "#64748b", fontSize: 13, cursor: "pointer", textDecoration: "underline" }}>
+                  Back to Login
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#0d1b2e,#1e1b4b)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ width: "100%", maxWidth: 400 }}>
@@ -193,12 +284,30 @@ function LoginForm({ onLogin }: { onLogin: (d: AgentData) => void }) {
             {tab === "email" ? (
               <>
                 <div><label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>Email</label><input style={inp} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" onKeyDown={e => e.key === "Enter" && handleLogin()} /></div>
-                <div><label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>Password</label><input style={inp} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && handleLogin()} /></div>
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8 }}>Password</label>
+                    <button type="button" onClick={() => setShowForgot(true)} style={{ background: "none", border: "none", color: "#3b82f6", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>Forgot password?</button>
+                  </div>
+                  <input style={inp} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && handleLogin()} />
+                </div>
               </>
             ) : (
               <div><label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>Referral Code</label><input style={inp} value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. STEP0001" onKeyDown={e => e.key === "Enter" && handleLogin()} /></div>
             )}
-            {error && <p style={{ color: "#dc2626", fontSize: 13, margin: 0, background: "#fee2e2", padding: "10px 12px", borderRadius: 10 }}>{error}</p>}
+            {error && (
+              <div style={{ background: isPending ? "#fef3c7" : "#fee2e2", border: `1px solid ${isPending ? "#fde68a" : "#fecaca"}`, borderRadius: 10, padding: "12px 14px" }}>
+                <p style={{ color: isPending ? "#92400e" : "#dc2626", fontSize: 13, margin: "0 0 6px", fontWeight: 700 }}>{isPending ? "⏳ Application Pending" : error}</p>
+                {isPending && (
+                  <>
+                    <p style={{ color: "#92400e", fontSize: 12, margin: "0 0 8px" }}>Your Free Agent application is under review. Contact admin to get approved faster.</p>
+                    <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#16a34a", color: "white", textDecoration: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700 }}>
+                      💬 Contact Admin on WhatsApp
+                    </a>
+                  </>
+                )}
+              </div>
+            )}
             <button onClick={handleLogin} disabled={loading} style={{ background: loading ? "#94a3b8" : "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 12, padding: "13px", fontSize: 15, fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", marginTop: 4 }}>
               {loading ? "Signing in…" : "Sign In"}
             </button>
@@ -882,7 +991,7 @@ function PricesPage({ data }: { data: AgentData }) {
   const [activeNet, setActiveNet] = useState<"mtn" | "telecel" | "airteltigo">("mtn");
 
   useEffect(() => {
-    Promise.all([fetch("/api/bundles").then(r => r.json()), fetch("/api/agent-tier-prices").then(r => r.json()), fetch(`/api/agents/prices?agentId=${data.id}`).then(r => r.json())]).then(([b, tier, agent]) => {
+    Promise.all([fetch("/api/bundles").then(r => r.json()), fetch(`/api/agent-tier-prices?agentCode=${data.referral_code}`).then(r => r.json()), fetch(`/api/agents/prices?agentId=${data.id}`).then(r => r.json())]).then(([b, tier, agent]) => {
       setDbBundles(b.bundles ?? []);
       const tm: Record<string, number> = {}; for (const p of (tier.prices ?? [])) tm[p.bundle_id] = Number(p.price); setTierPrices(tm);
       const am: Record<string, number> = {}; for (const p of (agent.prices ?? [])) am[p.bundle_id] = Number(p.custom_price); setAgentPrices(am);
@@ -944,22 +1053,70 @@ function PricesPage({ data }: { data: AgentData }) {
 }
 
 // ─── Place Order Page ─────────────────────────────────────────────────────────
-function PlaceOrderPage({ data }: { data: AgentData }) {
+function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () => void }) {
+  const [mode, setMode] = useState<"wallet" | "manual">("wallet");
   const [activeNet, setActiveNet] = useState<"mtn" | "telecel" | "airteltigo">("mtn");
   const [dbBundles, setDbBundles] = useState<BundleItem[]>([]);
+  const [tierPrices, setTierPrices] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<BundleItem | null>(null);
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [history, setHistory] = useState<ManualOrder[]>([]);
   const [histLoading, setHistLoading] = useState(true);
+  const [walletBalance, setWalletBalance] = useState(data.wallet_balance ?? 0);
 
   useEffect(() => {
-    fetch("/api/bundles").then(r => r.json()).then(d => setDbBundles(d.bundles ?? []));
+    Promise.all([
+      fetch("/api/bundles").then(r => r.json()),
+      fetch(`/api/agent-tier-prices?agentCode=${data.referral_code}`).then(r => r.json()),
+    ]).then(([b, tier]) => {
+      setDbBundles(b.bundles ?? []);
+      const tm: Record<string, number> = {};
+      for (const p of (tier.prices ?? [])) tm[p.bundle_id] = Number(p.price);
+      setTierPrices(tm);
+    });
     fetch(`/api/agents/manual-order?agentId=${data.id}`).then(r => r.json()).then(d => { setHistory(d.orders ?? []); setHistLoading(false); }).catch(() => setHistLoading(false));
   }, [data.id]);
 
-  async function submitOrder() {
+  async function submitWalletOrder() {
+    const cleaned = phone.replace(/\s/g, "");
+    if (!selected) { setMsg({ text: "Select a bundle first.", ok: false }); return; }
+    if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setMsg({ text: "Enter a valid Ghana phone number (e.g. 0241234567).", ok: false }); return; }
+    const cost = tierPrices[selected.id] ?? selected.costPrice;
+    if (walletBalance < cost) {
+      setMsg({ text: `Insufficient wallet balance. Need GH₵${cost.toFixed(2)}, you have GH₵${walletBalance.toFixed(2)}.`, ok: false });
+      return;
+    }
+    setLoading(true); setMsg(null);
+    try {
+      const res = await fetch("/api/agents/wallet-purchase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: data.id,
+          referralCode: data.referral_code,
+          phone: cleaned,
+          bundleId: selected.id,
+          network: selected.network,
+          bundleSize: selected.size,
+          sizeGB: selected.sizeGB,
+        }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setWalletBalance(d.newWalletBalance ?? walletBalance - cost);
+        setMsg({ text: d.pending ? `⏳ Order sent for ${cleaned}. Delivery within 1–5 minutes.` : `✅ ${selected.network.toUpperCase()} ${selected.size} delivered to ${cleaned}!`, ok: true });
+        setPhone(""); setSelected(null);
+        onRefresh();
+      } else {
+        setMsg({ text: d.error ?? "Order failed. Try again.", ok: false });
+      }
+    } catch { setMsg({ text: "Network error. Try again.", ok: false }); }
+    finally { setLoading(false); }
+  }
+
+  async function submitManualOrder() {
     const cleaned = phone.replace(/\s/g, "");
     if (!selected) { setMsg({ text: "Select a bundle first.", ok: false }); return; }
     if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setMsg({ text: "Enter a valid Ghana phone number (e.g. 0241234567).", ok: false }); return; }
@@ -979,10 +1136,41 @@ function PlaceOrderPage({ data }: { data: AgentData }) {
   const nets: { id: "mtn" | "telecel" | "airteltigo"; label: string }[] = [{ id: "mtn", label: "MTN" }, { id: "telecel", label: "Telecel" }, { id: "airteltigo", label: "AirtelTigo" }];
   const netColor: Record<string, string> = { mtn: M.amber, telecel: M.red, airteltigo: M.purple };
   const netBundles = dbBundles.filter(b => b.network === activeNet);
+  const selectedCost = selected ? (tierPrices[selected.id] ?? selected.costPrice) : 0;
+  const canAfford = walletBalance >= selectedCost;
+
+  const isWallet = mode === "wallet";
+  const submitFn = isWallet ? submitWalletOrder : submitManualOrder;
+  const btnDisabled = loading || !selected || (isWallet && !canAfford && !!selected);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div><h2 style={{ color: M.text, fontSize: 18, fontWeight: 900, margin: 0 }}>Place a Manual Order</h2><p style={{ color: M.muted, fontSize: 13, margin: "4px 0 0" }}>Submit a data order for your customer. Admin will fulfill it and credit your commission.</p></div>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h2 style={{ color: M.text, fontSize: 18, fontWeight: 900, margin: 0 }}>Place Order</h2>
+          <p style={{ color: M.muted, fontSize: 13, margin: "4px 0 0" }}>{isWallet ? "Instant delivery from your wallet balance." : "Submit to admin — they'll fulfill and credit your commission."}</p>
+        </div>
+        {/* Mode toggle */}
+        <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 12, padding: 4, gap: 4 }}>
+          <button onClick={() => { setMode("wallet"); setMsg(null); }} style={{ padding: "8px 18px", borderRadius: 9, border: "none", background: isWallet ? "white" : "transparent", color: isWallet ? M.blue : M.muted, fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: isWallet ? "0 1px 4px rgba(0,0,0,0.1)" : "none" }}>⚡ Wallet</button>
+          <button onClick={() => { setMode("manual"); setMsg(null); }} style={{ padding: "8px 18px", borderRadius: 9, border: "none", background: !isWallet ? "white" : "transparent", color: !isWallet ? M.text : M.muted, fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: !isWallet ? "0 1px 4px rgba(0,0,0,0.1)" : "none" }}>Manual</button>
+        </div>
+      </div>
+
+      {/* Wallet balance banner */}
+      {isWallet && (
+        <div style={{ background: walletBalance > 0 ? "#f0fdf4" : "#fef9c3", border: `1px solid ${walletBalance > 0 ? "#bbf7d0" : "#fef08a"}`, borderRadius: 14, padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+          <div>
+            <p style={{ color: M.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", margin: "0 0 2px" }}>Wallet Balance</p>
+            <p style={{ color: walletBalance > 0 ? "#16a34a" : "#92400e", fontWeight: 900, fontSize: 22, margin: 0 }}>GH₵{walletBalance.toFixed(2)}</p>
+          </div>
+          {walletBalance <= 5 && (
+            <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 10, padding: "8px 14px", fontSize: 12, color: "#92400e", fontWeight: 700 }}>
+              Low balance — top up to place orders
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 20, alignItems: "start" }} className="main-grid">
         {/* Bundle picker */}
@@ -996,14 +1184,23 @@ function PlaceOrderPage({ data }: { data: AgentData }) {
           <div style={{ display: "flex", flexDirection: "column" }}>
             {netBundles.map((b, i) => {
               const isSel = selected?.id === b.id;
+              const cost = tierPrices[b.id] ?? b.costPrice;
+              const affordable = walletBalance >= cost;
               return (
-                <button key={b.id} onClick={() => setSelected(b)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderTop: i > 0 ? `1px solid ${M.border}` : "none", background: isSel ? "#eff6ff" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
+                <button key={b.id} onClick={() => setSelected(b)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderTop: i > 0 ? `1px solid ${M.border}` : "none", background: isSel ? "#eff6ff" : "transparent", border: "none", cursor: "pointer", textAlign: "left", opacity: isWallet && !affordable ? 0.5 : 1 }}>
                   <div>
                     <p style={{ fontWeight: 800, color: isSel ? M.blue : M.text, fontSize: 15, margin: 0 }}>{b.size}</p>
                     <p style={{ color: M.muted, fontSize: 12, margin: "2px 0 0" }}>{b.validity}</p>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <p style={{ fontWeight: 900, color: isSel ? M.blue : M.text, fontSize: 16, margin: 0 }}>GH₵{b.price.toFixed(2)}</p>
+                    {isWallet ? (
+                      <>
+                        <p style={{ fontWeight: 900, color: isSel ? M.blue : M.text, fontSize: 16, margin: 0 }}>GH₵{cost.toFixed(2)}</p>
+                        <p style={{ color: M.muted, fontSize: 10, margin: 0 }}>from wallet</p>
+                      </>
+                    ) : (
+                      <p style={{ fontWeight: 900, color: isSel ? M.blue : M.text, fontSize: 16, margin: 0 }}>GH₵{b.price.toFixed(2)}</p>
+                    )}
                     {isSel && <span style={{ fontSize: 10, fontWeight: 700, background: "#dbeafe", color: M.blue, padding: "2px 8px", borderRadius: 20 }}>Selected ✓</span>}
                   </div>
                 </button>
@@ -1021,42 +1218,61 @@ function PlaceOrderPage({ data }: { data: AgentData }) {
               <div style={{ background: "#f8fafc", borderRadius: 12, padding: "14px 16px", marginBottom: 16, border: `2px solid ${M.blue}` }}>
                 <p style={{ color: M.muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", margin: "0 0 4px" }}>Selected Bundle</p>
                 <p style={{ color: M.text, fontWeight: 900, fontSize: 18, margin: "0 0 2px" }}>{selected.size} — {selected.network.toUpperCase()}</p>
-                <p style={{ color: M.muted, fontSize: 12, margin: 0 }}>{selected.validity} · GH₵{selected.price.toFixed(2)}</p>
+                <p style={{ color: M.muted, fontSize: 12, margin: 0 }}>
+                  {selected.validity} ·{" "}
+                  {isWallet
+                    ? <span>Cost: <strong style={{ color: M.blue }}>GH₵{selectedCost.toFixed(2)}</strong></span>
+                    : <span>GH₵{selected.price.toFixed(2)}</span>
+                  }
+                </p>
+                {isWallet && !canAfford && (
+                  <p style={{ color: M.red, fontSize: 12, fontWeight: 700, margin: "6px 0 0" }}>⚠ Insufficient wallet balance</p>
+                )}
               </div>
             ) : (
               <div style={{ background: "#f8fafc", borderRadius: 12, padding: "14px 16px", marginBottom: 16, textAlign: "center", color: M.muted, fontSize: 13 }}>← Pick a bundle from the list</div>
             )}
-            <p style={{ fontSize: 12, color: M.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, margin: "0 0 6px" }}>Customer Phone Number</p>
+            <p style={{ fontSize: 12, color: M.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, margin: "0 0 6px" }}>{isWallet ? "Recipient Phone Number" : "Customer Phone Number"}</p>
             <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0241234567" style={{ background: "#f8fafc", border: `1px solid ${M.border}`, borderRadius: 10, padding: "11px 14px", color: M.text, fontSize: 16, fontWeight: 700, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 16 }} />
             {msg && <div style={{ padding: "10px 14px", borderRadius: 10, background: msg.ok ? "#dcfce7" : "#fee2e2", color: msg.ok ? "#16a34a" : M.red, fontSize: 13, fontWeight: 700, marginBottom: 14 }}>{msg.text}</div>}
-            <button onClick={submitOrder} disabled={loading || !selected} style={{ width: "100%", background: !selected || loading ? "#94a3b8" : "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 12, padding: "14px", fontSize: 15, fontWeight: 800, cursor: !selected || loading ? "not-allowed" : "pointer" }}>
-              {loading ? "Placing Order…" : selected ? `Place Order · GH₵${selected.price.toFixed(2)}` : "Select a Bundle"}
+            <button onClick={submitFn} disabled={btnDisabled} style={{ width: "100%", background: btnDisabled ? "#94a3b8" : isWallet ? "linear-gradient(90deg,#16a34a,#15803d)" : "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 12, padding: "14px", fontSize: 15, fontWeight: 800, cursor: btnDisabled ? "not-allowed" : "pointer" }}>
+              {loading
+                ? (isWallet ? "Sending…" : "Placing Order…")
+                : selected
+                  ? isWallet
+                    ? `⚡ Pay GH₵${selectedCost.toFixed(2)} from Wallet`
+                    : `Place Order · GH₵${selected.price.toFixed(2)}`
+                  : "Select a Bundle"}
             </button>
-            <p style={{ color: M.muted, fontSize: 11, textAlign: "center", margin: "10px 0 0" }}>Admin will fulfill within minutes. Commission credited on completion.</p>
+            <p style={{ color: M.muted, fontSize: 11, textAlign: "center", margin: "10px 0 0" }}>
+              {isWallet ? "Data delivered instantly. Deducted from your wallet." : "Admin will fulfill within minutes. Commission credited on completion."}
+            </p>
           </div>
 
           {/* Recent manual orders */}
-          <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, overflow: "hidden" }}>
-            <div style={{ padding: "14px 20px", borderBottom: `1px solid ${M.border}` }}>
-              <p style={{ fontWeight: 800, color: M.text, fontSize: 14, margin: 0 }}>Recent Manual Orders</p>
-            </div>
-            {histLoading ? <div style={{ padding: 24, textAlign: "center", color: M.muted, fontSize: 13 }}>Loading…</div> : history.length === 0 ? (
-              <div style={{ padding: 24, textAlign: "center", color: M.muted, fontSize: 13 }}>No manual orders yet</div>
-            ) : history.slice(0, 5).map((o, i) => {
-              const nb = netBadge(o.network); const sb = statusBadge(o.status);
-              const cleanSize = (o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel|vodafone)\s+/i, "").trim();
-              return (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", borderBottom: i < Math.min(history.length, 5) - 1 ? `1px solid ${M.border}` : "none" }}>
-                  <span style={{ background: nb.bg, color: nb.color, padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{nb.label}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: M.text, fontWeight: 700, fontSize: 13, margin: 0 }}>{cleanSize} → {o.customer_phone}</p>
-                    <p style={{ color: M.muted, fontSize: 11, margin: 0 }}>{new Date(o.created_at).toLocaleDateString("en-GH", { day: "2-digit", month: "short" })}</p>
+          {!isWallet && (
+            <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, overflow: "hidden" }}>
+              <div style={{ padding: "14px 20px", borderBottom: `1px solid ${M.border}` }}>
+                <p style={{ fontWeight: 800, color: M.text, fontSize: 14, margin: 0 }}>Recent Manual Orders</p>
+              </div>
+              {histLoading ? <div style={{ padding: 24, textAlign: "center", color: M.muted, fontSize: 13 }}>Loading…</div> : history.length === 0 ? (
+                <div style={{ padding: 24, textAlign: "center", color: M.muted, fontSize: 13 }}>No manual orders yet</div>
+              ) : history.slice(0, 5).map((o, i) => {
+                const nb = netBadge(o.network); const sb = statusBadge(o.status);
+                const cleanSize = (o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel|vodafone)\s+/i, "").trim();
+                return (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", borderBottom: i < Math.min(history.length, 5) - 1 ? `1px solid ${M.border}` : "none" }}>
+                    <span style={{ background: nb.bg, color: nb.color, padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{nb.label}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ color: M.text, fontWeight: 700, fontSize: 13, margin: 0 }}>{cleanSize} → {o.customer_phone}</p>
+                      <p style={{ color: M.muted, fontSize: 11, margin: 0 }}>{new Date(o.created_at).toLocaleDateString("en-GH", { day: "2-digit", month: "short" })}</p>
+                    </div>
+                    <span style={{ background: sb.bg, color: sb.color, padding: "3px 8px", borderRadius: 20, fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{sb.label}</span>
                   </div>
-                  <span style={{ background: sb.bg, color: sb.color, padding: "3px 8px", borderRadius: 20, fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{sb.label}</span>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1550,7 +1766,7 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
           {page === "profile"      && <ProfilePage data={data} />}
           {page === "settings"     && <SettingsPage />}
           {page === "prices"       && (data.agent_type === "custom_price" ? <PricesPage data={data} /> : <ReferralsPage data={data} />)}
-          {page === "place_order"  && <PlaceOrderPage data={data} />}
+          {page === "place_order"  && <PlaceOrderPage data={data} onRefresh={onRefresh} />}
         </main>
       </div>
 

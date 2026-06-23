@@ -254,7 +254,7 @@ export async function POST(request: NextRequest) {
     agentCode
       ? supabase
           .from("agents")
-          .select("id, name, status, agent_type, telegram_chat_id")
+          .select("id, name, status, agent_type, telegram_chat_id, registration_ref")
           .eq("referral_code", agentCode.toUpperCase())
           .eq("status", "approved")
           .maybeSingle()
@@ -293,12 +293,14 @@ export async function POST(request: NextRequest) {
   let agentName: string | undefined;
   let agentType: string = "commission";
   let agentTelegramChatId: string | null = null;
+  let agentRegistrationRef: string | null = null;
   const agent = agentResult.data;
   if (agent) {
     agentId = agent.id;
     agentName = agent.name;
     agentType = agent.agent_type ?? "commission";
     agentTelegramChatId = (agent as { telegram_chat_id?: string | null }).telegram_chat_id ?? null;
+    agentRegistrationRef = (agent as { registration_ref?: string | null }).registration_ref ?? null;
   }
 
   // Referral credit
@@ -311,16 +313,15 @@ export async function POST(request: NextRequest) {
   }
 
   // For custom_price agents: adminTierPrice = what admin charges agent (wallet deduction)
-  // agentSellingPrice is stored in agent_bundle_prices but only used for display
-  let adminTierPrice = pricing.costPrice; // fallback to Inventor cost if no tier price set
+  // Pro agents → custom_tier_prices; Free agents (registration_ref === "FREE") → bundle_prices.price × 0.96
+  let adminTierPrice = pricing.costPrice; // fallback to Inventor cost
   let tierPrice = pricing.price;
   if (agentId && agentType === "custom_price") {
-    const [tierResult, agentPriceResult] = await Promise.all([
-      supabase
-        .from("custom_tier_prices")
-        .select("price")
-        .eq("bundle_id", bundleId)
-        .maybeSingle(),
+    const isPro = agentRegistrationRef !== "FREE";
+    const [tierResult, agentPriceResult, freePriceResult] = await Promise.all([
+      isPro
+        ? supabase.from("custom_tier_prices").select("price").eq("bundle_id", bundleId).maybeSingle()
+        : Promise.resolve({ data: null }),
       supabase
         .from("agent_bundle_prices")
         .select("custom_price")
@@ -328,11 +329,23 @@ export async function POST(request: NextRequest) {
         .eq("bundle_id", bundleId)
         .eq("active", true)
         .maybeSingle(),
+      !isPro
+        ? supabase.from("bundle_prices").select("price, active").eq("id", bundleId).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
 
-    // adminTierPrice = your price to the agent (wallet deduction)
-    if (tierResult.data?.price) adminTierPrice = Number(tierResult.data.price);
-    // tierPrice = agent's own selling price to customers (for commission calc)
+    if (isPro) {
+      if (tierResult.data?.price) adminTierPrice = Number(tierResult.data.price);
+    } else {
+      // Free agent: admin selling price - 4%
+      const freeCustomerPrice = (freePriceResult.data?.active !== false && freePriceResult.data?.price != null)
+        ? Number(freePriceResult.data.price)
+        : bundles.find(b => b.id === bundleId)?.price ?? null;
+      if (freeCustomerPrice != null) {
+        adminTierPrice = parseFloat((freeCustomerPrice * 0.96).toFixed(2));
+      }
+    }
+
     tierPrice = agentPriceResult.data?.custom_price
       ? Number(agentPriceResult.data.custom_price)
       : adminTierPrice;
