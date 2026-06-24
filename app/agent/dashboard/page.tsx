@@ -20,13 +20,14 @@ interface AgentData {
   wallet_balance: number; commission_balance: number; paystack_wallet_balance?: number; pending_commission?: number;
   total_sales: number; total_revenue: number;
   agent_type: "commission" | "custom_price" | null;
+  registration_ref?: string | null;
   business_name?: string | null;
   orders: Order[];
 }
 interface WalletTx {
   id: string; type: string; amount: number; description: string; created_at: string;
 }
-type Page = "dashboard" | "orders" | "customers" | "wallet" | "transactions" | "referrals" | "leaderboard" | "profile" | "settings" | "prices" | "place_order" | "api";
+type Page = "dashboard" | "orders" | "customers" | "wallet" | "transactions" | "referrals" | "leaderboard" | "profile" | "settings" | "prices" | "place_order" | "api" | "buy_data" | "affiliate" | "notifications" | "support";
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const SB = { bg: "#0d1b2e", border: "#1e3a5f", text: "#f8fafc", muted: "#94a3b8" };
@@ -454,252 +455,156 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
   const dailyAvg = daily.filter(d => d.count > 0).reduce((s, d) => s + d.revenue, 0) / Math.max(daily.filter(d => d.count > 0).length, 1);
   const bestDay = daily.reduce((best, d) => d.revenue > best.revenue ? d : best, daily[0] ?? { label: "—", revenue: 0 });
 
-  function PctBadge({ val, invert }: { val: number; invert?: boolean }) {
-    const up = invert ? val <= 0 : val >= 0;
-    return (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 11, fontWeight: 700, color: up ? "#16a34a" : "#dc2626", background: up ? "#dcfce7" : "#fee2e2", padding: "2px 6px", borderRadius: 20 }}>
-        {up ? "↑" : "↓"} {Math.abs(val).toFixed(1)}%
-      </span>
-    );
-  }
+  const todayCount = data.orders.filter(o => {
+    const t = new Date(o.created_at); const now = new Date();
+    return t.getFullYear() === now.getFullYear() && t.getMonth() === now.getMonth() && t.getDate() === now.getDate();
+  }).length;
 
-  const statCards = [
-    { label: "Wallet Balance", value: `GH₵${(data.wallet_balance ?? 0).toFixed(2)}`, sub: <button onClick={onAddFunds} style={{ background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 8, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", marginTop: 6 }}>Top Up Wallet</button>, icon: "💳", iconBg: "#eff6ff", pct: null },
-    { label: "Total Spent", value: `GH₵${totalSpent.toFixed(2)}`, sub: <span style={{ fontSize: 11, color: M.muted }}>This Month: GH₵{ms.spent.toFixed(2)}</span>, icon: "🛒", iconBg: "#fff7ed", pct: ms.spentPct },
-    { label: "Total Orders", value: String(data.total_sales ?? data.orders.length), sub: <span style={{ fontSize: 11, color: M.muted }}>This Month: {ms.count}</span>, icon: "📦", iconBg: "#f0fdf4", pct: ms.cntPct },
-    { label: "Successful Orders", value: String(completed.length), sub: <span style={{ fontSize: 11, color: M.muted }}>{successRate}% Success Rate</span>, icon: "✅", iconBg: "#f0fdf4", pct: ms.compPct },
-    { label: "Total Customers", value: String(uniqueCustomers), sub: <span style={{ fontSize: 11, color: M.muted }}>This Month: {ms.customers}</span>, icon: "👥", iconBg: "#faf5ff", pct: ms.custPct },
-    { label: "Total Earnings", value: `GH₵${(data.commission_balance ?? 0).toFixed(2)}`, sub: <span style={{ fontSize: 11, color: M.muted }}>This Month: GH₵{ms.revenue.toFixed(2)}</span>, icon: "💰", iconBg: "#fffbeb", pct: ms.revPct },
+  const quickActions = [
+    { label: "Buy Data", icon: "📶", bg: "linear-gradient(135deg,#fbbf24,#f59e0b)", page: "buy_data" as Page },
+    { label: "Wallet", icon: "💳", bg: "linear-gradient(135deg,#3b82f6,#2563eb)", page: "wallet" as Page },
+    { label: isPriceMode ? "My Prices" : "My Shop", icon: isPriceMode ? "🏷️" : "🔗", bg: "linear-gradient(135deg,#8b5cf6,#7c3aed)", page: isPriceMode ? "prices" as Page : "referrals" as Page },
+    { label: "Orders", icon: "📦", bg: "linear-gradient(135deg,#f97316,#ea580c)", page: "orders" as Page },
+    { label: "Affiliate", icon: "🤝", bg: "linear-gradient(135deg,#10b981,#059669)", page: "affiliate" as Page },
+    { label: "Profile", icon: "👤", bg: "linear-gradient(135deg,#ec4899,#db2777)", page: "profile" as Page },
   ];
 
-  const card = (children: React.ReactNode, style: React.CSSProperties = {}) => (
-    <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, ...style }}>{children}</div>
-  );
+  const statCards = [
+    {
+      label: "Wallet Balance", icon: "💳", value: `GH₵${(data.wallet_balance ?? 0).toFixed(2)}`,
+      sub: null, action: <button onClick={onAddFunds} style={{ display: "flex", alignItems: "center", gap: 6, background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 10 }}>+ Deposit Funds</button>,
+      iconBg: "#eff6ff",
+    },
+    { label: "Today's Orders", icon: "📈", value: String(todayCount), sub: `+${todayCount} today`, iconBg: "#f0fdf4" },
+    { label: "Total Orders", icon: "📦", value: String(data.total_sales ?? data.orders.length), sub: `${ms.count} this month`, iconBg: "#fff7ed" },
+    { label: "Total Earned", icon: "💰", value: `GH₵${(data.commission_balance ?? 0).toFixed(2)}`, sub: `GH₵${ms.revenue.toFixed(2)} this month`, iconBg: "#fef9c3" },
+  ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <AnnouncementBanner target={isPriceMode ? "agents_custom_price" : "agents_commission"} />
 
-      {/* 6 Stat Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 14 }} className="stat-grid">
-        {statCards.map((c, i) => (
-          <div key={i} style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: "18px 16px", position: "relative", overflow: "hidden" }}>
-            <div style={{ position: "absolute", top: -16, right: -16, width: 80, height: 80, borderRadius: "50%", background: c.iconBg, opacity: 0.8 }} />
-            <div style={{ width: 40, height: 40, borderRadius: 12, background: c.iconBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, marginBottom: 12 }}>{c.icon}</div>
-            <p style={{ fontSize: 11, color: M.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, margin: "0 0 6px" }}>{c.label}</p>
-            <p style={{ fontSize: 20, fontWeight: 900, color: M.text, margin: "0 0 4px", lineHeight: 1.1 }}>{c.value}</p>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              {c.pct !== null && <PctBadge val={c.pct ?? 0} />}
-              <span style={{ fontSize: 11, color: M.sub }}>{c.sub}</span>
+      {/* Low wallet warning */}
+      {(data.wallet_balance ?? 0) < 5 && (
+        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 14, padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <p style={{ color: "#92400e", fontWeight: 700, fontSize: 13, margin: 0 }}>⚠️ Low Wallet Balance — Your balance is below GH₵5. Top up to keep buying data.</p>
+          <button onClick={onAddFunds} style={{ background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>Top Up Now</button>
+        </div>
+      )}
+
+      {/* Page title */}
+      <div>
+        <h1 style={{ color: M.text, fontSize: 28, fontWeight: 900, margin: 0 }}>Dashboard</h1>
+        <p style={{ color: M.muted, fontSize: 14, margin: "4px 0 0" }}>{greeting()}, {data.name.split(" ")[0]} 👋</p>
+      </div>
+
+      {/* Quick action circles */}
+      <div style={{ display: "flex", gap: 24, overflowX: "auto", paddingBottom: 4 }}>
+        {quickActions.map(qa => (
+          <button key={qa.label} onClick={() => onNavigate(qa.page)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}>
+            <div style={{ width: 64, height: 64, borderRadius: "50%", background: qa.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, boxShadow: "0 4px 14px rgba(0,0,0,0.12)", transition: "transform 0.15s" }}>
+              {qa.icon}
             </div>
+            <span style={{ fontSize: 12, fontWeight: 700, color: M.muted, whiteSpace: "nowrap" }}>{qa.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* 4 stat cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }} className="stat-grid">
+        {statCards.map((c, i) => (
+          <div key={i} style={{ background: M.card, borderRadius: 18, border: `1px solid ${M.border}`, padding: "20px 20px 18px", position: "relative", overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <p style={{ fontSize: 13, color: M.muted, fontWeight: 600, margin: 0 }}>{c.label}</p>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: c.iconBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>{c.icon}</div>
+            </div>
+            <p style={{ fontSize: 26, fontWeight: 900, color: M.text, margin: 0, lineHeight: 1 }}>{c.value}</p>
+            {c.action ?? (c.sub && <p style={{ fontSize: 12, color: M.muted, margin: "8px 0 0" }}>{c.sub}</p>)}
           </div>
         ))}
       </div>
 
-      {/* Main 2-col: Left = table + chart, Right = wallet summary + commission */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 20 }} className="main-grid">
-        {/* Left column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {/* Recent Orders */}
-          {card(
-            <>
-              <div style={{ padding: "16px 20px", borderBottom: `1px solid ${M.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <p style={{ fontWeight: 800, color: M.text, fontSize: 15, margin: 0 }}>Recent Orders</p>
-                <button onClick={() => onNavigate("orders")} style={{ background: "none", border: "none", color: M.blue, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>View All</button>
-              </div>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc" }}>
-                      {["Order ID", "Network", "Plan", "Phone Number", "Amount", "Status"].map(h => (
-                        <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: M.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, whiteSpace: "nowrap", borderBottom: `1px solid ${M.border}` }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.orders.slice(0, 8).map((o, i) => {
-                      const nb = netBadge(o.network); const sb = statusBadge(o.status);
-                      const shortRef = `#${(o.reference ?? "").replace(/[^A-Z0-9]/gi, "").slice(-6).toUpperCase()}`;
-                      const cleanSize = (o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel|vodafone)\s+/i, "").trim();
-                      return (
-                        <tr key={i} style={{ borderBottom: `1px solid ${M.border}` }}>
-                          <td style={{ padding: "12px 16px", color: M.blue, fontWeight: 700, fontFamily: "monospace", fontSize: 12 }}>{shortRef}</td>
-                          <td style={{ padding: "12px 16px" }}><span style={{ background: nb.bg, color: nb.color, padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 800 }}>{nb.label}</span></td>
-                          <td style={{ padding: "12px 16px", color: M.text, fontWeight: 600 }}>{cleanSize}</td>
-                          <td style={{ padding: "12px 16px", color: M.muted, fontFamily: "monospace", fontSize: 12 }}>{(o.phone ?? "").slice(0, 3) + " **** " + (o.phone ?? "").slice(-3)}</td>
-                          <td style={{ padding: "12px 16px", color: M.text, fontWeight: 800 }}>GH₵{Number(o.amount).toFixed(2)}</td>
-                          <td style={{ padding: "12px 16px" }}><span style={{ background: sb.bg, color: sb.color, padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{sb.label}</span></td>
-                        </tr>
-                      );
-                    })}
-                    {data.orders.length === 0 && (
-                      <tr><td colSpan={6} style={{ padding: 40, textAlign: "center", color: M.muted }}>No orders yet. Share your store link to get your first sale!</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-
-          {/* Sales Overview */}
-          {card(
-            <>
-              <div style={{ padding: "16px 20px", borderBottom: `1px solid ${M.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <p style={{ fontWeight: 800, color: M.text, fontSize: 15, margin: 0 }}>Sales Overview</p>
-                <span style={{ fontSize: 12, color: M.muted, border: `1px solid ${M.border}`, borderRadius: 8, padding: "4px 10px" }}>Last 30 Days</span>
-              </div>
-              <div style={{ padding: "16px 20px 0" }}>
-                <SalesChart data={daily} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", borderTop: `1px solid ${M.border}` }}>
-                {[
-                  { label: "Daily Average", value: `GH₵${dailyAvg.toFixed(2)}` },
-                  { label: "Best Day", value: bestDay.label || "—", sub: bestDay.revenue > 0 ? `GH₵${bestDay.revenue.toFixed(2)}` : "" },
-                  { label: "Total Sales", value: `GH₵${ms.revenue.toFixed(2)}` },
-                  { label: "Profit (Est.)", value: `GH₵${(ms.revenue - ms.spent).toFixed(2)}` },
-                ].map((s, i) => (
-                  <div key={i} style={{ padding: "12px 16px", borderRight: i < 3 ? `1px solid ${M.border}` : "none" }}>
-                    <p style={{ fontSize: 11, color: M.muted, margin: "0 0 4px", fontWeight: 600 }}>{s.label}</p>
-                    <p style={{ fontSize: 14, fontWeight: 900, color: M.text, margin: 0 }}>{s.value}</p>
-                    {s.sub && <p style={{ fontSize: 11, color: "#16a34a", margin: "2px 0 0", fontWeight: 700 }}>{s.sub}</p>}
+      {/* Recent Orders + Wallet Summary */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }} className="main-grid">
+        {/* Recent Orders */}
+        <div style={{ background: M.card, borderRadius: 18, border: `1px solid ${M.border}`, overflow: "hidden" }}>
+          <div style={{ padding: "16px 20px", borderBottom: `1px solid ${M.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <p style={{ fontWeight: 800, color: M.text, fontSize: 15, margin: 0 }}>Recent Orders</p>
+            <button onClick={() => onNavigate("orders")} style={{ background: "none", border: "none", color: M.blue, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>View all orders →</button>
+          </div>
+          {data.orders.length === 0 ? (
+            <div style={{ padding: 48, textAlign: "center", color: M.muted, fontSize: 13 }}>No recent orders</div>
+          ) : (
+            data.orders.slice(0, 6).map((o, i) => {
+              const nb = netBadge(o.network); const sb = statusBadge(o.status);
+              const cleanSize = (o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel|vodafone)\s+/i, "").trim();
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", borderBottom: i < Math.min(data.orders.length, 6) - 1 ? `1px solid ${M.border}` : "none" }}>
+                  <span style={{ background: nb.bg, color: nb.color, padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{nb.label}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ color: M.text, fontWeight: 700, fontSize: 13, margin: 0 }}>{cleanSize} → {(o.phone ?? "").slice(0, 3)}****{(o.phone ?? "").slice(-3)}</p>
+                    <p style={{ color: M.muted, fontSize: 11, margin: 0 }}>{new Date(o.created_at).toLocaleDateString("en-GH", { day: "2-digit", month: "short" })}</p>
                   </div>
-                ))}
-              </div>
-            </>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <p style={{ fontWeight: 800, color: M.text, fontSize: 13, margin: 0 }}>GH₵{Number(o.amount).toFixed(2)}</p>
+                    <span style={{ background: sb.bg, color: sb.color, padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700 }}>{sb.label}</span>
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
 
-        {/* Right column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {/* Wallet Summary */}
-          {card(
-            <>
-              <div style={{ padding: "16px 20px", borderBottom: `1px solid ${M.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <p style={{ fontWeight: 800, color: M.text, fontSize: 15, margin: 0 }}>Wallet Summary</p>
-                <button onClick={() => onNavigate("wallet")} style={{ background: "none", border: "none", color: M.blue, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>View All</button>
-              </div>
-              <div style={{ padding: "20px" }}>
-                <p style={{ fontSize: 12, color: M.muted, fontWeight: 600, margin: "0 0 6px", textTransform: "uppercase", letterSpacing: 0.6 }}>Available Balance</p>
-                <p style={{ fontSize: 28, fontWeight: 900, color: "#16a34a", margin: "0 0 16px", lineHeight: 1 }}>GH₵{(data.wallet_balance ?? 0).toFixed(2)}</p>
-                <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-                  <button onClick={onAddFunds} style={{ flex: 1, background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 10, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Top Up</button>
-                  <button onClick={onWithdraw} style={{ flex: 1, background: "#f0fdf4", border: "2px solid #bbf7d0", color: "#16a34a", borderRadius: 10, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Withdraw</button>
-                </div>
-                {[
-                  { label: "Pending Withdrawals", value: `GH₵${(data.pending_commission ?? 0).toFixed(2)}` },
-                  { label: "Total Earnings Balance", value: `GH₵${(data.commission_balance ?? 0).toFixed(2)}` },
-                  { label: "Total Revenue Generated", value: `GH₵${(data.total_revenue ?? 0).toFixed(2)}` },
-                ].map(r => (
-                  <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderTop: `1px solid ${M.border}` }}>
-                    <span style={{ fontSize: 12, color: M.muted }}>{r.label}</span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: M.text }}>{r.value}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          {/* Commission & Earnings */}
-          {card(
-            <>
-              <div style={{ padding: "16px 20px", borderBottom: `1px solid ${M.border}` }}>
-                <p style={{ fontWeight: 800, color: M.text, fontSize: 15, margin: 0 }}>Commission & Earnings</p>
-              </div>
-              <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 14 }}>
-                <div style={{ display: "flex", gap: 12 }}>
-                  <div style={{ flex: 1, background: "#f8fafc", borderRadius: 12, padding: "14px 12px", textAlign: "center" }}>
-                    <p style={{ fontSize: 11, color: M.muted, margin: "0 0 6px", fontWeight: 600 }}>Agent Type</p>
-                    <p style={{ fontSize: 12, fontWeight: 800, color: isPriceMode ? M.purple : "#16a34a", margin: 0 }}>{isPriceMode ? "Price Mode" : "Commission"}</p>
-                  </div>
-                  <div style={{ flex: 1, background: "#f8fafc", borderRadius: 12, padding: "14px 12px", textAlign: "center" }}>
-                    <p style={{ fontSize: 11, color: M.muted, margin: "0 0 6px", fontWeight: 600 }}>This Month</p>
-                    <p style={{ fontSize: 13, fontWeight: 800, color: M.text, margin: 0 }}>GH₵{ms.revenue.toFixed(2)}</p>
-                  </div>
-                  <div style={{ flex: 1, background: "#f8fafc", borderRadius: 12, padding: "14px 12px", textAlign: "center" }}>
-                    <p style={{ fontSize: 11, color: M.muted, margin: "0 0 6px", fontWeight: 600 }}>Total Earned</p>
-                    <p style={{ fontSize: 13, fontWeight: 800, color: M.text, margin: 0 }}>GH₵{(data.total_revenue ?? 0).toFixed(2)}</p>
-                  </div>
-                </div>
-                {isPriceMode && (
-                  <button onClick={() => onNavigate("prices")} style={{ width: "100%", background: "linear-gradient(90deg,#7c3aed,#6d28d9)", color: "white", border: "none", borderRadius: 12, padding: "12px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                    ✏️ Manage My Prices
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-
-          {/* Agent Level */}
-          {card(
-            <div style={{ padding: "20px", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", borderRadius: 16 }}>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 6px" }}>Agent Level</p>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                <span style={{ fontSize: 28 }}>{tier.icon}</span>
-                <div>
-                  <p style={{ fontSize: 18, fontWeight: 900, color: "white", margin: 0 }}>{tier.name} Agent</p>
-                  {tier.next && <p style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", margin: "2px 0 0" }}>GH₵{tier.remaining.toFixed(0)} away from {tier.next}</p>}
-                </div>
-              </div>
-              <div style={{ height: 6, background: "rgba(255,255,255,0.2)", borderRadius: 3, marginBottom: 16, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${tier.pct}%`, background: "white", borderRadius: 3, transition: "width 0.6s ease" }} />
-              </div>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.8)", fontWeight: 700, margin: "0 0 8px" }}>Benefits at {tier.name} Level</p>
-              {tier.benefits.map((b, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                  <span style={{ fontSize: 10, color: "#4ade80" }}>✓</span>
-                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.85)" }}>{b}</span>
-                </div>
-              ))}
+        {/* Wallet + Earnings summary */}
+        <div style={{ background: M.card, borderRadius: 18, border: `1px solid ${M.border}`, overflow: "hidden" }}>
+          <div style={{ padding: "16px 20px", borderBottom: `1px solid ${M.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <p style={{ fontWeight: 800, color: M.text, fontSize: 15, margin: 0 }}>Wallet & Earnings</p>
+            <button onClick={() => onNavigate("wallet")} style={{ background: "none", border: "none", color: M.blue, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>View wallet →</button>
+          </div>
+          <div style={{ padding: "20px" }}>
+            <div style={{ background: "linear-gradient(135deg,#0d1b2e,#1e3a5f)", borderRadius: 14, padding: "18px 20px", marginBottom: 16 }}>
+              <p style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 4px" }}>Wallet Balance</p>
+              <p style={{ fontSize: 28, fontWeight: 900, color: "#4ade80", margin: "0 0 12px", lineHeight: 1 }}>GH₵{(data.wallet_balance ?? 0).toFixed(2)}</p>
+              <p style={{ fontSize: 11, color: "#94a3b8", margin: 0 }}>Main wallet · for purchases</p>
             </div>
-          )}
+            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+              <button onClick={onAddFunds} style={{ flex: 1, background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 10, padding: "11px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ Deposit Funds</button>
+              <button onClick={onWithdraw} style={{ flex: 1, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#16a34a", borderRadius: 10, padding: "11px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Withdraw</button>
+            </div>
+            {[
+              { label: "Total Earnings", value: `GH₵${(data.commission_balance ?? 0).toFixed(2)}` },
+              { label: "This Month", value: `GH₵${ms.revenue.toFixed(2)}` },
+              { label: "Agent Level", value: `${tier.icon} ${tier.name}` },
+              { label: "Success Rate", value: `${successRate}%` },
+            ].map(r => (
+              <div key={r.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderTop: `1px solid ${M.border}` }}>
+                <span style={{ fontSize: 13, color: M.muted }}>{r.label}</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: M.text }}>{r.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
-          {/* Quick Actions */}
-          {card(
-            <>
-              <div style={{ padding: "16px 20px", borderBottom: `1px solid ${M.border}` }}>
-                <p style={{ fontWeight: 800, color: M.text, fontSize: 15, margin: 0 }}>Quick Actions</p>
+      {/* Sales chart */}
+      <div style={{ background: M.card, borderRadius: 18, border: `1px solid ${M.border}`, overflow: "hidden" }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${M.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <p style={{ fontWeight: 800, color: M.text, fontSize: 15, margin: 0 }}>Sales Overview · Last 30 Days</p>
+          <div style={{ display: "flex", gap: 20 }}>
+            {[
+              { label: "Daily Avg", value: `GH₵${dailyAvg.toFixed(2)}` },
+              { label: "Best Day", value: bestDay.revenue > 0 ? `GH₵${bestDay.revenue.toFixed(2)}` : "—" },
+              { label: "Total", value: `GH₵${ms.revenue.toFixed(2)}` },
+            ].map(s => (
+              <div key={s.label} style={{ textAlign: "right" }}>
+                <p style={{ fontSize: 10, color: M.muted, margin: 0, fontWeight: 600 }}>{s.label}</p>
+                <p style={{ fontSize: 13, fontWeight: 800, color: M.text, margin: 0 }}>{s.value}</p>
               </div>
-              <div style={{ padding: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                {[
-                  { label: "Place Order", icon: "🛒", action: () => onNavigate("place_order"), bg: "#eff6ff", color: M.blue },
-                  { label: isPriceMode ? "My Prices" : "My Referrals", icon: isPriceMode ? "🏷️" : "🔗", action: () => onNavigate(isPriceMode ? "prices" : "referrals"), bg: "#f5f3ff", color: M.purple },
-                  { label: "Fund Wallet", icon: "💳", action: onAddFunds, bg: "#faf5ff", color: M.purple },
-                  { label: "Withdraw", icon: "💸", action: onWithdraw, bg: "#f0fdf4", color: "#16a34a" },
-                  { label: "My Orders", icon: "📦", action: () => onNavigate("orders"), bg: "#fff7ed", color: M.amber },
-                  { label: "Support", icon: "💬", action: () => window.open("https://wa.me/233509794503", "_blank"), bg: "#fef2f2", color: M.red },
-                ].map(qa => (
-                  <button key={qa.label} onClick={qa.action} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "14px 8px", borderRadius: 12, border: `1px solid ${M.border}`, background: qa.bg, cursor: "pointer", transition: "all 0.15s" }}>
-                    <span style={{ fontSize: 20 }}>{qa.icon}</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: qa.color, textAlign: "center" }}>{qa.label}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          {/* Top Customers */}
-          {topCustomers.length > 0 && card(
-            <>
-              <div style={{ padding: "16px 20px", borderBottom: `1px solid ${M.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <p style={{ fontWeight: 800, color: M.text, fontSize: 15, margin: 0 }}>Top Customers</p>
-                <button onClick={() => onNavigate("customers")} style={{ background: "none", border: "none", color: M.blue, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>View All</button>
-              </div>
-              <div>
-                {topCustomers.map((c, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", borderBottom: i < topCustomers.length - 1 ? `1px solid ${M.border}` : "none" }}>
-                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: ["#dbeafe", "#fce7f3", "#d1fae5", "#fef3c7", "#ede9fe"][i % 5], display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: [M.blue, "#db2777", "#16a34a", M.amber, M.purple][i % 5], flexShrink: 0 }}>
-                      {i + 1}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 13, fontWeight: 700, color: M.text, margin: 0, fontFamily: "monospace" }}>{c.masked}</p>
-                      <p style={{ fontSize: 11, color: M.muted, margin: 0 }}>{c.count} orders</p>
-                    </div>
-                    <p style={{ fontSize: 13, fontWeight: 800, color: M.text, margin: 0, flexShrink: 0 }}>GH₵{c.total.toFixed(2)}</p>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+            ))}
+          </div>
+        </div>
+        <div style={{ padding: "16px 20px" }}>
+          <SalesChart data={daily} />
         </div>
       </div>
     </div>
@@ -1598,86 +1503,220 @@ function ApiPage({ data }: { data: AgentData }) {
   );
 }
 
+// ─── Affiliate Page (Referrals + Leaderboard combined) ───────────────────────
+function AffiliatePage({ data }: { data: AgentData }) {
+  const [tab, setTab] = useState<"referrals" | "leaderboard">("referrals");
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div>
+        <h1 style={{ color: M.text, fontSize: 28, fontWeight: 900, margin: 0 }}>Affiliate</h1>
+        <p style={{ color: M.muted, fontSize: 14, margin: "4px 0 0" }}>Grow your network and earn more rewards</p>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {([["referrals", "My Store & Referrals"], ["leaderboard", "Leaderboard"]] as const).map(([t, label]) => (
+          <button key={t} onClick={() => setTab(t)} style={{ padding: "10px 24px", borderRadius: 12, border: `2px solid ${tab === t ? M.blue : M.border}`, background: tab === t ? "#eff6ff" : "white", color: tab === t ? M.blue : M.muted, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{label}</button>
+        ))}
+      </div>
+      {tab === "referrals" && <ReferralsPage data={data} />}
+      {tab === "leaderboard" && <LeaderboardPage myCode={data.referral_code} />}
+    </div>
+  );
+}
+
+// ─── Notifications Page ───────────────────────────────────────────────────────
+function NotificationsPage({ data }: { data: AgentData }) {
+  const items = [...data.orders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 30);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div>
+        <h1 style={{ color: M.text, fontSize: 28, fontWeight: 900, margin: 0 }}>Notifications</h1>
+        <p style={{ color: M.muted, fontSize: 14, margin: "4px 0 0" }}>Recent activity on your account</p>
+      </div>
+      <div style={{ background: M.card, borderRadius: 18, border: `1px solid ${M.border}`, overflow: "hidden" }}>
+        {items.length === 0 && (
+          <div style={{ padding: 64, textAlign: "center", color: M.muted }}>
+            <p style={{ fontSize: 40, margin: "0 0 12px" }}>🔔</p>
+            <p style={{ fontWeight: 700, color: M.text, fontSize: 15 }}>No notifications yet</p>
+            <p style={{ fontSize: 13, color: M.muted }}>When you receive orders, they'll appear here.</p>
+          </div>
+        )}
+        {items.map((o, i) => {
+          const sb = statusBadge(o.status); const nb = netBadge(o.network);
+          const cleanSize = (o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel|vodafone)\s+/i, "").trim();
+          const isNew = (Date.now() - new Date(o.created_at).getTime()) < 24 * 60 * 60 * 1000;
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 14, padding: "16px 24px", borderBottom: i < items.length - 1 ? `1px solid ${M.border}` : "none", background: isNew ? "#f8faff" : "transparent" }}>
+              <div style={{ width: 44, height: 44, borderRadius: "50%", background: sb.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
+                {o.status.toLowerCase() === "completed" ? "✅" : o.status.toLowerCase() === "processing" ? "⏳" : o.status.toLowerCase() === "pending" ? "🕐" : "❌"}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                  <p style={{ fontWeight: 700, color: M.text, fontSize: 14, margin: 0 }}>Order {o.status.charAt(0).toUpperCase() + o.status.slice(1).toLowerCase()}</p>
+                  {isNew && <span style={{ background: "#dbeafe", color: M.blue, fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>NEW</span>}
+                </div>
+                <p style={{ color: M.muted, fontSize: 13, margin: "0 0 6px" }}>
+                  <span style={{ background: nb.bg, color: nb.color, padding: "1px 6px", borderRadius: 4, fontSize: 11, fontWeight: 800, marginRight: 6 }}>{nb.label}</span>
+                  {cleanSize} → {(o.phone ?? "").slice(0, 3)}****{(o.phone ?? "").slice(-3)} · GH₵{Number(o.amount).toFixed(2)}
+                </p>
+                <p style={{ color: M.sub, fontSize: 12, margin: 0 }}>{new Date(o.created_at).toLocaleString("en-GH", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+              </div>
+              <span style={{ background: sb.bg, color: sb.color, padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{sb.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Support Page ─────────────────────────────────────────────────────────────
+function SupportPage() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 620 }}>
+      <div>
+        <h1 style={{ color: M.text, fontSize: 28, fontWeight: 900, margin: 0 }}>Contact Support</h1>
+        <p style={{ color: M.muted, fontSize: 14, margin: "4px 0 0" }}>We're here to help you, 7 days a week</p>
+      </div>
+
+      {/* WhatsApp card */}
+      <div style={{ background: M.card, borderRadius: 18, border: `1px solid ${M.border}`, padding: "28px 28px 24px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 16, background: "#dcfce7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>💬</div>
+          <div>
+            <p style={{ fontWeight: 800, color: M.text, fontSize: 17, margin: 0 }}>WhatsApp Support</p>
+            <p style={{ color: M.muted, fontSize: 13, margin: "2px 0 0" }}>Fastest way to reach us</p>
+          </div>
+        </div>
+        <p style={{ color: M.muted, fontSize: 14, margin: "0 0 20px", lineHeight: 1.6 }}>Click below to open WhatsApp and send us a message. Our support team usually responds within a few minutes.</p>
+        <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 10, background: "#16a34a", color: "white", textDecoration: "none", borderRadius: 12, padding: "14px 24px", fontSize: 15, fontWeight: 700 }}>
+          <svg width={20} height={20} viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.126.555 4.126 1.528 5.858L.057 24l6.303-1.654A11.954 11.954 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818c-1.95 0-3.77-.527-5.33-1.44l-.38-.226-3.744.982.998-3.648-.248-.376A9.818 9.818 0 012.182 12C2.182 6.58 6.58 2.182 12 2.182S21.818 6.58 21.818 12 17.42 21.818 12 21.818z"/></svg>
+          Chat with Support on WhatsApp
+        </a>
+      </div>
+
+      {/* Operating hours */}
+      <div style={{ background: M.card, borderRadius: 18, border: `1px solid ${M.border}`, padding: "24px 28px" }}>
+        <p style={{ fontWeight: 800, color: M.text, fontSize: 16, margin: "0 0 16px" }}>Operating Hours</p>
+        {[
+          { day: "Monday – Friday", hours: "8:00 AM – 9:00 PM" },
+          { day: "Saturday", hours: "9:00 AM – 8:00 PM" },
+          { day: "Sunday", hours: "10:00 AM – 6:00 PM" },
+        ].map((r, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "12px 0", borderBottom: i < 2 ? `1px solid ${M.border}` : "none" }}>
+            <span style={{ fontSize: 14, color: M.text, fontWeight: 600 }}>{r.day}</span>
+            <span style={{ fontSize: 14, color: M.muted }}>{r.hours}</span>
+          </div>
+        ))}
+        <div style={{ marginTop: 16, background: "#eff6ff", borderRadius: 10, padding: "12px 16px" }}>
+          <p style={{ color: M.blue, fontSize: 13, fontWeight: 700, margin: 0 }}>⚡ Response Time: Usually within 5 minutes during working hours</p>
+        </div>
+      </div>
+
+      {/* Common questions */}
+      <div style={{ background: M.card, borderRadius: 18, border: `1px solid ${M.border}`, padding: "24px 28px" }}>
+        <p style={{ fontWeight: 800, color: M.text, fontSize: 16, margin: "0 0 16px" }}>Common Questions</p>
+        {[
+          { q: "How do I top up my wallet?", a: "Click 'Deposit Funds' in Wallet section. Accepts Mobile Money and card via Paystack." },
+          { q: "My order is stuck on 'Processing'?", a: "Wait 10–15 minutes. If it stays stuck, contact support with your Order ID." },
+          { q: "How do I withdraw my earnings?", a: "Go to Wallet → Withdraw. Minimum withdrawal is GH₵5. Processed within 24 hours." },
+          { q: "How do referrals work?", a: "Share your store link. Earn commission on every data bundle sold through your link." },
+        ].map((item, i) => (
+          <div key={i} style={{ paddingBottom: 16, marginBottom: 16, borderBottom: i < 3 ? `1px solid ${M.border}` : "none" }}>
+            <p style={{ fontWeight: 700, color: M.text, fontSize: 14, margin: "0 0 4px" }}>{item.q}</p>
+            <p style={{ color: M.muted, fontSize: 13, margin: 0, lineHeight: 1.6 }}>{item.a}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({ page, setPage, data, onLogout, onWithdraw, open, onClose }: { page: Page; setPage: (p: Page) => void; data: AgentData; onLogout: () => void; onWithdraw: () => void; open: boolean; onClose: () => void }) {
   const isPriceMode = data.agent_type === "custom_price";
+  const isPro = data.registration_ref !== "FREE";
   const initial1 = (data.name ?? "A").charAt(0).toUpperCase();
   const initial2 = (data.name ?? "").split(" ")[1]?.charAt(0).toUpperCase() ?? "";
-  const agentId = "AGT-" + (data.referral_code ?? "????").slice(0, 5).padEnd(5, "0");
 
-  const navItems: { id: Page; label: string; icon: string }[] = [
-    { id: "dashboard",   label: "Dashboard",    icon: "🏠" },
-    { id: "place_order", label: "Place Order",  icon: "🛒" },
-    { id: "prices",      label: isPriceMode ? "My Prices" : "My Referrals", icon: isPriceMode ? "🏷️" : "🔗" },
-    { id: "orders",      label: "My Orders",    icon: "📦" },
-    { id: "customers",   label: "My Customers", icon: "👥" },
-    { id: "wallet",      label: "Wallet",       icon: "💳" },
-    { id: "transactions",label: "Transactions", icon: "🔄" },
-    { id: "leaderboard", label: "Leaderboard",  icon: "🏆" },
-    { id: "api",         label: "Developer API", icon: "🔌" },
-    { id: "profile",     label: "Agent Profile",icon: "👤" },
-    { id: "settings",    label: "Settings",     icon: "⚙️" },
+  const navItems: { id: Page; label: string; svg: React.ReactNode }[] = [
+    { id: "dashboard", label: "Dashboard", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
+    { id: "buy_data",  label: "Buy Data",  svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg> },
+    { id: "wallet",    label: "Wallet",    svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg> },
+    { id: "prices",    label: isPriceMode ? "My Prices" : "My Shop", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/></svg> },
+    { id: "orders",    label: "My Orders", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg> },
+    { id: "customers", label: "Customers", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg> },
+    { id: "affiliate", label: "Affiliate",  svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg> },
+    { id: "notifications", label: "Notifications", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg> },
+    { id: "api",       label: "Developer API", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg> },
+    { id: "support",   label: "Contact Support", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg> },
+    { id: "profile",   label: "Profile",   svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg> },
   ];
-
-  const storeUrl = typeof window !== "undefined" ? `${window.location.origin}/shop/${data.referral_code}` : `/shop/${data.referral_code}`;
-  const [refCopied, setRefCopied] = useState(false);
-  function copyRef() { navigator.clipboard.writeText(storeUrl).then(() => { setRefCopied(true); setTimeout(() => setRefCopied(false), 2000); }); }
 
   return (
     <>
-      {open && <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 40 }} />}
-      <aside style={{ position: "fixed", top: 0, left: open ? 0 : -264, bottom: 0, width: 252, background: SB.bg, borderRight: `1px solid ${SB.border}`, display: "flex", flexDirection: "column", zIndex: 50, transition: "left 0.25s ease" }} className="sidebar-desktop">
+      {open && <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 40 }} />}
+      <aside style={{ position: "fixed", top: 0, left: open ? 0 : -280, bottom: 0, width: 260, background: SB.bg, borderRight: `1px solid ${SB.border}`, display: "flex", flexDirection: "column", zIndex: 50, transition: "left 0.25s ease" }} className="sidebar-desktop">
 
         {/* Logo */}
-        <div style={{ padding: "20px 18px 16px", borderBottom: `1px solid ${SB.border}` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 38, height: 38, borderRadius: 12, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "white", fontSize: 16 }}>E</div>
-            <div><p style={{ color: SB.text, fontWeight: 900, fontSize: 15, margin: 0 }}>Elite Data</p><p style={{ color: "#4ade80", fontSize: 10, margin: 0, fontWeight: 700 }}>Agent Portal</p></div>
+        <div style={{ padding: "18px 18px 14px", borderBottom: `1px solid ${SB.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "white", fontSize: 16, flexShrink: 0 }}>E</div>
+          <div>
+            <p style={{ color: SB.text, fontWeight: 900, fontSize: 15, margin: 0, lineHeight: 1 }}>Elite Data</p>
+            <p style={{ color: "#4ade80", fontSize: 10, margin: "2px 0 0", fontWeight: 700, letterSpacing: 0.5 }}>Agent Portal</p>
           </div>
         </div>
 
-        {/* Agent card */}
-        <div style={{ margin: "12px 12px 4px", background: "rgba(255,255,255,0.06)", borderRadius: 14, padding: "14px 14px 12px", border: `1px solid ${SB.border}` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <div style={{ width: 44, height: 44, borderRadius: "50%", background: "linear-gradient(135deg,#14b8a6,#0d9488)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 16, color: "white", flexShrink: 0 }}>{initial1}{initial2}</div>
-            <div style={{ minWidth: 0 }}>
-              <p style={{ color: SB.text, fontWeight: 700, fontSize: 13, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{data.name}</p>
-              <p style={{ color: SB.muted, fontSize: 11, margin: "2px 0 0" }}>ID: {agentId}</p>
+        {/* USER pill + wallet card */}
+        <div style={{ padding: "14px 12px 8px" }}>
+          {/* USER pill */}
+          <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 14, padding: "12px 14px", marginBottom: 10, border: `1px solid ${SB.border}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <div style={{ width: 40, height: 40, borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 14, color: "white", flexShrink: 0 }}>{initial1}{initial2}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ color: SB.text, fontWeight: 700, fontSize: 13, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{data.name}</p>
+                <p style={{ color: SB.muted, fontSize: 11, margin: "1px 0 0" }}>ID: {data.referral_code}</p>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 700, background: "rgba(74,222,128,0.15)", color: "#4ade80", padding: "3px 10px", borderRadius: 20, border: "1px solid rgba(74,222,128,0.3)" }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#4ade80", display: "inline-block" }}></span>
+                Online
+              </span>
+              <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: 20, background: isPro ? "rgba(124,58,237,0.2)" : "rgba(59,130,246,0.2)", color: isPro ? "#a78bfa" : "#60a5fa", border: `1px solid ${isPro ? "rgba(124,58,237,0.3)" : "rgba(59,130,246,0.3)"}` }}>
+                {isPro ? "PRO" : "FREE"}
+              </span>
             </div>
           </div>
-          <span style={{ fontSize: 10, fontWeight: 700, background: "rgba(74,222,128,0.15)", color: "#4ade80", padding: "3px 10px", borderRadius: 20, border: "1px solid rgba(74,222,128,0.3)" }}>● Active Agent</span>
+
+          {/* Wallet balance card */}
+          <div style={{ background: "linear-gradient(135deg,rgba(59,130,246,0.18),rgba(124,58,237,0.18))", borderRadius: 14, padding: "14px 16px", border: "1px solid rgba(59,130,246,0.25)" }}>
+            <p style={{ fontSize: 10, color: SB.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 4px" }}>Wallet Balance</p>
+            <p style={{ fontSize: 22, fontWeight: 900, color: "#60a5fa", margin: "0 0 10px", lineHeight: 1 }}>GH₵ {(data.wallet_balance ?? 0).toFixed(2)}</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { setPage("wallet"); onClose(); }} style={{ flex: 1, background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 8, padding: "7px 0", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Deposit</button>
+              <button onClick={() => { onWithdraw(); onClose(); }} style={{ flex: 1, background: "rgba(255,255,255,0.08)", color: SB.text, border: `1px solid ${SB.border}`, borderRadius: 8, padding: "7px 0", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Withdraw</button>
+            </div>
+          </div>
         </div>
 
         {/* Nav */}
-        <nav style={{ flex: 1, padding: "8px 10px", overflowY: "auto" }}>
+        <nav style={{ flex: 1, padding: "4px 10px 8px", overflowY: "auto" }}>
           {navItems.map(item => {
-            const active = page === item.id;
+            const active = page === item.id || (item.id === "buy_data" && page === "place_order");
             return (
-              <button key={item.id} onClick={() => { setPage(item.id); onClose(); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px", borderRadius: 10, border: "none", cursor: "pointer", background: active ? "rgba(59,130,246,0.2)" : "transparent", color: active ? "#60a5fa" : SB.muted, fontSize: 13, fontWeight: active ? 700 : 500, textAlign: "left", marginBottom: 2, borderLeft: active ? "3px solid #3b82f6" : "3px solid transparent", transition: "all 0.15s" }}>
-                <span style={{ fontSize: 15 }}>{item.icon}</span>
+              <button key={item.id} onClick={() => { setPage(item.id); onClose(); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 14px", borderRadius: 12, border: "none", cursor: "pointer", background: active ? "linear-gradient(90deg,#3b82f6,#7c3aed)" : "transparent", color: active ? "white" : SB.muted, fontSize: 13, fontWeight: active ? 700 : 500, textAlign: "left", marginBottom: 2, transition: "all 0.15s" }}>
+                <span style={{ opacity: active ? 1 : 0.7, flexShrink: 0 }}>{item.svg}</span>
                 {item.label}
               </button>
             );
           })}
         </nav>
 
-        {/* Refer & Earn promo */}
-        <div style={{ margin: "0 12px 12px", background: "linear-gradient(135deg,rgba(59,130,246,0.15),rgba(124,58,237,0.15))", borderRadius: 14, padding: "14px", border: `1px solid ${SB.border}` }}>
-          <p style={{ color: "#fbbf24", fontWeight: 700, fontSize: 13, margin: "0 0 4px" }}>🎁 Refer & Earn More!</p>
-          <p style={{ color: SB.muted, fontSize: 11, margin: "0 0 10px", lineHeight: 1.5 }}>Earn when your referrals buy through your link.</p>
-          <div style={{ background: "rgba(0,0,0,0.3)", borderRadius: 8, padding: "6px 10px", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ color: SB.muted, fontSize: 10, fontFamily: "monospace", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>.../{data.referral_code}</span>
-            <button onClick={copyRef} style={{ background: "none", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{refCopied ? "✓" : "Copy"}</button>
-          </div>
-          <button onClick={() => { setPage("referrals"); onClose(); }} style={{ width: "100%", background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 10, padding: "9px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>View My Store</button>
-        </div>
-
-        {/* Support + Logout */}
-        <div style={{ padding: "0 10px 16px", borderTop: `1px solid ${SB.border}`, paddingTop: 8 }}>
-          <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, textDecoration: "none", color: "#4ade80", fontSize: 13, fontWeight: 600 }}>
-            💬 WhatsApp Support
-          </a>
-          <button onClick={onLogout} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, border: "none", cursor: "pointer", background: "transparent", color: "#f87171", fontSize: 13, fontWeight: 600, textAlign: "left", width: "100%" }}>
-            ⬅️ Logout
+        {/* Logout */}
+        <div style={{ padding: "8px 10px 16px", borderTop: `1px solid ${SB.border}` }}>
+          <button onClick={onLogout} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 12, border: "none", cursor: "pointer", background: "rgba(248,113,113,0.1)", color: "#f87171", fontSize: 13, fontWeight: 700, textAlign: "left", width: "100%" }}>
+            <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+            Logout
           </button>
         </div>
       </aside>
@@ -1723,45 +1762,24 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
     document.body.appendChild(s);
   }, []);
 
-  const pageTitle: Record<Page, string> = {
-    dashboard: "Agent Dashboard", orders: "My Orders", customers: "My Customers",
-    wallet: "Wallet", transactions: "Transaction History", referrals: "My Referrals & Store",
-    leaderboard: "Leaderboard", api: "Developer API", profile: "Agent Profile", settings: "Settings",
-    prices: data.agent_type === "custom_price" ? "My Selling Prices" : "My Referrals & Store",
-    place_order: "Place Order",
-  };
-
   return (
     <div style={{ minHeight: "100vh", background: M.bg, display: "flex" }}>
       <Sidebar page={page} setPage={setPage} data={data} onLogout={onLogout} onWithdraw={() => setShowWithdraw(true)} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }} className="main-with-sidebar">
-        {/* Header */}
-        <header style={{ background: "white", borderBottom: `1px solid ${M.border}`, padding: "0 24px", height: 64, display: "flex", alignItems: "center", gap: 14, position: "sticky", top: 0, zIndex: 30, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <button onClick={() => setSidebarOpen(true)} className="sidebar-toggle" style={{ background: "transparent", border: "none", color: M.muted, cursor: "pointer", padding: 6, lineHeight: 0, display: "none" }}>
+        {/* Mobile top bar (only shows on mobile — no header on desktop) */}
+        <header className="mobile-header" style={{ display: "none", background: "white", borderBottom: `1px solid ${M.border}`, padding: "0 20px", height: 58, alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 30, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <button onClick={() => setSidebarOpen(true)} style={{ background: "transparent", border: "none", color: M.muted, cursor: "pointer", padding: 6, lineHeight: 0 }}>
             <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
           </button>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: 18, fontWeight: 900, color: M.text, margin: 0 }}>{pageTitle[page]} {page === "dashboard" ? "👋" : ""}</p>
-            {page === "dashboard" && <p style={{ fontSize: 13, color: M.muted, margin: 0 }}>Welcome back, {data.name.split(" ")[0]}</p>}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <button onClick={onRefresh} style={{ background: "#f8fafc", border: `1px solid ${M.border}`, borderRadius: 10, color: M.muted, cursor: "pointer", padding: "8px 14px", fontSize: 13, fontWeight: 600 }}>🔄 Refresh</button>
-            <div style={{ position: "relative" }}>
-              <svg width={22} height={22} fill="none" stroke={M.muted} strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f8fafc", border: `1px solid ${M.border}`, borderRadius: 12, padding: "6px 12px" }}>
-              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13, color: "white" }}>
-                {(data.name ?? "A").charAt(0).toUpperCase()}{(data.name ?? "").split(" ")[1]?.charAt(0).toUpperCase() ?? ""}
-              </div>
-              <span style={{ fontSize: 13, fontWeight: 700, color: M.text }} className="hide-mobile">{data.name.split(" ")[0]}</span>
-            </div>
-          </div>
+          <div style={{ width: 32, height: 32, borderRadius: 10, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "white", fontSize: 14 }}>E</div>
+          <p style={{ fontSize: 16, fontWeight: 900, color: M.text, margin: 0, flex: 1 }}>Elite Data</p>
+          <button onClick={onRefresh} style={{ background: "#f8fafc", border: `1px solid ${M.border}`, borderRadius: 8, color: M.muted, cursor: "pointer", padding: "6px 10px", fontSize: 12, fontWeight: 600 }}>Refresh</button>
         </header>
 
-        <main style={{ flex: 1, padding: "24px 20px", overflowY: "auto", maxWidth: 1280, width: "100%", margin: "0 auto" }}>
+        <main style={{ flex: 1, padding: "28px 28px", overflowY: "auto", maxWidth: 1300, width: "100%", margin: "0 auto" }} className="main-content">
           {page === "dashboard"    && <DashboardPage data={data} onAddFunds={() => setShowAddFunds(true)} onWithdraw={() => setShowWithdraw(true)} onNavigate={setPage} />}
-          {page === "orders"       && <OrdersPage orders={data.orders} agentId={data.id} onPlaceOrder={() => setPage("place_order")} />}
+          {page === "orders"       && <OrdersPage orders={data.orders} agentId={data.id} onPlaceOrder={() => setPage("buy_data")} />}
           {page === "customers"    && <CustomersPage orders={data.orders} />}
           {page === "wallet"       && <WalletPage data={data} onAddFunds={() => setShowAddFunds(true)} onWithdraw={() => setShowWithdraw(true)} />}
           {page === "transactions" && <TransactionsPage data={data} onAddFunds={() => setShowAddFunds(true)} onWithdraw={() => setShowWithdraw(true)} />}
@@ -1771,7 +1789,10 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
           {page === "profile"      && <ProfilePage data={data} />}
           {page === "settings"     && <SettingsPage />}
           {page === "prices"       && (data.agent_type === "custom_price" ? <PricesPage data={data} /> : <ReferralsPage data={data} />)}
-          {page === "place_order"  && <PlaceOrderPage data={data} onRefresh={onRefresh} />}
+          {(page === "place_order" || page === "buy_data") && <PlaceOrderPage data={data} onRefresh={onRefresh} />}
+          {page === "affiliate"    && <AffiliatePage data={data} />}
+          {page === "notifications" && <NotificationsPage data={data} />}
+          {page === "support"      && <SupportPage />}
         </main>
       </div>
 
@@ -1781,19 +1802,18 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
       <style>{`
         @media (min-width: 768px) {
           .sidebar-desktop { left: 0 !important; }
-          .main-with-sidebar { margin-left: 252px; }
-          .sidebar-toggle { display: none !important; }
-          .hide-mobile { display: inline !important; }
+          .main-with-sidebar { margin-left: 260px; }
+          .mobile-header { display: none !important; }
         }
         @media (max-width: 767px) {
-          .sidebar-toggle { display: flex !important; }
+          .mobile-header { display: flex !important; }
+          .main-content { padding: 16px !important; }
           .stat-grid { grid-template-columns: 1fr 1fr !important; }
           .main-grid { grid-template-columns: 1fr !important; }
           .wallet-grid { grid-template-columns: 1fr !important; }
-          .hide-mobile { display: none; }
         }
         @media (min-width: 768px) and (max-width: 1199px) {
-          .stat-grid { grid-template-columns: repeat(3,1fr) !important; }
+          .stat-grid { grid-template-columns: repeat(2,1fr) !important; }
         }
       `}</style>
     </div>

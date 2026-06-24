@@ -19,19 +19,20 @@ type AgentRow = {
   id: string; name: string; email: string; phone?: string | null; referral_code: string | null;
   commission_balance: number; wallet_balance?: number; paystack_wallet_balance?: number; total_sales: number;
   total_revenue?: number; status: string; agent_type?: string;
+  registration_ref?: string | null;
   business_name?: string | null; telegram_chat_id?: string | null;
   password_hash?: string;
 };
 
 async function lookupAgent(code: string | null, email: string | null): Promise<{ agent: AgentRow | null; hash: string | null }> {
   const q = code
-    ? supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id, password_hash").eq("referral_code", code.toUpperCase())
-    : supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id, password_hash").eq("email", email!.toLowerCase().trim());
+    ? supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue, status, agent_type, registration_ref, business_name, telegram_chat_id, password_hash").eq("referral_code", code.toUpperCase())
+    : supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue, status, agent_type, registration_ref, business_name, telegram_chat_id, password_hash").eq("email", email!.toLowerCase().trim());
   const { data: agent, error } = await q.maybeSingle();
   if (error) {
     const q2 = code
-      ? supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id").eq("referral_code", code.toUpperCase())
-      : supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue, status, agent_type, business_name, telegram_chat_id").eq("email", email!.toLowerCase().trim());
+      ? supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue, status, agent_type, registration_ref, business_name, telegram_chat_id").eq("referral_code", code.toUpperCase())
+      : supabase.from("agents").select("id, name, email, phone, referral_code, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue, status, agent_type, registration_ref, business_name, telegram_chat_id").eq("email", email!.toLowerCase().trim());
     const { data: agent2 } = await q2.maybeSingle();
     return { agent: (agent2 as AgentRow | null) ?? null, hash: null };
   }
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleAgentResponse(
-  agent: { id: string; name: string; email: string; phone?: string | null; referral_code: string | null; commission_balance: number; wallet_balance?: number; paystack_wallet_balance?: number; total_sales: number; total_revenue?: number; status: string; agent_type?: string; business_name?: string | null; telegram_chat_id?: string | null },
+  agent: { id: string; name: string; email: string; phone?: string | null; referral_code: string | null; commission_balance: number; wallet_balance?: number; paystack_wallet_balance?: number; total_sales: number; total_revenue?: number; status: string; agent_type?: string; registration_ref?: string | null; business_name?: string | null; telegram_chat_id?: string | null },
   storedHash: string | null,
   password: string | null
 ) {
@@ -130,6 +131,7 @@ async function handleAgentResponse(
       total_sales: agent.total_sales ?? 0,
       total_revenue: agent.total_revenue ?? 0,
       agent_type: agent.agent_type ?? "custom_price",
+      registration_ref: agent.registration_ref ?? null,
       business_name: agent.business_name ?? null,
       telegram_chat_id: agent.telegram_chat_id ?? null,
       orders: allOrders,
