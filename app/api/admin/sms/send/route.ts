@@ -17,39 +17,56 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "phones and message are required." }, { status: 400 });
   }
 
-  const apiKey = process.env.ARKESEL_API_KEY;
-  const senderId = process.env.SMS_SENDER_ID ?? "EliteData";
+  const apiKey   = process.env.AT_API_KEY;
+  const username = process.env.AT_USERNAME;
+  const senderId = process.env.AT_SENDER_ID ?? "";
 
-  if (!apiKey) {
-    return Response.json({ error: "SMS not configured. Add ARKESEL_API_KEY to environment variables." }, { status: 500 });
+  if (!apiKey || !username) {
+    return Response.json({ error: "SMS not configured. Add AT_API_KEY and AT_USERNAME to Netlify environment variables." }, { status: 500 });
   }
 
-  // Normalise Ghana numbers: 024XXXXXXX → 233XXXXXXXXX
+  // Normalise Ghana numbers: 024XXXXXXX → +233XXXXXXXX
   const normalised = phones.map(p => {
     const digits = p.replace(/\D/g, "");
-    if (digits.startsWith("233")) return digits;
-    if (digits.startsWith("0")) return "233" + digits.slice(1);
-    return digits;
+    if (digits.startsWith("233")) return `+${digits}`;
+    if (digits.startsWith("0"))   return `+233${digits.slice(1)}`;
+    return `+${digits}`;
+  }).join(",");
+
+  const body = new URLSearchParams({
+    username,
+    to: normalised,
+    message: message.trim(),
+    ...(senderId ? { from: senderId } : {}),
   });
 
-  const res = await fetch("https://sms.arkesel.com/api/v2/sms/send", {
+  const res = await fetch("https://api.africastalking.com/version1/messaging", {
     method: "POST",
     headers: {
-      "api-key": apiKey,
-      "Content-Type": "application/json",
+      "apiKey": apiKey,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Accept": "application/json",
     },
-    body: JSON.stringify({
-      sender: senderId,
-      message: message.trim(),
-      recipients: normalised,
-    }),
+    body: body.toString(),
   });
 
   const data = await res.json().catch(() => ({}));
 
-  if (!res.ok || data.status === "error") {
-    return Response.json({ error: data.message ?? data.error ?? "SMS send failed" }, { status: 500 });
+  if (!res.ok) {
+    return Response.json({ error: data.SMSMessageData?.Message ?? "SMS send failed" }, { status: 500 });
   }
 
-  return Response.json({ success: true, sent: normalised.length, response: data });
+  const recipients = data.SMSMessageData?.Recipients ?? [];
+  const failed = recipients.filter((r: { status: string }) => r.status !== "Success");
+
+  if (failed.length === recipients.length && recipients.length > 0) {
+    return Response.json({ error: `All messages failed: ${failed[0]?.status}` }, { status: 500 });
+  }
+
+  return Response.json({
+    success: true,
+    sent: recipients.filter((r: { status: string }) => r.status === "Success").length,
+    failed: failed.length,
+    response: data,
+  });
 }
