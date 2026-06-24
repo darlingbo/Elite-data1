@@ -989,10 +989,12 @@ function PricesPage({ data }: { data: AgentData }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [activeNet, setActiveNet] = useState<"mtn" | "telecel" | "airteltigo">("mtn");
+  const [agentPlan, setAgentPlan] = useState<"free" | "pro" | null>(null);
 
   useEffect(() => {
     Promise.all([fetch("/api/bundles").then(r => r.json()), fetch(`/api/agent-tier-prices?agentCode=${data.referral_code}`).then(r => r.json()), fetch(`/api/agents/prices?agentId=${data.id}`).then(r => r.json())]).then(([b, tier, agent]) => {
       setDbBundles(b.bundles ?? []);
+      setAgentPlan(tier.plan ?? null);
       const tm: Record<string, number> = {}; for (const p of (tier.prices ?? [])) tm[p.bundle_id] = Number(p.price); setTierPrices(tm);
       const am: Record<string, number> = {}; for (const p of (agent.prices ?? [])) am[p.bundle_id] = Number(p.custom_price); setAgentPrices(am);
     });
@@ -1018,7 +1020,10 @@ function PricesPage({ data }: { data: AgentData }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div><h2 style={{ color: M.text, fontSize: 18, fontWeight: 900, margin: 0 }}>My Selling Prices</h2><p style={{ color: M.muted, fontSize: 13, margin: "4px 0 0" }}>Set your markup above admin base price. The difference is your profit.</p></div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div><h2 style={{ color: M.text, fontSize: 18, fontWeight: 900, margin: 0 }}>My Selling Prices</h2><p style={{ color: M.muted, fontSize: 13, margin: "4px 0 0" }}>Set your markup above admin base price. The difference is your profit.</p></div>
+        {agentPlan && <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 20, background: agentPlan === "free" ? "rgba(16,185,129,0.1)" : "rgba(139,92,246,0.1)", color: agentPlan === "free" ? "#16a34a" : "#7c3aed", border: `1px solid ${agentPlan === "free" ? "rgba(16,185,129,0.3)" : "rgba(139,92,246,0.3)"}` }}>{agentPlan === "free" ? "Free Plan" : "Pro Plan"}</span>}
+      </div>
       {msg && <div style={{ padding: "12px 16px", borderRadius: 12, background: msg.ok ? "#dcfce7" : "#fee2e2", border: `1px solid ${msg.ok ? "#bbf7d0" : "#fecaca"}`, color: msg.ok ? "#16a34a" : M.red, fontSize: 14, fontWeight: 700 }}>{msg.text}</div>}
       <div style={{ display: "flex", gap: 8 }}>
         {nets.map(n => <button key={n.id} onClick={() => setActiveNet(n.id)} style={{ padding: "8px 20px", borderRadius: 10, border: `2px solid ${activeNet === n.id ? netColor[n.id] : M.border}`, background: activeNet === n.id ? `${netColor[n.id]}15` : "white", color: activeNet === n.id ? netColor[n.id] : M.muted, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{n.label}</button>)}
