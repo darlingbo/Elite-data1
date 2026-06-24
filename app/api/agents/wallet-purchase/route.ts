@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     agent_commission: 0,
     agent_id: agentId,
     status: "processing",
-  }).catch(() => {});
+  });
 
   const result = await callInventor(network, cleaned, numericSizeGB, reference);
 
