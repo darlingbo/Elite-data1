@@ -13,11 +13,12 @@ const PromoBannerAdmin = dynamic(() => import("./_components/PromoBannerAdmin"),
 const ManualOrdersAdmin = dynamic(() => import("./_components/ManualOrdersAdmin"), { loading: () => <Spinner /> });
 const CommissionAdmin = dynamic(() => import("./_components/CommissionAdmin"), { loading: () => <Spinner /> });
 const AgentWalletsAdmin = dynamic(() => import("./_components/AgentWalletsAdmin"), { loading: () => <Spinner /> });
+const SMSAdmin = dynamic(() => import("./_components/SMSAdmin"), { loading: () => <Spinner /> });
 
 type Tab =
   | "overview" | "all-orders" | "pending-orders" | "processing" | "completed" | "failed-orders"
   | "data-bundles" | "bundle-prices" | "all-agents" | "agent-applications" | "agent-wallets" | "leaderboard"
-  | "transactions" | "commissions" | "manual" | "compensate" | "announcements" | "promo" | "apikeys" | "settings";
+  | "transactions" | "commissions" | "manual" | "compensate" | "announcements" | "promo" | "apikeys" | "sms" | "settings";
 
 type OrderStatus = "ALL" | "COMPLETED" | "PROCESSING" | "PENDING" | "FAILED";
 
@@ -30,7 +31,7 @@ interface Order {
 interface Agent {
   id: string; name: string; email: string; phone: string; whatsapp?: string; business_name: string;
   referral_code: string; status: string; agent_type?: string; commission_balance: number; wallet_balance?: number;
-  total_sales: number; total_revenue: number; created_at: string; registration_ref?: string | null;
+  total_sales: number; total_revenue: number; created_at: string;
 }
 interface StatsData {
   orders: { all: Order[]; total: number; completed: number; processing: number; pending: number; failed: number };
@@ -238,6 +239,7 @@ const Ic = {
   key:     () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>,
   gear:    () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
   logout:  () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>,
+  sms:     () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>,
   sync:    () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
   add:     () => <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>,
   bell:    () => <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>,
@@ -334,6 +336,7 @@ function Sidebar({ tab, setTab, pendingOrders, pendingAgents, onLogout, onChange
       items: [
         { id: "promo" as Tab,         icon: <Ic.mega />, label: "🎉 Promo Banner" },
         { id: "announcements" as Tab, icon: <Ic.mega />, label: "Announcements" },
+        { id: "sms" as Tab,           icon: <Ic.sms />,  label: "📱 SMS" },
         { id: "apikeys" as Tab,       icon: <Ic.key />,  label: "API Keys" },
         { id: "settings" as Tab,      icon: <Ic.gear />, label: "Settings" },
       ],
@@ -1050,7 +1053,6 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
   const [switchModal, setSwitchModal] = useState<{ id: string; name: string; currentType: string } | null>(null);
   const [switching, setSwitching] = useState(false);
   const [switchMsg, setSwitchMsg] = useState<{ text: string; ok: boolean } | null>(null);
-  const [planToggling, setPlanToggling] = useState<string | null>(null);
 
   useEffect(() => { setAgentTab(defaultTab); }, [defaultTab]);
 
@@ -1065,20 +1067,6 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
       else setSwitchMsg({ text: d.error ?? "Failed", ok: false });
     } catch { setSwitchMsg({ text: "Network error", ok: false }); }
     finally { setSwitching(false); setSwitchModal(null); setTimeout(() => setSwitchMsg(null), 5000); }
-  }
-
-  async function togglePlan(agentId: string, currentRef: string | null | undefined) {
-    const currentPlan = currentRef === "FREE" ? "free" : "pro";
-    const newPlan = currentPlan === "pro" ? "free" : "pro";
-    setPlanToggling(agentId);
-    try {
-      const res = await fetch("/api/admin/agents/set-plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId, plan: newPlan }) });
-      const d = await res.json();
-      if (!res.ok || d.error) { setSwitchMsg({ text: `Plan toggle failed: ${d.error ?? res.status}`, ok: false }); setTimeout(() => setSwitchMsg(null), 5000); return; }
-      onRefresh();
-    } catch (e) {
-      setSwitchMsg({ text: `Plan toggle error: ${String(e)}`, ok: false }); setTimeout(() => setSwitchMsg(null), 5000);
-    } finally { setPlanToggling(null); }
   }
 
   async function handleAction() {
@@ -1119,15 +1107,11 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
                 <th className="px-4 py-3 text-left font-semibold">Business</th>
                 {agentTab === "approved" && <>
                   <th className="px-4 py-3 text-left font-semibold">Type</th>
-                  <th className="px-4 py-3 text-left font-semibold">Plan</th>
                   <th className="px-4 py-3 text-left font-semibold">Sales</th>
                   <th className="px-4 py-3 text-left font-semibold">Balance</th>
                   <th className="px-4 py-3 text-left font-semibold">Ref Code</th>
                 </>}
-                {agentTab === "pending" && <>
-                  <th className="px-4 py-3 text-left font-semibold">Plan</th>
-                  <th className="px-4 py-3 text-left font-semibold">Applied</th>
-                </>}
+                {agentTab === "pending" && <th className="px-4 py-3 text-left font-semibold">Applied</th>}
                 <th className="px-4 py-3 text-left font-semibold">Actions</th>
               </tr>
             </thead>
@@ -1145,25 +1129,11 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
                         {a.agent_type === "custom_price" ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>Price Mode ⇄</span> : <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", border: "1px solid rgba(16,185,129,0.25)" }}>Commission ⇄</span>}
                       </button>
                     </td>
-                    <td className="px-4 py-3.5">
-                      <button onClick={() => togglePlan(a.id, a.registration_ref)} disabled={planToggling === a.id} title="Click to switch plan" className="hover:opacity-70 transition-opacity disabled:opacity-40">
-                        {a.registration_ref === "FREE"
-                          ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", border: "1px solid rgba(16,185,129,0.25)" }}>Free ⇄</span>
-                          : <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>Pro ⇄</span>}
-                      </button>
-                    </td>
                     <td className="px-4 py-3.5 font-bold text-white">{a.total_sales}</td>
                     <td className="px-4 py-3.5 font-black" style={{ color: "#4ade80" }}>GH₵{(a.commission_balance ?? 0).toFixed(2)}</td>
                     <td className="px-4 py-3.5 font-mono text-xs font-bold" style={{ color: "#60a5fa" }}>{a.referral_code}</td>
                   </>}
-                  {agentTab === "pending" && <>
-                    <td className="px-4 py-3.5">
-                      {a.registration_ref && a.registration_ref !== "FREE"
-                        ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>⚡ Pro</span>
-                        : <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", border: "1px solid rgba(16,185,129,0.25)" }}>Free</span>}
-                    </td>
-                    <td className="px-4 py-3.5 text-slate-500 text-xs">{new Date(a.created_at).toLocaleDateString("en-GH")}</td>
-                  </>}
+                  {agentTab === "pending" && <td className="px-4 py-3.5 text-slate-500 text-xs">{new Date(a.created_at).toLocaleDateString("en-GH")}</td>}
                   <td className="px-4 py-3.5">
                     {agentTab === "pending" && (
                       <div className="flex gap-2">
@@ -1491,7 +1461,7 @@ export default function AdminDashboard() {
     "all-agents": "All Agents", "agent-applications": "Agent Applications", "agent-wallets": "Agent Wallets",
     "leaderboard": "Leaderboard", "transactions": "Transactions", "commissions": "Commissions",
     "manual": "Manual Orders", "compensate": "Compensate", "announcements": "Announcements", "promo": "Promo Banner",
-    "apikeys": "API Keys", "settings": "Settings",
+    "sms": "SMS Messaging", "apikeys": "API Keys", "settings": "Settings",
   };
 
   return (
@@ -1556,6 +1526,7 @@ export default function AdminDashboard() {
               {tab === "compensate"      && <CompensateView />}
               {tab === "announcements"   && <AnnouncementsAdmin />}
               {tab === "promo"           && <PromoBannerAdmin />}
+              {tab === "sms"             && <SMSAdmin agents={stats.agents.all} />}
               {tab === "apikeys"         && <ApiKeysAdmin />}
               {tab === "settings"        && <SettingsView onChangePassword={() => setShowChangePw(true)} />}
             </>
