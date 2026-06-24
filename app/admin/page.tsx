@@ -1072,8 +1072,12 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
     const newPlan = currentPlan === "pro" ? "free" : "pro";
     setPlanToggling(agentId);
     try {
-      await fetch("/api/admin/agents/set-plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId, plan: newPlan }) });
+      const res = await fetch("/api/admin/agents/set-plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId, plan: newPlan }) });
+      const d = await res.json();
+      if (!res.ok || d.error) { setSwitchMsg({ text: `Plan toggle failed: ${d.error ?? res.status}`, ok: false }); setTimeout(() => setSwitchMsg(null), 5000); return; }
       onRefresh();
+    } catch (e) {
+      setSwitchMsg({ text: `Plan toggle error: ${String(e)}`, ok: false }); setTimeout(() => setSwitchMsg(null), 5000);
     } finally { setPlanToggling(null); }
   }
 
