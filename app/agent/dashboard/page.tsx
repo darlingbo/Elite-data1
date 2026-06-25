@@ -1751,6 +1751,7 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showAddFunds, setShowAddFunds] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
+  const isPro = data.registration_ref !== "FREE";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1767,14 +1768,23 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
       <Sidebar page={page} setPage={setPage} data={data} onLogout={onLogout} onWithdraw={() => setShowWithdraw(true)} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }} className="main-with-sidebar">
-        {/* Mobile top bar (only shows on mobile — no header on desktop) */}
-        <header className="mobile-header" style={{ display: "none", background: "white", borderBottom: `1px solid ${M.border}`, padding: "0 20px", height: 58, alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 30, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <button onClick={() => setSidebarOpen(true)} style={{ background: "transparent", border: "none", color: M.muted, cursor: "pointer", padding: 6, lineHeight: 0 }}>
-            <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
-          </button>
-          <div style={{ width: 32, height: 32, borderRadius: 10, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "white", fontSize: 14 }}>E</div>
-          <p style={{ fontSize: 16, fontWeight: 900, color: M.text, margin: 0, flex: 1 }}>Elite Data</p>
-          <button onClick={onRefresh} style={{ background: "#f8fafc", border: `1px solid ${M.border}`, borderRadius: 8, color: M.muted, cursor: "pointer", padding: "6px 10px", fontSize: 12, fontWeight: 600 }}>Refresh</button>
+        {/* FuzeServe-style mobile header */}
+        <header className="mobile-header" style={{ display: "none", background: SB.bg, padding: "10px 20px", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 30, borderBottom: `1px solid ${SB.border}` }}>
+          {/* USER / PRO pill */}
+          <div onClick={() => setPage("profile")} style={{ display: "flex", alignItems: "center", gap: 7, background: isPro ? "#f59e0b" : M.blue, borderRadius: 20, padding: "7px 14px 7px 10px", cursor: "pointer", userSelect: "none" }}>
+            <svg width={15} height={15} fill="none" stroke="white" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            <span style={{ color: "white", fontWeight: 800, fontSize: 13, letterSpacing: 0.3 }}>{isPro ? "PRO" : "USER"}</span>
+          </div>
+          {/* Bell + Avatar */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <button onClick={() => setPage("notifications")} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 0, position: "relative" }}>
+              <svg width={22} height={22} fill="none" stroke="#94a3b8" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+              {data.orders.length > 0 && <span style={{ position: "absolute", top: -1, right: -1, width: 8, height: 8, borderRadius: "50%", background: "#ef4444" }} />}
+            </button>
+            <div onClick={() => setPage("profile")} style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "white", fontSize: 15, cursor: "pointer" }}>
+              {(data.name ?? "A").charAt(0).toUpperCase()}
+            </div>
+          </div>
         </header>
 
         <main style={{ flex: 1, padding: "28px 28px", overflowY: "auto", maxWidth: 1300, width: "100%", margin: "0 auto" }} className="main-content">
@@ -1794,6 +1804,37 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
           {page === "notifications" && <NotificationsPage data={data} />}
           {page === "support"      && <SupportPage />}
         </main>
+
+        {/* FuzeServe-style bottom navigation — mobile only */}
+        <nav className="bottom-nav" style={{ display: "none", position: "fixed", bottom: 0, left: 0, right: 0, height: 66, background: "white", borderTop: `2px solid ${M.border}`, alignItems: "center", justifyContent: "space-around", zIndex: 30, boxShadow: "0 -2px 8px rgba(0,0,0,0.07)" }}>
+          {/* Home */}
+          <button onClick={() => setPage("dashboard")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "dashboard" ? M.blue : M.sub }}>
+            <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+            <span style={{ fontSize: 10, fontWeight: page === "dashboard" ? 700 : 500 }}>Home</span>
+          </button>
+          {/* Orders */}
+          <button onClick={() => setPage("orders")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "orders" ? M.blue : M.sub }}>
+            <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+            <span style={{ fontSize: 10, fontWeight: page === "orders" ? 700 : 500 }}>Orders</span>
+          </button>
+          {/* Buy Data — elevated central circle */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+            <button onClick={() => setPage("buy_data")} style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", border: "4px solid white", boxShadow: "0 4px 16px rgba(59,130,246,0.45)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: -24, cursor: "pointer" }}>
+              <svg width={24} height={24} fill="none" stroke="white" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>
+            </button>
+            <span style={{ fontSize: 10, color: page === "buy_data" ? M.blue : M.sub, fontWeight: page === "buy_data" ? 700 : 500, marginTop: 3 }}>Buy Data</span>
+          </div>
+          {/* Affiliate */}
+          <button onClick={() => setPage("affiliate")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "affiliate" ? M.blue : M.sub }}>
+            <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+            <span style={{ fontSize: 10, fontWeight: page === "affiliate" ? 700 : 500 }}>Affiliate</span>
+          </button>
+          {/* More */}
+          <button onClick={() => setSidebarOpen(true)} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: sidebarOpen ? M.blue : M.sub }}>
+            <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
+            <span style={{ fontSize: 10, fontWeight: sidebarOpen ? 700 : 500 }}>More</span>
+          </button>
+        </nav>
       </div>
 
       {showAddFunds && <AddFundsModal agentId={data.id} agentEmail={data.email} onClose={() => setShowAddFunds(false)} onSuccess={onRefresh} />}
@@ -1804,10 +1845,12 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
           .sidebar-desktop { left: 0 !important; }
           .main-with-sidebar { margin-left: 260px; }
           .mobile-header { display: none !important; }
+          .bottom-nav { display: none !important; }
         }
         @media (max-width: 767px) {
           .mobile-header { display: flex !important; }
-          .main-content { padding: 16px !important; }
+          .bottom-nav { display: flex !important; }
+          .main-content { padding: 16px 16px 88px !important; }
           .stat-grid { grid-template-columns: 1fr 1fr !important; }
           .main-grid { grid-template-columns: 1fr !important; }
           .wallet-grid { grid-template-columns: 1fr !important; }
@@ -1815,6 +1858,7 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
         @media (min-width: 768px) and (max-width: 1199px) {
           .stat-grid { grid-template-columns: repeat(2,1fr) !important; }
         }
+        @keyframes spin { to { transform: rotate(360deg) } }
       `}</style>
     </div>
   );

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 interface Agent {
   id: string; name: string; email: string; phone: string; whatsapp?: string;
@@ -22,11 +22,15 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
   const [mode, setMode] = useState<"bulk" | "individual">("bulk");
 
   // Bulk state
-  const [audience, setAudience] = useState<"all" | "custom_price" | "commission" | "selected">("all");
+  const [audience, setAudience] = useState<"all" | "custom_price" | "commission" | "selected" | "customers">("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkMsg, setBulkMsg] = useState("");
   const [bulkSending, setBulkSending] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Customer phones state
+  const [customerPhones, setCustomerPhones] = useState<string[] | null>(null);
+  const [customersLoading, setCustomersLoading] = useState(false);
 
   // Individual state
   const [testPhone, setTestPhone] = useState("");
@@ -36,12 +40,30 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
 
   const approvedAgents = useMemo(() => agents.filter(a => a.status === "approved"), [agents]);
 
+  // Fetch customer phones when customers audience selected
+  useEffect(() => {
+    if (audience !== "customers" || customerPhones !== null || customersLoading) return;
+    setCustomersLoading(true);
+    fetch("/api/admin/sms/customers")
+      .then(r => r.json())
+      .then(d => setCustomerPhones(d.phones ?? []))
+      .finally(() => setCustomersLoading(false));
+  }, [audience, customerPhones, customersLoading]);
+
   const recipients = useMemo(() => {
     if (audience === "all") return approvedAgents;
     if (audience === "custom_price") return approvedAgents.filter(a => a.agent_type === "custom_price");
     if (audience === "commission") return approvedAgents.filter(a => a.agent_type !== "custom_price");
+    if (audience === "customers") return [];
     return approvedAgents.filter(a => selected.has(a.id));
   }, [audience, approvedAgents, selected]);
+
+  const sendPhones = useMemo(() => {
+    if (audience === "customers") return customerPhones ?? [];
+    return recipients.map(a => a.phone).filter(Boolean);
+  }, [audience, recipients, customerPhones]);
+
+  const recipientCount = audience === "customers" ? (customerPhones?.length ?? 0) : recipients.length;
 
   function toggleAgent(id: string) {
     setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -55,17 +77,17 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
   }
 
   async function sendBulk() {
-    if (!bulkMsg.trim() || recipients.length === 0) return;
+    if (!bulkMsg.trim() || sendPhones.length === 0) return;
     setBulkSending(true); setBulkResult(null);
     try {
-      const phones = recipients.map(a => a.phone).filter(Boolean);
       const res = await fetch("/api/admin/sms/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phones, message: bulkMsg }),
+        body: JSON.stringify({ phones: sendPhones, message: bulkMsg }),
       });
       const d = await res.json();
-      setBulkResult({ ok: res.ok && !d.error, text: d.error ?? `Sent to ${phones.length} agents successfully!` });
+      const label = audience === "customers" ? "customers" : "agents";
+      setBulkResult({ ok: res.ok && !d.error, text: d.error ?? `Sent to ${sendPhones.length} ${label} successfully!` });
     } catch (e) {
       setBulkResult({ ok: false, text: String(e) });
     } finally { setBulkSending(false); }
@@ -147,17 +169,17 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
                 <div>
                   <p style={{ color: "white", fontWeight: 700, fontSize: 14, margin: 0 }}>
-                    Sending to <span style={{ color: "#60a5fa" }}>{recipients.length} agent{recipients.length !== 1 ? "s" : ""}</span>
+                    Sending to <span style={{ color: "#60a5fa" }}>{recipientCount} {audience === "customers" ? "customer" : "agent"}{recipientCount !== 1 ? "s" : ""}</span>
                   </p>
                   <p style={{ color: "#64748b", fontSize: 12, margin: "2px 0 0" }}>
-                    Estimated: {recipients.length * smsCount} SMS credit{recipients.length * smsCount !== 1 ? "s" : ""}
+                    Estimated: {recipientCount * smsCount} SMS credit{recipientCount * smsCount !== 1 ? "s" : ""}
                   </p>
                 </div>
                 <button
                   onClick={sendBulk}
-                  disabled={bulkSending || !bulkMsg.trim() || recipients.length === 0}
-                  style={{ background: bulkSending || !bulkMsg.trim() || recipients.length === 0 ? "#1e293b" : "linear-gradient(90deg,#3b82f6,#8b5cf6)", color: bulkSending ? "#64748b" : "white", border: "none", borderRadius: 10, padding: "12px 28px", fontSize: 14, fontWeight: 800, cursor: bulkSending ? "not-allowed" : "pointer" }}>
-                  {bulkSending ? "Sending…" : `Send to ${recipients.length} Agent${recipients.length !== 1 ? "s" : ""}`}
+                  disabled={bulkSending || !bulkMsg.trim() || sendPhones.length === 0 || customersLoading}
+                  style={{ background: bulkSending || !bulkMsg.trim() || sendPhones.length === 0 ? "#1e293b" : "linear-gradient(90deg,#3b82f6,#8b5cf6)", color: bulkSending ? "#64748b" : "white", border: "none", borderRadius: 10, padding: "12px 28px", fontSize: 14, fontWeight: 800, cursor: bulkSending ? "not-allowed" : "pointer" }}>
+                  {bulkSending ? "Sending…" : customersLoading ? "Loading customers…" : `Send to ${recipientCount} ${audience === "customers" ? "Customer" : "Agent"}${recipientCount !== 1 ? "s" : ""}`}
                 </button>
               </div>
               {bulkResult && (
@@ -179,6 +201,7 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
                   ["all", `All Agents (${approvedAgents.length})`],
                   ["custom_price", `Price Mode Agents (${approvedAgents.filter(a => a.agent_type === "custom_price").length})`],
                   ["commission", `Commission Agents (${approvedAgents.filter(a => a.agent_type !== "custom_price").length})`],
+                  ["customers", customersLoading ? "All Customers (loading…)" : `All Customers (${customerPhones?.length ?? "click to load"})`],
                   ["selected", `Select Manually (${selected.size} chosen)`],
                 ] as const).map(([val, label]) => (
                   <label key={val} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "10px 12px", borderRadius: 8, background: audience === val ? "rgba(59,130,246,0.1)" : "transparent", border: `1px solid ${audience === val ? "rgba(59,130,246,0.4)" : BORDER}` }}>
