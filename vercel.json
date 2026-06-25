@@ -1,12 +1,4 @@
 {
-  "redirects": [
-    {
-      "source": "/(.*)",
-      "has": [{ "type": "host", "value": "elite-data1.vercel.app" }],
-      "destination": "https://elitedata1.com/$1",
-      "permanent": true
-    }
-  ],
   "crons": [
     {
       "path": "/api/cron/snapshot",
