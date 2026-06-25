@@ -31,7 +31,7 @@ type Page = "dashboard" | "orders" | "customers" | "wallet" | "transactions" | "
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const SB = { bg: "#0d1b2e", border: "#1e3a5f", text: "#f8fafc", muted: "#94a3b8" };
-const M = { bg: "#f1f5f9", card: "#ffffff", border: "#e2e8f0", text: "#0f172a", muted: "#64748b", sub: "#94a3b8", blue: "#3b82f6", purple: "#7c3aed", green: "#16a34a", red: "#ef4444", amber: "#f59e0b" };
+const M = { bg: "#080f1e", card: "#0d1b2e", border: "#1e3a5f", text: "#f8fafc", muted: "#94a3b8", sub: "#64748b", blue: "#3b82f6", purple: "#7c3aed", green: "#4ade80", red: "#f87171", amber: "#f59e0b" };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function greeting() {
@@ -140,7 +140,7 @@ function SalesChart({ data }: { data: { label: string; revenue: number }[] }) {
           <stop offset="100%" stopColor="#7c3aed" stopOpacity="0" />
         </linearGradient>
       </defs>
-      {[0.25, 0.5, 0.75, 1].map((t, i) => <line key={i} x1={pad.l} y1={pad.t + iH * (1 - t)} x2={W - pad.r} y2={pad.t + iH * (1 - t)} stroke="#e2e8f0" strokeWidth={0.8} />)}
+      {[0.25, 0.5, 0.75, 1].map((t, i) => <line key={i} x1={pad.l} y1={pad.t + iH * (1 - t)} x2={W - pad.r} y2={pad.t + iH * (1 - t)} stroke="rgba(255,255,255,0.08)" strokeWidth={0.8} />)}
       <path d={area} fill="url(#agGrad)" />
       <path d={line} fill="none" stroke="#7c3aed" strokeWidth={2.5} strokeLinecap="round" />
       {pts.map((p, i) => data[i].revenue > 0 && <circle key={i} cx={p.x} cy={p.y} r={3} fill="#7c3aed" stroke="white" strokeWidth={1.5} />)}
@@ -200,7 +200,7 @@ function LoginForm({ onLogin }: { onLogin: (d: AgentData) => void }) {
     finally { setForgotLoading(false); }
   }
 
-  const inp: React.CSSProperties = { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "11px 14px", color: "#0f172a", fontSize: 14, width: "100%", outline: "none", boxSizing: "border-box" };
+  const inp: React.CSSProperties = { background: "rgba(255,255,255,0.05)", border: "1px solid #e2e8f0", borderRadius: 10, padding: "11px 14px", color: "#0f172a", fontSize: 14, width: "100%", outline: "none", boxSizing: "border-box" };
 
   if (showForgot) {
     return (
@@ -220,7 +220,7 @@ function LoginForm({ onLogin }: { onLogin: (d: AgentData) => void }) {
                   <p style={{ fontWeight: 900, fontSize: 17, color: "#0f172a", margin: "0 0 4px" }}>Account Confirmed!</p>
                   <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>Here is your new temporary password:</p>
                 </div>
-                <div style={{ background: "#f8fafc", border: "2px dashed #3b82f6", borderRadius: 14, padding: "18px 20px", textAlign: "center" }}>
+                <div style={{ background: "rgba(255,255,255,0.05)", border: "2px dashed #3b82f6", borderRadius: 14, padding: "18px 20px", textAlign: "center" }}>
                   <p style={{ fontSize: 28, fontWeight: 900, letterSpacing: 6, color: "#1e293b", margin: "0 0 8px", fontFamily: "monospace" }}>{forgotNewPass}</p>
                   <button
                     onClick={() => { navigator.clipboard?.writeText(forgotNewPass ?? ""); setPassCopied(true); setTimeout(() => setPassCopied(false), 2500); }}
@@ -360,13 +360,13 @@ function AddFundsModal({ agentId, agentEmail, onClose, onSuccess }: { agentId: s
           <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 10, color: M.muted, cursor: "pointer", width: 32, height: 32, fontSize: 16 }}>✕</button>
         </div>
         <p style={{ color: M.muted, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Amount (GH₵)</p>
-        <input type="number" style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 16px", color: M.text, fontSize: 22, fontWeight: 800, width: "100%", outline: "none", boxSizing: "border-box", textAlign: "center" }} value={amount} onChange={e => setAmount(e.target.value)} min={10} step={10} />
+        <input type="number" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 16px", color: M.text, fontSize: 22, fontWeight: 800, width: "100%", outline: "none", boxSizing: "border-box", textAlign: "center" }} value={amount} onChange={e => setAmount(e.target.value)} min={10} step={10} />
         <div style={{ display: "flex", gap: 8, margin: "14px 0 20px" }}>
           {[50, 100, 200, 500].map(v => <button key={v} onClick={() => setAmount(String(v))} style={{ flex: 1, padding: "9px 4px", borderRadius: 10, border: `2px solid ${amount === String(v) ? M.blue : M.border}`, background: amount === String(v) ? "#eff6ff" : "white", color: amount === String(v) ? M.blue : M.muted, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{v}</button>)}
         </div>
         {error && <p style={{ color: M.red, fontSize: 13, marginBottom: 14, background: "#fee2e2", padding: "10px 12px", borderRadius: 10 }}>{error}</p>}
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: "12px", borderRadius: 12, border: `1px solid ${M.border}`, background: "white", color: M.muted, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+          <button onClick={onClose} style={{ flex: 1, padding: "12px", borderRadius: 12, border: `1px solid ${M.border}`, background: "transparent", color: M.muted, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
           <button onClick={handlePay} disabled={loading} style={{ flex: 2, padding: "12px", borderRadius: 12, border: "none", background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", fontSize: 14, fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1 }}>
             {loading ? "Processing…" : `Pay GH₵${Number(amount) || 0}`}
           </button>
@@ -396,7 +396,7 @@ function WithdrawModal({ agentId, referralCode, profitBalance, onClose, onSucces
     finally { setLoading(false); }
   }
 
-  const inp: React.CSSProperties = { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "11px 14px", color: M.text, fontSize: 14, width: "100%", outline: "none", boxSizing: "border-box" };
+  const inp: React.CSSProperties = { background: "rgba(255,255,255,0.05)", border: "1px solid #e2e8f0", borderRadius: 10, padding: "11px 14px", color: M.text, fontSize: 14, width: "100%", outline: "none", boxSizing: "border-box" };
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "white", borderRadius: 20, padding: 28, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
@@ -429,7 +429,7 @@ function WithdrawModal({ agentId, referralCode, profitBalance, onClose, onSucces
             ))}
             {error && <p style={{ color: M.red, fontSize: 13, margin: 0, background: "#fee2e2", padding: "10px 12px", borderRadius: 10 }}>{error}</p>}
             <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-              <button onClick={onClose} style={{ flex: 1, padding: "12px", borderRadius: 12, border: `1px solid ${M.border}`, background: "white", color: M.muted, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+              <button onClick={onClose} style={{ flex: 1, padding: "12px", borderRadius: 12, border: `1px solid ${M.border}`, background: "transparent", color: M.muted, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
               <button onClick={handleWithdraw} disabled={loading} style={{ flex: 2, padding: "12px", borderRadius: 12, border: "none", background: "linear-gradient(90deg,#16a34a,#15803d)", color: "white", fontSize: 14, fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1 }}>
                 {loading ? "Sending…" : "Withdraw"}
               </button>
@@ -473,11 +473,11 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
     {
       label: "Wallet Balance", icon: "💳", value: `GH₵${(data.wallet_balance ?? 0).toFixed(2)}`,
       sub: null, action: <button onClick={onAddFunds} style={{ display: "flex", alignItems: "center", gap: 6, background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 10 }}>+ Deposit Funds</button>,
-      iconBg: "#eff6ff",
+      iconBg: "rgba(59,130,246,0.15)",
     },
-    { label: "Today's Orders", icon: "📈", value: String(todayCount), sub: `+${todayCount} today`, iconBg: "#f0fdf4" },
-    { label: "Total Orders", icon: "📦", value: String(data.total_sales ?? data.orders.length), sub: `${ms.count} this month`, iconBg: "#fff7ed" },
-    { label: "Total Earned", icon: "💰", value: `GH₵${(data.commission_balance ?? 0).toFixed(2)}`, sub: `GH₵${ms.revenue.toFixed(2)} this month`, iconBg: "#fef9c3" },
+    { label: "Today's Orders", icon: "📈", value: String(todayCount), sub: `+${todayCount} today`, iconBg: "rgba(74,222,128,0.15)" },
+    { label: "Total Orders", icon: "📦", value: String(data.total_sales ?? data.orders.length), sub: `${ms.count} this month`, iconBg: "rgba(249,115,22,0.15)" },
+    { label: "Total Earned", icon: "💰", value: `GH₵${(data.commission_balance ?? 0).toFixed(2)}`, sub: `GH₵${ms.revenue.toFixed(2)} this month`, iconBg: "rgba(245,158,11,0.15)" },
   ];
 
   return (
@@ -486,8 +486,8 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
 
       {/* Low wallet warning */}
       {(data.wallet_balance ?? 0) < 5 && (
-        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 14, padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <p style={{ color: "#92400e", fontWeight: 700, fontSize: 13, margin: 0 }}>⚠️ Low Wallet Balance — Your balance is below GH₵5. Top up to keep buying data.</p>
+        <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 14, padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <p style={{ color: M.amber, fontWeight: 700, fontSize: 13, margin: 0 }}>⚠️ Low Wallet Balance — Your balance is below GH₵5. Top up to keep buying data.</p>
           <button onClick={onAddFunds} style={{ background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>Top Up Now</button>
         </div>
       )}
@@ -569,7 +569,7 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
             </div>
             <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
               <button onClick={onAddFunds} style={{ flex: 1, background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 10, padding: "11px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ Deposit Funds</button>
-              <button onClick={onWithdraw} style={{ flex: 1, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#16a34a", borderRadius: 10, padding: "11px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Withdraw</button>
+              <button onClick={onWithdraw} style={{ flex: 1, background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.25)", color: M.green, borderRadius: 10, padding: "11px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Withdraw</button>
             </div>
             {[
               { label: "Total Earnings", value: `GH₵${(data.commission_balance ?? 0).toFixed(2)}` },
@@ -670,7 +670,7 @@ function OrdersPage({ orders, agentId, onPlaceOrder }: { orders: Order[]; agentI
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{ background: "#f8fafc", borderBottom: `1px solid ${M.border}` }}>
+                <tr style={{ background: "rgba(255,255,255,0.04)", borderBottom: `1px solid ${M.border}` }}>
                   {["#", "Order ID", "Network", "Bundle", "Phone", "Amount", "Date", "Status"].map(h => (
                     <th key={h} style={{ padding: "11px 16px", textAlign: "left", color: M.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, whiteSpace: "nowrap" }}>{h}</th>
                   ))}
@@ -707,7 +707,7 @@ function OrdersPage({ orders, agentId, onPlaceOrder }: { orders: Order[]; agentI
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
-                  <tr style={{ background: "#f8fafc", borderBottom: `1px solid ${M.border}` }}>
+                  <tr style={{ background: "rgba(255,255,255,0.04)", borderBottom: `1px solid ${M.border}` }}>
                     {["#", "Network", "Bundle", "Customer Phone", "Amount", "Commission", "Date", "Status"].map(h => (
                       <th key={h} style={{ padding: "11px 16px", textAlign: "left", color: M.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, whiteSpace: "nowrap" }}>{h}</th>
                     ))}
@@ -771,7 +771,7 @@ function CustomersPage({ orders }: { orders: Order[] }) {
       <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, overflow: "hidden" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
-            <tr style={{ background: "#f8fafc", borderBottom: `1px solid ${M.border}` }}>
+            <tr style={{ background: "rgba(255,255,255,0.04)", borderBottom: `1px solid ${M.border}` }}>
               {["#", "Phone", "Orders", "Total Spent", "Networks", "Last Order"].map(h => (
                 <th key={h} style={{ padding: "11px 16px", textAlign: "left", color: M.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6 }}>{h}</th>
               ))}
@@ -860,7 +860,7 @@ function WalletPage({ data, onAddFunds, onWithdraw }: { data: AgentData; onAddFu
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         {[{ label: "Total Deposited", value: `GH₵${totalDep.toFixed(2)}`, color: "#16a34a", icon: "↓" }, { label: "Total Withdrawn", value: `GH₵${totalWith.toFixed(2)}`, color: M.red, icon: "↑" }].map(r => (
           <div key={r.label} style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 12, background: r.color === "#16a34a" ? "#dcfce7" : "#fee2e2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 900, color: r.color }}>{r.icon}</div>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: r.color === "#16a34a" ? "rgba(74,222,128,0.15)" : "rgba(248,113,113,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 900, color: r.color }}>{r.icon}</div>
             <div><p style={{ fontSize: 12, color: M.muted, fontWeight: 600, margin: "0 0 4px" }}>{r.label}</p><p style={{ fontSize: 20, fontWeight: 900, color: M.text, margin: 0 }}>{r.value}</p></div>
           </div>
         ))}
@@ -934,7 +934,7 @@ function PricesPage({ data }: { data: AgentData }) {
         {nets.map(n => <button key={n.id} onClick={() => setActiveNet(n.id)} style={{ padding: "8px 20px", borderRadius: 10, border: `2px solid ${activeNet === n.id ? netColor[n.id] : M.border}`, background: activeNet === n.id ? `${netColor[n.id]}15` : "white", color: activeNet === n.id ? netColor[n.id] : M.muted, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{n.label}</button>)}
       </div>
       <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 130px 150px", gap: 0, padding: "10px 20px", borderBottom: `1px solid ${M.border}`, background: "#f8fafc" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 130px 150px", gap: 0, padding: "10px 20px", borderBottom: `1px solid ${M.border}`, background: "rgba(255,255,255,0.05)" }}>
           {["Bundle", "Admin Price", "My Price", "Profit"].map(h => <p key={h} style={{ color: M.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6, margin: 0 }}>{h}</p>)}
         </div>
         {filtered.map((b, i) => {
@@ -945,7 +945,7 @@ function PricesPage({ data }: { data: AgentData }) {
               <div><p style={{ color: M.text, fontWeight: 700, fontSize: 14, margin: "0 0 2px" }}>{b.size}</p><p style={{ color: M.muted, fontSize: 11, margin: 0 }}>{b.validity}</p></div>
               <p style={{ color: M.muted, fontWeight: 600, fontSize: 14, margin: 0 }}>GH₵{base.toFixed(2)}</p>
               <div>
-                {isEditing ? <input type="number" step="0.5" autoFocus value={editing.val} onChange={e => setEditing(p => p ? { ...p, val: e.target.value } : p)} style={{ background: "#f8fafc", border: `2px solid ${M.blue}`, borderRadius: 8, padding: "7px 10px", color: M.text, fontSize: 14, width: 100, outline: "none" }} onKeyDown={e => { if (e.key === "Enter") savePrice(b.id, parseFloat(editing.val)); if (e.key === "Escape") setEditing(null); }} />
+                {isEditing ? <input type="number" step="0.5" autoFocus value={editing.val} onChange={e => setEditing(p => p ? { ...p, val: e.target.value } : p)} style={{ background: "rgba(255,255,255,0.05)", border: `2px solid ${M.blue}`, borderRadius: 8, padding: "7px 10px", color: M.text, fontSize: 14, width: 100, outline: "none" }} onKeyDown={e => { if (e.key === "Enter") savePrice(b.id, parseFloat(editing.val)); if (e.key === "Escape") setEditing(null); }} />
                   : <button onClick={() => setEditing({ bundleId: b.id, val: String(myPrice ?? (base + 1).toFixed(2)) })} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><span style={{ fontSize: 15, fontWeight: 800, color: myPrice ? "#16a34a" : M.muted }}>{myPrice ? `GH₵${myPrice.toFixed(2)}` : "Tap to set"}</span></button>}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1125,7 +1125,7 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
           <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: 20 }}>
             <p style={{ fontWeight: 800, color: M.text, fontSize: 15, margin: "0 0 16px" }}>Order Details</p>
             {selected ? (
-              <div style={{ background: "#f8fafc", borderRadius: 12, padding: "14px 16px", marginBottom: 16, border: `2px solid ${M.blue}` }}>
+              <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: "14px 16px", marginBottom: 16, border: `2px solid ${M.blue}` }}>
                 <p style={{ color: M.muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", margin: "0 0 4px" }}>Selected Bundle</p>
                 <p style={{ color: M.text, fontWeight: 900, fontSize: 18, margin: "0 0 2px" }}>{selected.size} — {selected.network.toUpperCase()}</p>
                 <p style={{ color: M.muted, fontSize: 12, margin: 0 }}>
@@ -1140,10 +1140,10 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
                 )}
               </div>
             ) : (
-              <div style={{ background: "#f8fafc", borderRadius: 12, padding: "14px 16px", marginBottom: 16, textAlign: "center", color: M.muted, fontSize: 13 }}>← Pick a bundle from the list</div>
+              <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: "14px 16px", marginBottom: 16, textAlign: "center", color: M.muted, fontSize: 13 }}>← Pick a bundle from the list</div>
             )}
             <p style={{ fontSize: 12, color: M.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, margin: "0 0 6px" }}>{isWallet ? "Recipient Phone Number" : "Customer Phone Number"}</p>
-            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0241234567" style={{ background: "#f8fafc", border: `1px solid ${M.border}`, borderRadius: 10, padding: "11px 14px", color: M.text, fontSize: 16, fontWeight: 700, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 16 }} />
+            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0241234567" style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${M.border}`, borderRadius: 10, padding: "11px 14px", color: M.text, fontSize: 16, fontWeight: 700, width: "100%", outline: "none", boxSizing: "border-box", marginBottom: 16 }} />
             {msg && <div style={{ padding: "10px 14px", borderRadius: 10, background: msg.ok ? "#dcfce7" : "#fee2e2", color: msg.ok ? "#16a34a" : M.red, fontSize: 13, fontWeight: 700, marginBottom: 14 }}>{msg.text}</div>}
             <button onClick={submitFn} disabled={btnDisabled} style={{ width: "100%", background: btnDisabled ? "#94a3b8" : isWallet ? "linear-gradient(90deg,#16a34a,#15803d)" : "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 12, padding: "14px", fontSize: 15, fontWeight: 800, cursor: btnDisabled ? "not-allowed" : "pointer" }}>
               {loading
@@ -1198,12 +1198,12 @@ function ReferralsPage({ data }: { data: AgentData }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 560 }}>
       <div><h2 style={{ color: M.text, fontSize: 18, fontWeight: 900, margin: 0 }}>My Referrals & Store</h2><p style={{ color: M.muted, fontSize: 13, margin: "4px 0 0" }}>Share your store link to earn from every customer purchase.</p></div>
       <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: 28, textAlign: "center" }}>
-        <div style={{ display: "inline-block", background: "white", borderRadius: 16, padding: 16, marginBottom: 20, boxShadow: "0 4px 20px rgba(0,0,0,0.08)" }}>
+        <div style={{ display: "inline-block", background: M.card, borderRadius: 16, padding: 16, marginBottom: 20, boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
           <QRCodeSVG value={storeUrl} size={160} />
         </div>
         <p style={{ color: M.text, fontWeight: 800, fontSize: 18, margin: "0 0 6px" }}>My Store Link</p>
         <p style={{ color: M.muted, fontSize: 14, margin: "0 0 20px" }}>Your referral code: <strong style={{ color: M.blue }}>{data.referral_code}</strong></p>
-        <div style={{ background: "#f8fafc", borderRadius: 12, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10, border: `1px solid ${M.border}` }}>
+        <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10, border: `1px solid ${M.border}` }}>
           <p style={{ color: M.muted, fontSize: 13, margin: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "monospace" }}>{storeUrl}</p>
           <button onClick={copyLink} style={{ background: copied ? "#16a34a" : "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
             {copied ? "✓ Copied!" : "Copy"}
@@ -1211,10 +1211,10 @@ function ReferralsPage({ data }: { data: AgentData }) {
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={() => window.open(storeUrl, "_blank")} style={{ flex: 1, background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 12, padding: "13px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Open Store ↗</button>
-          <button onClick={copyLink} style={{ flex: 1, background: "#f8fafc", border: `1px solid ${M.border}`, color: M.muted, borderRadius: 12, padding: "13px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Share Link</button>
+          <button onClick={copyLink} style={{ flex: 1, background: "rgba(255,255,255,0.05)", border: `1px solid ${M.border}`, color: M.muted, borderRadius: 12, padding: "13px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Share Link</button>
         </div>
       </div>
-      <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 16, padding: 18 }}>
+      <div style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: 16, padding: 18 }}>
         <p style={{ color: "#16a34a", fontWeight: 700, fontSize: 14, margin: "0 0 8px" }}>💡 How it works</p>
         <ul style={{ color: M.muted, fontSize: 13, margin: 0, paddingLeft: 18, lineHeight: 2 }}>
           <li>Customer visits your link and picks a bundle</li>
@@ -1363,9 +1363,9 @@ function ApiPage({ data }: { data: AgentData }) {
       </div>
 
       {/* API Key card */}
-      <div style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
+      <div style={{ background: M.card, border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: M.muted, textTransform: "uppercase", letterSpacing: 1, margin: "0 0 12px" }}>Your API Key</p>
-        <div style={{ background: "#f8fafc", border: `1px solid ${M.border}`, borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <div style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${M.border}`, borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
           <code style={{ flex: 1, fontSize: 13, color: "#0f172a", fontFamily: "monospace", wordBreak: "break-all" }}>
             {revealed ? apiKey : maskedKey}
           </code>
@@ -1382,7 +1382,7 @@ function ApiPage({ data }: { data: AgentData }) {
       </div>
 
       {/* How to use */}
-      <div style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
+      <div style={{ background: M.card, border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
         <p style={{ fontSize: 15, fontWeight: 800, color: M.text, margin: "0 0 16px" }}>How to use it</p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1428,7 +1428,7 @@ function ApiPage({ data }: { data: AgentData }) {
           </div>
 
           {/* Networks */}
-          <div style={{ background: "#f8fafc", border: `1px solid ${M.border}`, borderRadius: 12, padding: "14px 16px" }}>
+          <div style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${M.border}`, borderRadius: 12, padding: "14px 16px" }}>
             <p style={{ fontSize: 12, fontWeight: 700, color: M.muted, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 10px" }}>Supported networks & datasize values</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
               {[
@@ -1452,7 +1452,7 @@ function ApiPage({ data }: { data: AgentData }) {
       </div>
 
       {/* Get bundles list */}
-      <div style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
+      <div style={{ background: M.card, border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
         <p style={{ fontSize: 15, fontWeight: 800, color: M.text, margin: "0 0 8px" }}>Get available bundles &amp; prices</p>
         <p style={{ fontSize: 13, color: M.muted, margin: "0 0 12px" }}>Returns all active bundles with network, size and price. No authentication needed.</p>
         <div style={{ background: "#0f172a", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1464,7 +1464,7 @@ function ApiPage({ data }: { data: AgentData }) {
       </div>
 
       {/* Check wallet balance */}
-      <div style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
+      <div style={{ background: M.card, border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
         <p style={{ fontSize: 15, fontWeight: 800, color: M.text, margin: "0 0 8px" }}>Check your wallet balance</p>
         <p style={{ fontSize: 13, color: M.muted, margin: "0 0 12px" }}>Returns your current API wallet balance and recent transactions.</p>
         <div style={{ background: "#0f172a", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1477,7 +1477,7 @@ function ApiPage({ data }: { data: AgentData }) {
       </div>
 
       {/* Check order status */}
-      <div style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
+      <div style={{ background: M.card, border: `1px solid ${M.border}`, borderRadius: 16, padding: "20px 24px" }}>
         <p style={{ fontSize: 15, fontWeight: 800, color: M.text, margin: "0 0 8px" }}>Check order delivery status</p>
         <p style={{ fontSize: 13, color: M.muted, margin: "0 0 12px" }}>Check the delivery status of any order using its reference.</p>
         <div style={{ background: "#0f172a", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1607,7 +1607,7 @@ function SupportPage() {
             <span style={{ fontSize: 14, color: M.muted }}>{r.hours}</span>
           </div>
         ))}
-        <div style={{ marginTop: 16, background: "#eff6ff", borderRadius: 10, padding: "12px 16px" }}>
+        <div style={{ marginTop: 16, background: "rgba(59,130,246,0.12)", borderRadius: 10, padding: "12px 16px" }}>
           <p style={{ color: M.blue, fontSize: 13, fontWeight: 700, margin: 0 }}>⚡ Response Time: Usually within 5 minutes during working hours</p>
         </div>
       </div>
@@ -1806,14 +1806,14 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
         </main>
 
         {/* FuzeServe-style bottom navigation — mobile only */}
-        <nav className="bottom-nav" style={{ display: "none", position: "fixed", bottom: 0, left: 0, right: 0, height: 66, background: "white", borderTop: `2px solid ${M.border}`, alignItems: "center", justifyContent: "space-around", zIndex: 30, boxShadow: "0 -2px 8px rgba(0,0,0,0.07)" }}>
+        <nav className="bottom-nav" style={{ display: "none", position: "fixed", bottom: 0, left: 0, right: 0, height: 66, background: SB.bg, borderTop: `1px solid ${SB.border}`, alignItems: "center", justifyContent: "space-around", zIndex: 30, boxShadow: "0 -4px 20px rgba(0,0,0,0.4)" }}>
           {/* Home */}
-          <button onClick={() => setPage("dashboard")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "dashboard" ? M.blue : M.sub }}>
+          <button onClick={() => setPage("dashboard")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "dashboard" ? M.blue : SB.muted }}>
             <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
             <span style={{ fontSize: 10, fontWeight: page === "dashboard" ? 700 : 500 }}>Home</span>
           </button>
           {/* Orders */}
-          <button onClick={() => setPage("orders")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "orders" ? M.blue : M.sub }}>
+          <button onClick={() => setPage("orders")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "orders" ? M.blue : SB.muted }}>
             <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
             <span style={{ fontSize: 10, fontWeight: page === "orders" ? 700 : 500 }}>Orders</span>
           </button>
@@ -1822,15 +1822,15 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
             <button onClick={() => setPage("buy_data")} style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", border: "4px solid white", boxShadow: "0 4px 16px rgba(59,130,246,0.45)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: -24, cursor: "pointer" }}>
               <svg width={24} height={24} fill="none" stroke="white" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>
             </button>
-            <span style={{ fontSize: 10, color: page === "buy_data" ? M.blue : M.sub, fontWeight: page === "buy_data" ? 700 : 500, marginTop: 3 }}>Buy Data</span>
+            <span style={{ fontSize: 10, color: page === "buy_data" ? M.blue : SB.muted, fontWeight: page === "buy_data" ? 700 : 500, marginTop: 3 }}>Buy Data</span>
           </div>
           {/* Affiliate */}
-          <button onClick={() => setPage("affiliate")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "affiliate" ? M.blue : M.sub }}>
+          <button onClick={() => setPage("affiliate")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "affiliate" ? M.blue : SB.muted }}>
             <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
             <span style={{ fontSize: 10, fontWeight: page === "affiliate" ? 700 : 500 }}>Affiliate</span>
           </button>
           {/* More */}
-          <button onClick={() => setSidebarOpen(true)} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: sidebarOpen ? M.blue : M.sub }}>
+          <button onClick={() => setSidebarOpen(true)} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: sidebarOpen ? M.blue : SB.muted }}>
             <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
             <span style={{ fontSize: 10, fontWeight: sidebarOpen ? 700 : 500 }}>More</span>
           </button>
@@ -1841,16 +1841,19 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
       {showWithdraw && <WithdrawModal agentId={data.id} referralCode={data.referral_code} profitBalance={data.agent_type === "custom_price" ? (data.commission_balance ?? 0) + (data.paystack_wallet_balance ?? 0) : (data.commission_balance ?? 0)} onClose={() => setShowWithdraw(false)} onSuccess={onRefresh} />}
 
       <style>{`
-        @media (min-width: 768px) {
-          .sidebar-desktop { left: 0 !important; }
-          .main-with-sidebar { margin-left: 260px; }
-          .mobile-header { display: none !important; }
-          .bottom-nav { display: none !important; }
+        /* FuzeServe layout — header + bottom nav always on */
+        .mobile-header { display: flex !important; }
+        .bottom-nav { display: flex !important; }
+        .main-content { padding: 16px 16px 88px !important; }
+        /* Dark theme: override hardcoded light inputs */
+        input, textarea, select {
+          background: #1e293b !important;
+          color: #f8fafc !important;
+          border-color: #1e3a5f !important;
         }
+        input::placeholder, textarea::placeholder { color: #475569 !important; }
+        /* Responsive grids */
         @media (max-width: 767px) {
-          .mobile-header { display: flex !important; }
-          .bottom-nav { display: flex !important; }
-          .main-content { padding: 16px 16px 88px !important; }
           .stat-grid { grid-template-columns: 1fr 1fr !important; }
           .main-grid { grid-template-columns: 1fr !important; }
           .wallet-grid { grid-template-columns: 1fr !important; }
