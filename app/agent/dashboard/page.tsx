@@ -461,12 +461,12 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
   }).length;
 
   const quickActions = [
-    { label: "Buy Data", icon: "📶", bg: "linear-gradient(135deg,#fbbf24,#f59e0b)", page: "buy_data" as Page },
+    { label: "Buy Data", icon: "📶", bg: "linear-gradient(135deg,#f59e0b,#d97706)", page: "buy_data" as Page },
     { label: "Wallet", icon: "💳", bg: "linear-gradient(135deg,#3b82f6,#2563eb)", page: "wallet" as Page },
-    { label: isPriceMode ? "My Prices" : "My Shop", icon: isPriceMode ? "🏷️" : "🔗", bg: "linear-gradient(135deg,#8b5cf6,#7c3aed)", page: isPriceMode ? "prices" as Page : "referrals" as Page },
+    { label: "Reseller", icon: "🏪", bg: "linear-gradient(135deg,#f59e0b,#b45309)", page: "affiliate" as Page },
+    { label: "Pro ✦", icon: "⭐", bg: "linear-gradient(135deg,#8b5cf6,#7c3aed)", page: "profile" as Page },
     { label: "Orders", icon: "📦", bg: "linear-gradient(135deg,#f97316,#ea580c)", page: "orders" as Page },
-    { label: "Affiliate", icon: "🤝", bg: "linear-gradient(135deg,#10b981,#059669)", page: "affiliate" as Page },
-    { label: "Profile", icon: "👤", bg: "linear-gradient(135deg,#ec4899,#db2777)", page: "profile" as Page },
+    { label: "Rewards", icon: "🎁", bg: "linear-gradient(135deg,#10b981,#059669)", page: "referrals" as Page },
   ];
 
   const statCards = [
@@ -1505,20 +1505,199 @@ function ApiPage({ data }: { data: AgentData }) {
 
 // ─── Affiliate Page (Referrals + Leaderboard combined) ───────────────────────
 function AffiliatePage({ data }: { data: AgentData }) {
-  const [tab, setTab] = useState<"referrals" | "leaderboard">("referrals");
+  const [tab, setTab] = useState<"how" | "store" | "sales">("how");
+  const [storeName, setStoreName] = useState(data.business_name ?? "");
+  const [whatsapp, setWhatsapp] = useState(data.phone ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawMsg, setWithdrawMsg] = useState("");
+
+  const totalEarned = (data.commission_balance ?? 0) + (data.paystack_wallet_balance ?? 0);
+  const siteUrl = typeof window !== "undefined" ? window.location.origin : "https://elitedata1.com";
+  const storeLink = `${siteUrl}/store/${data.referral_code}`;
+  const isActive = data.referral_code && (data.total_sales ?? 0) > 0;
+  const minWithdraw = 30;
+
+  async function saveProfile() {
+    setSaving(true); setSaveMsg("");
+    try {
+      const res = await fetch("/api/agents/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: data.id, business_name: storeName, phone: whatsapp }) });
+      setSaveMsg(res.ok ? "Saved!" : "Failed to save");
+    } catch { setSaveMsg("Failed"); }
+    setSaving(false);
+    setTimeout(() => setSaveMsg(""), 3000);
+  }
+
+  async function requestWithdraw() {
+    if (totalEarned < minWithdraw) { setWithdrawMsg(`You need at least GH₵${minWithdraw} to withdraw.`); return; }
+    setWithdrawing(true); setWithdrawMsg("");
+    try {
+      const res = await fetch("/api/agents/withdraw", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: data.id, amount: totalEarned }) });
+      const j = await res.json();
+      setWithdrawMsg(j.message ?? (res.ok ? "Withdrawal request sent!" : "Failed"));
+    } catch { setWithdrawMsg("Failed to submit request."); }
+    setWithdrawing(false);
+  }
+
+  const GOLD = "#f59e0b";
+  const tabStyle = (t: typeof tab) => ({
+    padding: "10px 18px", borderRadius: 12, border: "none",
+    background: tab === t ? GOLD : "rgba(255,255,255,0.06)",
+    color: tab === t ? "#000" : M.muted,
+    fontSize: 13, fontWeight: 700, cursor: "pointer" as const,
+  });
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div>
-        <h1 style={{ color: M.text, fontSize: 28, fontWeight: 900, margin: 0 }}>Affiliate</h1>
-        <p style={{ color: M.muted, fontSize: 14, margin: "4px 0 0" }}>Grow your network and earn more rewards</p>
+        <h1 style={{ color: M.text, fontSize: 26, fontWeight: 900, margin: 0 }}>Reseller Program</h1>
+        <p style={{ color: M.muted, fontSize: 13, margin: "4px 0 0" }}>Buy at wholesale prices. Set your profit. Share your store. Earn automatically.</p>
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        {([["referrals", "My Store & Referrals"], ["leaderboard", "Leaderboard"]] as const).map(([t, label]) => (
-          <button key={t} onClick={() => setTab(t)} style={{ padding: "10px 24px", borderRadius: 12, border: `2px solid ${tab === t ? M.blue : M.border}`, background: tab === t ? "#eff6ff" : "white", color: tab === t ? M.blue : M.muted, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{label}</button>
-        ))}
+
+      {/* Status card */}
+      <div style={{ background: isActive ? "rgba(245,158,11,0.08)" : "rgba(255,255,255,0.04)", border: `1px solid ${isActive ? "rgba(245,158,11,0.3)" : M.border}`, borderRadius: 18, padding: "24px 20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+          <div style={{ width: 44, height: 44, borderRadius: "50%", background: isActive ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+            {isActive ? "✅" : "🏪"}
+          </div>
+          <div>
+            <p style={{ color: M.text, fontWeight: 800, fontSize: 16, margin: 0 }}>{isActive ? "Active Reseller ✓" : "Join Reseller Program"}</p>
+            <p style={{ color: M.muted, fontSize: 12, margin: "2px 0 0" }}>{isActive ? "Your store is live. Share your link and earn automatically on every sale." : "Apply to get your own store link and earn on every sale."}</p>
+          </div>
+        </div>
+        <div style={{ background: "rgba(0,0,0,0.3)", borderRadius: 12, padding: "14px 18px" }}>
+          <p style={{ color: M.muted, fontSize: 12, margin: "0 0 2px" }}>Total Earned</p>
+          <p style={{ color: GOLD, fontWeight: 900, fontSize: 26, margin: 0 }}>GH₵ {totalEarned.toFixed(2)}</p>
+        </div>
       </div>
-      {tab === "referrals" && <ReferralsPage data={data} />}
-      {tab === "leaderboard" && <LeaderboardPage myCode={data.referral_code} />}
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 8, overflowX: "auto" }}>
+        <button style={tabStyle("how")} onClick={() => setTab("how")}>How It Works</button>
+        <button style={tabStyle("store")} onClick={() => setTab("store")}>My Store & Prices</button>
+        <button style={tabStyle("sales")} onClick={() => setTab("sales")}>Sales Report</button>
+      </div>
+
+      {/* How It Works tab */}
+      {tab === "how" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {[
+            { n: 1, title: "Set Your Prices", desc: "Go to \"My Store & Prices\" tab → set your selling price for each bundle (must be above your cost) → toggle ON to add to store." },
+            { n: 2, title: "Share Your Store Link", desc: "Copy your unique store link and share it on WhatsApp, Facebook, or send directly to customers." },
+            { n: 3, title: "Customer Pays via MoMo", desc: "Customer visits your link, selects a bundle, enters their phone, and pays with Mobile Money through Paystack — fully automated." },
+            { n: 4, title: "Profit Auto-Credited", desc: "As soon as payment is confirmed, data is delivered to the customer and your profit lands in your Reseller Earnings instantly." },
+          ].map(s => (
+            <div key={s.n} style={{ background: M.card, borderRadius: 14, border: `1px solid ${M.border}`, padding: "16px 18px", display: "flex", gap: 14, alignItems: "flex-start" }}>
+              <div style={{ width: 32, height: 32, borderRadius: "50%", background: GOLD, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 14, color: "#000", flexShrink: 0 }}>{s.n}</div>
+              <div>
+                <p style={{ color: M.text, fontWeight: 700, fontSize: 14, margin: "0 0 4px" }}>{s.title}</p>
+                <p style={{ color: M.muted, fontSize: 13, margin: 0 }}>{s.desc}</p>
+              </div>
+            </div>
+          ))}
+          {/* Example box */}
+          <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 14, padding: "16px 18px" }}>
+            <p style={{ color: M.text, fontSize: 13, margin: 0 }}>💡 <strong>Example:</strong> You get <strong>5GB MTN for GH₵ 10</strong>. You set your price at <strong>GH₵ 14</strong>. Customer pays GH₵ 14 via MoMo. You earn <span style={{ color: GOLD, fontWeight: 800 }}>GH₵ 4 profit instantly</span> — no manual action needed!</p>
+          </div>
+          {/* Withdraw section */}
+          <div style={{ background: M.card, borderRadius: 14, border: `1px solid ${M.border}`, padding: "20px 18px" }}>
+            <p style={{ color: M.text, fontWeight: 800, fontSize: 15, margin: "0 0 4px" }}>⬇️ Withdraw Reseller Earnings</p>
+            <p style={{ color: M.muted, fontSize: 13, margin: "0 0 16px" }}>Minimum GH₵ {minWithdraw} · Sent to your MoMo via admin review</p>
+            <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
+              <div style={{ flex: 1, background: "rgba(0,0,0,0.3)", borderRadius: 10, padding: "12px 14px" }}>
+                <p style={{ color: M.muted, fontSize: 11, margin: "0 0 2px" }}>Available</p>
+                <p style={{ color: M.text, fontWeight: 800, fontSize: 18, margin: 0 }}>GH₵ {totalEarned.toFixed(2)}</p>
+              </div>
+              <div style={{ flex: 1, background: "rgba(0,0,0,0.3)", borderRadius: 10, padding: "12px 14px" }}>
+                <p style={{ color: M.muted, fontSize: 11, margin: "0 0 2px" }}>Minimum</p>
+                <p style={{ color: M.text, fontWeight: 800, fontSize: 18, margin: 0 }}>GH₵ {minWithdraw}.00</p>
+              </div>
+            </div>
+            {withdrawMsg && <p style={{ color: totalEarned >= minWithdraw ? M.green : M.red, fontSize: 13, margin: "0 0 10px", fontWeight: 700 }}>{withdrawMsg}</p>}
+            <button onClick={requestWithdraw} disabled={withdrawing} style={{ width: "100%", padding: "14px", borderRadius: 12, background: GOLD, color: "#000", border: "none", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
+              {withdrawing ? "Submitting..." : "⬇️ Request Withdrawal"}
+            </button>
+            <p style={{ color: M.muted, fontSize: 12, textAlign: "center", margin: "8px 0 0" }}>You need at least GH₵ {minWithdraw} to withdraw. Keep selling!</p>
+          </div>
+        </div>
+      )}
+
+      {/* My Store & Prices tab */}
+      {tab === "store" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Store name */}
+          <div style={{ background: M.card, borderRadius: 14, border: `1px solid ${M.border}`, padding: "18px" }}>
+            <p style={{ color: GOLD, fontWeight: 700, fontSize: 13, margin: "0 0 8px" }}>✏️ Custom Store Name</p>
+            <p style={{ color: M.muted, fontSize: 12, margin: "0 0 10px" }}>This name appears on your public store page as the store title.</p>
+            <input value={storeName} onChange={e => setStoreName(e.target.value)} placeholder="Your store name..." style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.06)", border: `1px solid ${M.border}`, color: M.text, fontSize: 14, boxSizing: "border-box" as const }} />
+          </div>
+          {/* WhatsApp */}
+          <div style={{ background: M.card, borderRadius: 14, border: `1px solid ${M.border}`, padding: "18px" }}>
+            <p style={{ color: M.green, fontWeight: 700, fontSize: 13, margin: "0 0 8px" }}>📞 WhatsApp Contact Number (optional)</p>
+            <p style={{ color: M.muted, fontSize: 12, margin: "0 0 10px" }}>Customers will see a "Chat on WhatsApp" button linked to this number on your store page.</p>
+            <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="024XXXXXXX" style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.06)", border: `1px solid ${M.border}`, color: M.text, fontSize: 14, boxSizing: "border-box" as const }} />
+          </div>
+          {saveMsg && <p style={{ color: M.green, fontWeight: 700, fontSize: 13, margin: 0 }}>{saveMsg}</p>}
+          <button onClick={saveProfile} disabled={saving} style={{ padding: "14px", borderRadius: 12, background: GOLD, color: "#000", border: "none", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
+          {/* Store link */}
+          <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 14, padding: "18px" }}>
+            <p style={{ color: GOLD, fontWeight: 700, fontSize: 13, margin: "0 0 6px" }}>🔗 Your Store Link</p>
+            <p style={{ color: M.muted, fontSize: 12, margin: "0 0 12px" }}>Share this link on WhatsApp, social media, or anywhere. Customers click and pay directly.</p>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ flex: 1, background: "rgba(0,0,0,0.4)", borderRadius: 10, padding: "10px 12px", overflow: "hidden" }}>
+                <p style={{ color: GOLD, fontSize: 13, margin: 0, wordBreak: "break-all" as const }}>{storeLink}</p>
+              </div>
+              <button onClick={() => navigator.clipboard.writeText(storeLink)} style={{ padding: "10px 16px", borderRadius: 10, background: GOLD, color: "#000", border: "none", fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>Copy</button>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+              <button onClick={() => window.open(storeLink, "_blank")} style={{ flex: 1, padding: "10px", borderRadius: 10, background: "rgba(255,255,255,0.06)", border: `1px solid ${M.border}`, color: M.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>🔗 Preview Store</button>
+              <button onClick={() => { const msg = `Check out my data store: ${storeLink}`; window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank"); }} style={{ flex: 1, padding: "10px", borderRadius: 10, background: "#25D366", border: "none", color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Share on WhatsApp</button>
+            </div>
+          </div>
+          {/* Steps reminder */}
+          <div style={{ display: "flex", gap: 8 }}>
+            {["1. Set your prices below", "2. Toggle products ON to add to store", "3. Share your link & earn automatically"].map((s, i) => (
+              <div key={i} style={{ flex: 1, background: M.card, border: `1px solid ${M.border}`, borderRadius: 10, padding: "10px 8px", textAlign: "center" as const }}>
+                <p style={{ color: M.muted, fontSize: 11, margin: 0 }}>{s}</p>
+              </div>
+            ))}
+          </div>
+          <ReferralsPage data={data} />
+        </div>
+      )}
+
+      {/* Sales Report tab */}
+      {tab === "sales" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ background: M.card, borderRadius: 14, border: `1px solid ${M.border}`, overflow: "hidden" }}>
+            {data.orders.length === 0 ? (
+              <div style={{ padding: 48, textAlign: "center" as const }}>
+                <p style={{ fontSize: 36, margin: "0 0 12px" }}>📊</p>
+                <p style={{ color: M.text, fontWeight: 700, fontSize: 15, margin: "0 0 6px" }}>No sales yet</p>
+                <p style={{ color: M.muted, fontSize: 13, margin: 0 }}>Share your store link to start earning.</p>
+              </div>
+            ) : data.orders.slice(0, 30).map((o, i) => {
+              const nb = netBadge(o.network); const sb = statusBadge(o.status);
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: i < data.orders.length - 1 ? `1px solid ${M.border}` : "none" }}>
+                  <span style={{ background: nb.bg, color: nb.color, padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 800 }}>{nb.label}</span>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ color: M.text, fontWeight: 600, fontSize: 13, margin: 0 }}>{o.bundle_size} · {o.phone?.slice(0, 3)}***{o.phone?.slice(-3)}</p>
+                    <p style={{ color: M.muted, fontSize: 11, margin: 0 }}>{new Date(o.created_at).toLocaleDateString("en-GH", { day: "2-digit", month: "short" })}</p>
+                  </div>
+                  <div style={{ textAlign: "right" as const }}>
+                    <p style={{ color: GOLD, fontWeight: 700, fontSize: 13, margin: 0 }}>GH₵{Number(o.amount).toFixed(2)}</p>
+                    <span style={{ background: sb.bg, color: sb.color, padding: "2px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700 }}>{sb.label}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1808,29 +1987,29 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
         {/* FuzeServe-style bottom navigation — mobile only */}
         <nav className="bottom-nav" style={{ display: "none", position: "fixed", bottom: 0, left: 0, right: 0, height: 66, background: SB.bg, borderTop: `1px solid ${SB.border}`, alignItems: "center", justifyContent: "space-around", zIndex: 30, boxShadow: "0 -4px 20px rgba(0,0,0,0.4)" }}>
           {/* Home */}
-          <button onClick={() => setPage("dashboard")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "dashboard" ? M.blue : SB.muted }}>
+          <button onClick={() => setPage("dashboard")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "dashboard" ? M.amber : SB.muted }}>
             <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
             <span style={{ fontSize: 10, fontWeight: page === "dashboard" ? 700 : 500 }}>Home</span>
           </button>
-          {/* Orders */}
-          <button onClick={() => setPage("orders")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "orders" ? M.blue : SB.muted }}>
-            <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-            <span style={{ fontSize: 10, fontWeight: page === "orders" ? 700 : 500 }}>Orders</span>
+          {/* Buy Data */}
+          <button onClick={() => setPage("buy_data")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "buy_data" ? M.amber : SB.muted }}>
+            <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>
+            <span style={{ fontSize: 10, fontWeight: page === "buy_data" ? 700 : 500 }}>Buy Data</span>
           </button>
-          {/* Buy Data — elevated central circle */}
+          {/* Sale & Earn — elevated central circle (yellow like FuzeServe) */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <button onClick={() => setPage("buy_data")} style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", border: "4px solid white", boxShadow: "0 4px 16px rgba(59,130,246,0.45)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: -24, cursor: "pointer" }}>
-              <svg width={24} height={24} fill="none" stroke="white" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>
+            <button onClick={() => setPage("affiliate")} style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg,#f59e0b,#d97706)", border: `4px solid ${M.bg}`, boxShadow: "0 4px 16px rgba(245,158,11,0.5)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: -24, cursor: "pointer" }}>
+              <svg width={24} height={24} fill="none" stroke="white" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
             </button>
-            <span style={{ fontSize: 10, color: page === "buy_data" ? M.blue : SB.muted, fontWeight: page === "buy_data" ? 700 : 500, marginTop: 3 }}>Buy Data</span>
+            <span style={{ fontSize: 10, color: page === "affiliate" ? M.amber : SB.muted, fontWeight: page === "affiliate" ? 700 : 500, marginTop: 3 }}>Sale & Earn</span>
           </div>
-          {/* Affiliate */}
-          <button onClick={() => setPage("affiliate")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "affiliate" ? M.blue : SB.muted }}>
-            <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
-            <span style={{ fontSize: 10, fontWeight: page === "affiliate" ? 700 : 500 }}>Affiliate</span>
+          {/* Rewards */}
+          <button onClick={() => setPage("referrals")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "referrals" ? M.amber : SB.muted }}>
+            <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></svg>
+            <span style={{ fontSize: 10, fontWeight: page === "referrals" ? 700 : 500 }}>Rewards</span>
           </button>
           {/* More */}
-          <button onClick={() => setSidebarOpen(true)} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: sidebarOpen ? M.blue : SB.muted }}>
+          <button onClick={() => setSidebarOpen(true)} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: sidebarOpen ? M.amber : SB.muted }}>
             <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
             <span style={{ fontSize: 10, fontWeight: sidebarOpen ? 700 : 500 }}>More</span>
           </button>
