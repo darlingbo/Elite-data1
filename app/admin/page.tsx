@@ -1773,21 +1773,25 @@ export default function AdminDashboard() {
       {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t flex" style={{ background: "#080f1e", borderColor: "#1e3a5f" }}>
         {([
-          { id: "overview" as Tab,        icon: "🏠", label: "Home" },
-          { id: "all-orders" as Tab,      icon: "📦", label: "Orders", badge: stats?.orders.pending },
-          { id: "all-agents" as Tab,      icon: "👥", label: "Agents", badge: stats?.agents.pending },
-          { id: "sms" as Tab,             icon: "✉️", label: "SMS" },
-          { id: "settings" as Tab,        icon: "⚙️", label: "Settings" },
-        ] as { id: Tab; icon: string; label: string; badge?: number }[]).map(item => (
-          <button key={item.id} onClick={() => setTab(item.id)}
-            className="flex-1 flex flex-col items-center gap-0.5 py-2.5 relative transition-all"
-            style={{ color: tab === item.id ? "#60a5fa" : "#475569" }}>
-            <span className="text-lg leading-none">{item.icon}</span>
-            <span className="text-[9px] font-bold">{item.label}</span>
-            {(item.badge ?? 0) > 0 && <span className="absolute top-1.5 right-1/4 text-[8px] font-black px-1 rounded-full bg-orange-400 text-gray-900 leading-4 min-w-[14px] text-center">{item.badge}</span>}
-            {tab === item.id && <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-blue-400" />}
-          </button>
-        ))}
+          { id: "overview" as Tab,      icon: "🏠", label: "Dashboard" },
+          { id: "all-orders" as Tab,    icon: "📦", label: "Orders",   badge: stats?.orders.pending },
+          { id: "transactions" as Tab,  icon: "💰", label: "Financial" },
+          { id: "__more__" as Tab,      icon: "☰",  label: "More" },
+        ] as { id: Tab; icon: string; label: string; badge?: number }[]).map(item => {
+          const isMore = item.id === ("__more__" as Tab);
+          const active = !isMore && tab === item.id;
+          return (
+            <button key={item.id}
+              onClick={() => isMore ? setMobileSidebarOpen(true) : setTab(item.id)}
+              className="flex-1 flex flex-col items-center gap-0.5 py-2.5 relative transition-all"
+              style={{ color: active ? "#60a5fa" : isMore ? "#94a3b8" : "#475569" }}>
+              <span className={`${isMore ? "text-xl" : "text-lg"} leading-none`}>{item.icon}</span>
+              <span className="text-[9px] font-bold">{item.label}</span>
+              {(item.badge ?? 0) > 0 && <span className="absolute top-1.5 right-1/4 text-[8px] font-black px-1 rounded-full bg-orange-400 text-gray-900 leading-4 min-w-[14px] text-center">{item.badge}</span>}
+              {active && <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-blue-400" />}
+            </button>
+          );
+        })}
       </nav>
 
       <style>{`

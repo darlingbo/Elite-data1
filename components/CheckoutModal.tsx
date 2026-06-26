@@ -75,13 +75,32 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const [referralCredit, setReferralCredit] = useState(0);
   const [creditChecked, setCreditChecked] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoApplying, setPromoApplying] = useState(false);
+  const [promoResult, setPromoResult] = useState<{ discount: number; code: string; id: string; label: string } | null>(null);
+  const [promoError, setPromoError] = useState("");
   const paystackReady = usePaystackReady();
   const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const net = networkConfig[bundle.network];
   const feeAmount = parseFloat((bundle.price * PLATFORM_FEE_RATE).toFixed(2));
   const baseTotal = parseFloat((bundle.price + feeAmount).toFixed(2));
-  const totalAmount = parseFloat((baseTotal - referralCredit).toFixed(2));
+  const promoDiscount = promoResult?.discount ?? 0;
+  const totalAmount = parseFloat(Math.max(baseTotal - referralCredit - promoDiscount, 0).toFixed(2));
+
+  async function applyPromo() {
+    if (!promoCode.trim()) return;
+    setPromoApplying(true); setPromoError(""); setPromoResult(null);
+    try {
+      const r = await fetch("/api/validate-coupon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: promoCode.trim(), amount: baseTotal }) });
+      const d = await r.json();
+      if (!r.ok || !d.valid) { setPromoError(d.error ?? "Invalid code"); }
+      else {
+        setPromoResult({ discount: d.discount, code: d.code, id: d.id, label: d.discount_type === "percent" ? `${d.discount_value}% off` : `GH₵${d.discount_value} off` });
+      }
+    } catch { setPromoError("Could not check code. Try again."); }
+    finally { setPromoApplying(false); }
+  }
 
   // Check referral credits when phone is entered
   useEffect(() => {
@@ -170,12 +189,17 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
               agentCode: agentCode ?? null,
               referralVia: referralVia ?? null,
               applyReferralCredit: referralCredit > 0,
+              promoCode: promoResult?.code ?? null,
+              promoDiscount: promoDiscount > 0 ? promoDiscount : null,
             }),
           })
             .then(function(res) { return res.json(); })
             .then(function(data) {
               setLoading(false);
               if (data.success) {
+                if (promoResult?.id) {
+                  fetch("/api/use-coupon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: promoResult.id }) }).catch(() => {});
+                }
                 setSuccess({ reference: data.reference, loyalty: data.loyalty });
               } else {
                 setError(data.error || "Something went wrong. Please contact support.");
@@ -318,6 +342,12 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
                   <span>−GH₵{referralCredit.toFixed(2)}</span>
                 </div>
               )}
+              {promoResult && (
+                <div className="flex items-center gap-2 text-xs text-purple-600 font-semibold">
+                  <span>🏷️ {promoResult.code} ({promoResult.label})</span>
+                  <span>−GH₵{promoResult.discount.toFixed(2)}</span>
+                </div>
+              )}
               <div className={`flex items-center gap-2 text-base font-black ${net.textColor}`}>
                 <span>Total</span>
                 <span>GH₵{totalAmount.toFixed(2)}</span>
@@ -350,6 +380,30 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
             {creditChecked && referralCredit > 0 && (
               <p className="text-xs text-emerald-600 font-semibold mt-1">🎁 GH₵{referralCredit.toFixed(2)} referral credit applied!</p>
             )}
+          </div>
+
+          {/* Promo code */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Promo Code <span className="text-gray-400">(optional)</span></label>
+            {promoResult ? (
+              <div className="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2.5">
+                <span className="text-sm font-black text-purple-700">🏷️ {promoResult.code}</span>
+                <span className="text-xs text-purple-600">−GH₵{promoResult.discount.toFixed(2)}</span>
+                <button onClick={() => { setPromoResult(null); setPromoCode(""); setPromoError(""); }} className="ml-auto text-xs text-gray-400 hover:text-red-500">✕ Remove</button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input value={promoCode} onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoError(""); }}
+                  onKeyDown={e => e.key === "Enter" && applyPromo()}
+                  placeholder="Enter code e.g. SAVE20"
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-gray-900 bg-white uppercase tracking-wider" />
+                <button onClick={applyPromo} disabled={promoApplying || !promoCode.trim()}
+                  className="px-4 py-2.5 rounded-lg text-sm font-bold text-white disabled:opacity-50 bg-purple-600 hover:bg-purple-700 transition-colors shrink-0">
+                  {promoApplying ? "…" : "Apply"}
+                </button>
+              </div>
+            )}
+            {promoError && <p className="text-xs text-red-500 mt-1 font-semibold">{promoError}</p>}
           </div>
 
           <div className="bg-blue-50 rounded-lg px-3 py-2 text-xs text-blue-700">
