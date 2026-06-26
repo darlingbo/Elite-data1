@@ -1375,6 +1375,163 @@ function LeaderboardView({ stats }: { stats: StatsData }) {
   );
 }
 
+// ─── Biometric Settings ───────────────────────────────────────────────────────
+function base64urlToBuffer(base64url: string): ArrayBuffer {
+  const pad = "=".repeat((4 - (base64url.length % 4)) % 4);
+  const b64 = (base64url + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf.buffer;
+}
+function bufferToBase64url(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let str = "";
+  for (const b of bytes) str += String.fromCharCode(b);
+  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+function BiometricSettings({ showToast }: { showToast: (msg: string, ok?: boolean) => void }) {
+  const [status, setStatus] = useState<"loading" | "unsupported" | "none" | "registered">("loading");
+  const [registering, setRegistering] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [credentials, setCredentials] = useState<{ id: string; createdAt: string }[]>([]);
+
+  useEffect(() => {
+    if (!window.PublicKeyCredential) { setStatus("unsupported"); return; }
+    fetch("/api/admin/biometric?action=has-credentials")
+      .then(r => r.json())
+      .then(d => {
+        if (d.registered) {
+          setStatus("registered");
+          fetch("/api/admin/biometric?action=list").then(r => r.json()).then(d => setCredentials(d.credentials ?? [])).catch(() => {});
+        } else {
+          setStatus("none");
+        }
+      })
+      .catch(() => setStatus("none"));
+  }, []);
+
+  async function register() {
+    setRegistering(true);
+    try {
+      const optRes = await fetch("/api/admin/biometric?action=registration-options");
+      if (!optRes.ok) { showToast("❌ Could not start registration", false); setRegistering(false); return; }
+      const options = await optRes.json();
+
+      const publicKey: PublicKeyCredentialCreationOptions = {
+        ...options,
+        challenge: base64urlToBuffer(options.challenge),
+        user: { ...options.user, id: base64urlToBuffer(options.user.id) },
+        excludeCredentials: (options.excludeCredentials ?? []).map((c: { id: string; type: string; transports?: string[] }) => ({
+          ...c, id: base64urlToBuffer(c.id),
+        })),
+      };
+
+      const credential = await navigator.credentials.create({ publicKey }) as PublicKeyCredential;
+      if (!credential) { showToast("❌ Registration cancelled", false); setRegistering(false); return; }
+
+      const attestation = credential.response as AuthenticatorAttestationResponse;
+      const body = {
+        id: credential.id,
+        rawId: bufferToBase64url(credential.rawId),
+        type: credential.type,
+        response: {
+          clientDataJSON: bufferToBase64url(attestation.clientDataJSON),
+          attestationObject: bufferToBase64url(attestation.attestationObject),
+          transports: attestation.getTransports?.() ?? [],
+        },
+      };
+
+      const verifyRes = await fetch("/api/admin/biometric?action=registration-verify", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      const result = await verifyRes.json();
+      if (result.success) {
+        showToast("✓ Biometric registered! You can now log in without a password.");
+        setStatus("registered");
+        fetch("/api/admin/biometric?action=list").then(r => r.json()).then(d => setCredentials(d.credentials ?? [])).catch(() => {});
+      } else {
+        showToast(`❌ ${result.error ?? "Registration failed"}`, false);
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("cancel") || msg.includes("abort") || msg.includes("NotAllowed")) {
+        showToast("Cancelled — try again when ready");
+      } else {
+        showToast("❌ Registration error — try again", false);
+      }
+    } finally {
+      setRegistering(false);
+    }
+  }
+
+  async function remove() {
+    if (!confirm("Remove biometric login? You will need your password to sign in.")) return;
+    setRemoving(true);
+    const r = await fetch("/api/admin/biometric?action=remove", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }).then(r => r.json());
+    setRemoving(false);
+    if (r.success) { setStatus("none"); setCredentials([]); showToast("Biometric removed. Use password to log in."); }
+    else showToast("❌ Could not remove — try again", false);
+  }
+
+  if (status === "unsupported") return null;
+
+  return (
+    <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="font-bold text-white">🔐 Fingerprint / Face ID Login</p>
+          <p className="text-xs text-slate-500">Log in with your fingerprint, Face ID, or phone PIN — no password needed</p>
+        </div>
+        {status === "loading" && <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />}
+        {status === "registered" && <span className="text-xs font-black text-green-400 border border-green-800 bg-green-950 px-2.5 py-1 rounded-full">Active ✓</span>}
+        {status === "none" && <span className="text-xs font-bold text-slate-500 border border-slate-700 px-2.5 py-1 rounded-full">Not set up</span>}
+      </div>
+
+      {status === "registered" && credentials.length > 0 && (
+        <div className="mb-4 space-y-1.5">
+          {credentials.map((c, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs text-slate-400 bg-green-950/30 rounded-lg px-3 py-2 border border-green-900/40">
+              <span>📱</span>
+              <span>Device {i + 1}: <span className="font-mono text-slate-300">{c.id}</span></span>
+              <span className="ml-auto text-slate-600">{new Date(c.createdAt).toLocaleDateString()}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-3">
+        {status !== "loading" && (
+          <button
+            onClick={register}
+            disabled={registering}
+            className="flex-1 py-3 rounded-xl text-sm font-black text-white disabled:opacity-60 flex items-center justify-center gap-2"
+            style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)" }}>
+            {registering
+              ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Setting up…</>
+              : status === "registered" ? "👆 Re-register Biometric" : "👆 Set Up Fingerprint / Face ID"}
+          </button>
+        )}
+        {status === "registered" && (
+          <button
+            onClick={remove}
+            disabled={removing}
+            className="px-4 py-3 rounded-xl text-sm font-bold text-red-400 border border-red-900 hover:bg-red-950 disabled:opacity-60">
+            {removing ? "…" : "Remove"}
+          </button>
+        )}
+      </div>
+
+      {status === "none" && (
+        <p className="text-xs text-slate-600 mt-3 text-center">
+          Works with any phone — fingerprint sensor, Face ID, face unlock, or screen PIN
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Settings View ────────────────────────────────────────────────────────────
 function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
   const [net, setNet] = useState<{ mtn: boolean; telecel: boolean; at: boolean; autoHours: boolean; autoStart: string; autoEnd: string } | null>(null);
@@ -1452,7 +1609,7 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
     );
   }
 
-  const SQL = `-- Run this ONCE in Supabase SQL Editor:\nCREATE TABLE IF NOT EXISTS system_settings (\n  key text PRIMARY KEY,\n  value text NOT NULL,\n  updated_at timestamptz DEFAULT now()\n);`;
+  const SQL = `-- Run this ONCE in Supabase SQL Editor:\nCREATE TABLE IF NOT EXISTS system_settings (\n  key text PRIMARY KEY,\n  value text NOT NULL,\n  updated_at timestamptz DEFAULT now()\n);\n\nCREATE TABLE IF NOT EXISTS admin_config (\n  key text PRIMARY KEY,\n  value text NOT NULL,\n  updated_at timestamptz DEFAULT now()\n);`;
 
   return (
     <div className="max-w-xl space-y-5">
@@ -1551,6 +1708,9 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
           </div>
         )}
       </div>
+
+      {/* Fingerprint / Face ID Login */}
+      <BiometricSettings showToast={showToast} />
 
       {/* Admin Account */}
       <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
