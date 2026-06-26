@@ -40,24 +40,31 @@ export async function POST(req: NextRequest) {
     ...(senderId ? { from: senderId } : {}),
   });
 
-  const res = await fetch("https://api.africastalking.com/version1/messaging", {
-    method: "POST",
-    headers: {
-      "apiKey": apiKey,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Accept": "application/json",
-    },
-    body: body.toString(),
-  });
-
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    return Response.json({ error: data.SMSMessageData?.Message ?? "SMS send failed" }, { status: 500 });
+  let res: Response;
+  try {
+    res = await fetch("https://api.africastalking.com/version1/messaging", {
+      method: "POST",
+      headers: {
+        "apiKey": apiKey,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+      },
+      body: body.toString(),
+    });
+  } catch (fetchErr) {
+    return Response.json({ error: `Network error reaching Africa's Talking: ${String(fetchErr)}` }, { status: 500 });
   }
 
-  const recipients = data.SMSMessageData?.Recipients ?? [];
-  const failed = recipients.filter((r: { status: string }) => r.status !== "Success");
+  const rawText = await res.text();
+  let data: Record<string, unknown> = {};
+  try { data = JSON.parse(rawText); } catch { data = { raw: rawText }; }
+
+  if (!res.ok) {
+    return Response.json({ error: (data.SMSMessageData as Record<string,string>)?.Message ?? rawText ?? "SMS send failed", status: res.status }, { status: 500 });
+  }
+
+  const recipients = (data.SMSMessageData as Record<string,unknown>)?.Recipients as { status: string }[] ?? [];
+  const failed = recipients.filter(r => r.status !== "Success");
 
   if (failed.length === recipients.length && recipients.length > 0) {
     return Response.json({ error: `All messages failed: ${failed[0]?.status}` }, { status: 500 });
@@ -65,8 +72,7 @@ export async function POST(req: NextRequest) {
 
   return Response.json({
     success: true,
-    sent: recipients.filter((r: { status: string }) => r.status === "Success").length,
+    sent: recipients.filter(r => r.status === "Success").length,
     failed: failed.length,
-    response: data,
   });
 }
