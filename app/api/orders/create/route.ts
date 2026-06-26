@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles";
 import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
+import { sendCustomerSMS, orderConfirmedSMS } from "@/lib/sms";
 
 const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
@@ -611,6 +612,9 @@ export async function POST(request: NextRequest) {
     }
 
     await sendAdminAlert(`${fmtDelivered(paystackRef, phone, bundleMeta.network, actualSize)}\n${inventorLog}`);
+
+    // SMS confirmation to customer
+    sendCustomerSMS(phone, orderConfirmedSMS(name, bundleMeta.network, actualSize, phone, paystackRef)).catch(() => {});
 
     // Notify agent on Telegram (fire and forget)
     if (agentTelegramChatId) {
