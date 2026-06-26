@@ -14,11 +14,19 @@ const ManualOrdersAdmin = dynamic(() => import("./_components/ManualOrdersAdmin"
 const CommissionAdmin = dynamic(() => import("./_components/CommissionAdmin"), { loading: () => <Spinner /> });
 const AgentWalletsAdmin = dynamic(() => import("./_components/AgentWalletsAdmin"), { loading: () => <Spinner /> });
 const SMSAdmin = dynamic(() => import("./_components/SMSAdmin"), { loading: () => <Spinner /> });
+const CustomersAdmin = dynamic(() => import("./_components/CustomersAdmin"), { loading: () => <Spinner /> });
+const MashupBundlesAdmin = dynamic(() => import("./_components/MashupBundlesAdmin"), { loading: () => <Spinner /> });
+const NetworkProvidersAdmin = dynamic(() => import("./_components/NetworkProvidersAdmin"), { loading: () => <Spinner /> });
+const CouponsAdmin = dynamic(() => import("./_components/CouponsAdmin"), { loading: () => <Spinner /> });
+const WithdrawalsAdmin = dynamic(() => import("./_components/WithdrawalsAdmin"), { loading: () => <Spinner /> });
+const AnalyticsAdmin = dynamic(() => import("./_components/AnalyticsAdmin"), { loading: () => <Spinner /> });
+const PaystackSplitAdmin = dynamic(() => import("./_components/PaystackSplitAdmin"), { loading: () => <Spinner /> });
 
 type Tab =
   | "overview" | "all-orders" | "pending-orders" | "processing" | "completed" | "failed-orders"
   | "data-bundles" | "bundle-prices" | "all-agents" | "agent-applications" | "agent-wallets" | "leaderboard"
-  | "transactions" | "commissions" | "manual" | "compensate" | "announcements" | "promo" | "apikeys" | "sms" | "settings";
+  | "transactions" | "commissions" | "manual" | "compensate" | "announcements" | "promo" | "apikeys" | "sms" | "settings"
+  | "customers" | "mashup-bundles" | "network-providers" | "coupons" | "referrals" | "withdrawals" | "agent-ranks" | "analytics" | "developer-api" | "paystack-split" | "notifications";
 
 type OrderStatus = "ALL" | "COMPLETED" | "PROCESSING" | "PENDING" | "FAILED";
 
@@ -297,48 +305,54 @@ function Sidebar({ tab, setTab, pendingOrders, pendingAgents, onLogout, onChange
 }) {
   const sections = [
     {
-      label: "ORDERS",
+      label: "MANAGE",
       items: [
-        { id: "all-orders" as Tab,      icon: <Ic.orders />,  label: "All Orders" },
-        { id: "pending-orders" as Tab,  icon: <Ic.clock />,   label: "Pending Orders", badge: pendingOrders || undefined },
-        { id: "processing" as Tab,      icon: <Ic.sync />,    label: "Processing" },
-        { id: "completed" as Tab,       icon: <Ic.check />,   label: "Completed" },
-        { id: "failed-orders" as Tab,   icon: <Ic.x />,       label: "Failed Orders" },
-      ],
-    },
-    {
-      label: "PRODUCTS",
-      items: [
-        { id: "data-bundles" as Tab,  icon: <Ic.bundle />, label: "Data Bundles" },
-        { id: "bundle-prices" as Tab, icon: <Ic.tag />,    label: "Bundle Prices" },
+        { id: "customers" as Tab,         icon: <Ic.agents />,  label: "Customers" },
+        { id: "data-bundles" as Tab,      icon: <Ic.bundle />,  label: "Data Bundles" },
+        { id: "mashup-bundles" as Tab,    icon: <Ic.bundle />,  label: "Mashup Bundles" },
+        { id: "all-orders" as Tab,        icon: <Ic.orders />,  label: "Orders" },
+        { id: "transactions" as Tab,      icon: <Ic.trend />,   label: "Transactions" },
+        { id: "network-providers" as Tab, icon: <Ic.sync />,    label: "Network Providers" },
+        { id: "coupons" as Tab,           icon: <Ic.tag />,     label: "Coupons" },
+        { id: "commissions" as Tab,       icon: <Ic.cash />,    label: "Commissions" },
+        { id: "referrals" as Tab,         icon: <Ic.trophy />,  label: "Referrals" },
+        { id: "compensate" as Tab,        icon: <Ic.wallet />,  label: "Compensate" },
       ],
     },
     {
       label: "AGENTS",
       items: [
         { id: "all-agents" as Tab,         icon: <Ic.agents />,  label: "All Agents" },
-        { id: "agent-applications" as Tab, icon: <Ic.add />,     label: "Agent Applications", badge: pendingAgents || undefined },
+        { id: "agent-applications" as Tab, icon: <Ic.add />,     label: "Applications", badge: pendingAgents || undefined },
         { id: "agent-wallets" as Tab,      icon: <Ic.wallet />,  label: "Agent Wallets" },
-        { id: "leaderboard" as Tab,        icon: <Ic.trophy />,  label: "Leaderboards" },
+        { id: "withdrawals" as Tab,        icon: <Ic.cash />,    label: "Withdrawals" },
+        { id: "agent-ranks" as Tab,        icon: <Ic.trophy />,  label: "Agent Ranks" },
+        { id: "bundle-prices" as Tab,      icon: <Ic.tag />,     label: "Agent Prices" },
       ],
     },
     {
-      label: "FINANCE",
+      label: "ORDERS",
       items: [
-        { id: "transactions" as Tab, icon: <Ic.trend />,  label: "Transactions" },
-        { id: "commissions" as Tab,  icon: <Ic.cash />,   label: "Commissions" },
-        { id: "manual" as Tab,       icon: <Ic.edit />,   label: "Manual Orders" },
-        { id: "compensate" as Tab,   icon: <Ic.wallet />, label: "Compensate" },
+        { id: "pending-orders" as Tab, icon: <Ic.clock />, label: "Pending", badge: pendingOrders || undefined },
+        { id: "processing" as Tab,     icon: <Ic.sync />,  label: "Processing" },
+        { id: "manual" as Tab,         icon: <Ic.edit />,  label: "Manual Orders" },
       ],
     },
     {
-      label: "SYSTEM",
+      label: "CONTENT",
       items: [
-        { id: "promo" as Tab,         icon: <Ic.mega />, label: "🎉 Promo Banner" },
-        { id: "announcements" as Tab, icon: <Ic.mega />, label: "Announcements" },
-        { id: "sms" as Tab,           icon: <Ic.sms />,  label: "📱 SMS" },
-        { id: "apikeys" as Tab,       icon: <Ic.key />,  label: "API Keys" },
-        { id: "settings" as Tab,      icon: <Ic.gear />, label: "Settings" },
+        { id: "notifications" as Tab, icon: <Ic.mega />,  label: "Notifications" },
+        { id: "sms" as Tab,           icon: <Ic.sms />,   label: "SMS Broadcast" },
+        { id: "promo" as Tab,         icon: <Ic.mega />,  label: "Promo Banner" },
+        { id: "analytics" as Tab,     icon: <Ic.trend />, label: "Analytics" },
+      ],
+    },
+    {
+      label: "SETTINGS",
+      items: [
+        { id: "developer-api" as Tab,  icon: <Ic.key />,  label: "Developer API" },
+        { id: "paystack-split" as Tab, icon: <Ic.cash />, label: "Paystack Split" },
+        { id: "settings" as Tab,       icon: <Ic.gear />, label: "Settings" },
       ],
     },
   ];
@@ -1351,20 +1365,209 @@ function LeaderboardView({ stats }: { stats: StatsData }) {
 
 // ─── Settings View ────────────────────────────────────────────────────────────
 function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
+  const [netSettings, setNetSettings] = useState<{ mtn: boolean; telecel: boolean; at: boolean; autoHours: boolean; autoStart: string; autoEnd: string } | null>(null);
+  const [datifySettings, setDatifySettings] = useState<{ override: boolean; startTime: string; endTime: string; activeProvider: string } | null>(null);
+  const [netSaving, setNetSaving] = useState(false);
+  const [netToast, setNetToast] = useState("");
+  const [integrationsStatus, setIntegrationsStatus] = useState<Record<string, string> | null>(null);
+  const [checkingInt, setCheckingInt] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/admin/network-settings").then(r => r.json()).then(setNetSettings).catch(() => {});
+    fetch("/api/admin/network-providers").then(r => r.json()).then(d => setDatifySettings({ override: d.datifyOverride, startTime: d.datifyStartTime ?? "18:40", endTime: d.datifyEndTime ?? "09:00", activeProvider: d.activeProvider })).catch(() => {});
+  }, []);
+
+  function toast3(msg: string) { setNetToast(msg); setTimeout(() => setNetToast(""), 3000); }
+
+  async function saveNet(patch: Partial<typeof netSettings>) {
+    if (!netSettings) return;
+    const updated = { ...netSettings, ...patch };
+    setNetSettings(updated);
+    setNetSaving(true);
+    await fetch("/api/admin/network-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+    toast3("Saved!");
+    setNetSaving(false);
+  }
+
+  async function saveDatify() {
+    if (!datifySettings) return;
+    setNetSaving(true);
+    await fetch("/api/admin/network-providers", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ datifyOverride: datifySettings.override, datifyStartTime: datifySettings.startTime, datifyEndTime: datifySettings.endTime }) });
+    toast3("Saved!");
+    setNetSaving(false);
+  }
+
+  async function checkIntegrations() {
+    setCheckingInt(true);
+    const results: Record<string, string> = {};
+    try {
+      const tg = await fetch("/api/admin/inventor-balance").then(r => r.json());
+      results["Inventor API"] = tg.balance !== null ? `GH₵${Number(tg.balance).toFixed(2)}` : "Unreachable";
+    } catch { results["Inventor API"] = "Error"; }
+    setIntegrationsStatus(results);
+    setCheckingInt(false);
+  }
+
+  function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void; color?: string }) {
+    return (
+      <button onClick={() => onChange(!checked)} className="relative inline-flex items-center h-6 rounded-full w-11 transition-colors shrink-0"
+        style={{ background: checked ? "#16a34a" : "#374151" }}>
+        <span className="inline-block w-5 h-5 transform rounded-full bg-white shadow transition-transform" style={{ transform: checked ? "translateX(22px)" : "translateX(2px)" }} />
+      </button>
+    );
+  }
+
   return (
-    <div className="max-w-lg space-y-4">
+    <div className="max-w-xl space-y-5">
       <div><h1 className="text-xl font-black text-white">Settings</h1><p className="text-sm text-slate-500">Admin account settings</p></div>
-      <div className="rounded-2xl border p-6 space-y-4" style={{ background: CARD, borderColor: BORDER }}>
-        <div>
-          <p className="text-sm font-bold text-white mb-1">Admin Account</p>
-          <p className="text-xs text-slate-500">You are logged in as <span className="text-white font-semibold">Admin (Super Admin)</span></p>
+
+      {/* Network Availability */}
+      <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+        <h2 className="font-bold text-white mb-1">Network Availability</h2>
+        <p className="text-xs text-slate-500 mb-4">Turn a network off to hide it from customers when it has issues</p>
+        <div className="space-y-3">
+          {netSettings && [
+            { key: "mtn" as const, label: "MTN", color: "#f59e0b", dot: "#f59e0b" },
+            { key: "telecel" as const, label: "Telecel", color: "#ef4444", dot: "#ef4444" },
+            { key: "at" as const, label: "AirtelTigo", color: "#3b82f6", dot: "#3b82f6" },
+          ].map(n => (
+            <div key={n.key} className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2.5">
+                <span className="w-3 h-3 rounded-full" style={{ background: n.dot }} />
+                <span className="font-semibold text-white">{n.label}</span>
+                <span className="text-xs font-bold text-green-400" style={{ color: netSettings[n.key] ? "#4ade80" : "#f87171" }}>
+                  {netSettings[n.key] ? "Available" : "Disabled"}
+                </span>
+              </div>
+              <Toggle checked={netSettings[n.key]} onChange={v => saveNet({ [n.key]: v })} />
+            </div>
+          ))}
         </div>
-        <hr style={{ borderColor: BORDER }} />
+      </div>
+
+      {/* Auto Store Hours */}
+      {netSettings && (
+        <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="font-bold text-white">⏰ Auto Store Hours</p>
+              <p className="text-xs text-slate-500">Store auto-closes outside these times (Ghana time)</p>
+            </div>
+            <Toggle checked={netSettings.autoHours} onChange={v => saveNet({ autoHours: v })} />
+          </div>
+          {netSettings.autoHours && (
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <div>
+                <label className="block text-xs text-slate-400 uppercase tracking-wide mb-1">Open Time</label>
+                <input type="time" value={netSettings.autoStart} onChange={e => setNetSettings(s => s ? { ...s, autoStart: e.target.value } : s)}
+                  onBlur={() => saveNet({ autoStart: netSettings.autoStart })}
+                  className="w-full rounded-xl px-3 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500"
+                  style={{ background: BG, borderColor: BORDER }} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 uppercase tracking-wide mb-1">Close Time</label>
+                <input type="time" value={netSettings.autoEnd} onChange={e => setNetSettings(s => s ? { ...s, autoEnd: e.target.value } : s)}
+                  onBlur={() => saveNet({ autoEnd: netSettings.autoEnd })}
+                  className="w-full rounded-xl px-3 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500"
+                  style={{ background: BG, borderColor: BORDER }} />
+              </div>
+            </div>
+          )}
+          <button onClick={() => saveNet({})} className="mt-3 px-4 py-2 rounded-xl text-sm font-bold border text-slate-400 hover:text-white" style={{ borderColor: BORDER }}>
+            Save {netSaving ? "…" : "(disabled)"}
+          </button>
+        </div>
+      )}
+
+      {/* Datify Delivery */}
+      {datifySettings && (
+        <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="font-bold text-white">⚡ Datify Delivery</p>
+              <p className="text-xs text-slate-500">Second delivery provider — auto on by schedule or manual override</p>
+            </div>
+            <span className="text-xs font-bold px-2 py-1 rounded border" style={{ borderColor: BORDER, color: datifySettings.activeProvider === "datify" ? "#4ade80" : "#94a3b8" }}>
+              {datifySettings.activeProvider === "datify" ? "Datify Active" : "Inventor Active"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="font-semibold text-white">Manual Override</p>
+              <p className="text-xs text-slate-500">Force Datify on regardless of time</p>
+            </div>
+            <Toggle checked={datifySettings.override} onChange={async v => { setDatifySettings(s => s ? { ...s, override: v } : s); await fetch("/api/admin/network-providers", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ datifyOverride: v }) }); }} />
+          </div>
+          <h3 className="font-semibold text-white text-sm mb-2">Auto Schedule <span className="text-slate-500 font-normal">Ghana time (UTC+0)</span></h3>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            {(["startTime", "endTime"] as const).map((key, idx) => (
+              <div key={key}>
+                <label className="block text-xs text-slate-400 uppercase tracking-wide mb-1">{idx === 0 ? "START TIME" : "END TIME"}</label>
+                <input type="time" value={datifySettings[key]}
+                  onChange={e => setDatifySettings(s => s ? { ...s, [key]: e.target.value } : s)}
+                  className="w-full rounded-xl px-3 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500"
+                  style={{ background: BG, borderColor: BORDER }} />
+              </div>
+            ))}
+          </div>
+          <button onClick={saveDatify} disabled={netSaving}
+            className="px-5 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-50"
+            style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
+            {netSaving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      )}
+
+      {/* Integrations */}
+      <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-bold text-white">🔌 Integrations</p>
+            <p className="text-xs text-slate-500">Telegram bots and SMS — check status and fix with one tap</p>
+          </div>
+          <button onClick={checkIntegrations} disabled={checkingInt}
+            className="text-xs border px-3 py-1.5 rounded-lg text-blue-400 border-blue-900 hover:bg-blue-900/20 font-bold">
+            {checkingInt ? "Checking…" : "Check Status"}
+          </button>
+        </div>
+        {integrationsStatus && (
+          <div className="mt-4 space-y-2">
+            {Object.entries(integrationsStatus).map(([k, v]) => (
+              <div key={k} className="flex justify-between text-sm">
+                <span className="text-slate-400">{k}</span>
+                <span className="font-semibold" style={{ color: v.includes("Error") || v === "Unreachable" ? "#f87171" : "#4ade80" }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Fingerprint Login */}
+      <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="font-bold text-white">🔒 Fingerprint Login</p>
+            <p className="text-xs text-slate-500">Log in with fingerprint, Face ID, or phone PIN — no password needed</p>
+          </div>
+          <span className="text-xs font-bold text-green-400 border border-green-800 px-2 py-0.5 rounded">Active</span>
+        </div>
+        <div className="flex gap-3">
+          <button className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>Re-register Fingerprint</button>
+          <button className="px-4 py-2.5 rounded-xl text-sm font-bold text-red-400 border border-red-900 hover:bg-red-900/20">Remove</button>
+        </div>
+      </div>
+
+      {/* Admin Account */}
+      <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+        <p className="font-bold text-white mb-1">Admin Account</p>
+        <p className="text-xs text-slate-500 mb-4">You are logged in as <span className="text-white font-semibold">Admin (Super Admin)</span></p>
         <button onClick={onChangePassword} className="flex items-center gap-3 px-4 py-3 rounded-xl border w-full text-left transition-all hover:border-blue-500" style={{ background: BG, borderColor: BORDER }}>
           <span className="text-2xl">🔑</span>
           <div><p className="text-sm font-bold text-white">Change Password</p><p className="text-xs text-slate-500">Update your admin login password</p></div>
         </button>
       </div>
+
+      {netToast && <p className="text-sm font-semibold text-green-400">{netToast}</p>}
     </div>
   );
 }
@@ -1457,11 +1660,14 @@ export default function AdminDashboard() {
 
   const pageTitle: Record<Tab, string> = {
     "overview": "Dashboard", "all-orders": "All Orders", "pending-orders": "Pending Orders", "processing": "Processing",
-    "completed": "Completed", "failed-orders": "Failed Orders", "data-bundles": "Data Bundles", "bundle-prices": "Bundle Prices",
+    "completed": "Completed", "failed-orders": "Failed Orders", "data-bundles": "Data Bundles", "bundle-prices": "Agent Prices",
     "all-agents": "All Agents", "agent-applications": "Agent Applications", "agent-wallets": "Agent Wallets",
-    "leaderboard": "Leaderboard", "transactions": "Transactions", "commissions": "Commissions",
-    "manual": "Manual Orders", "compensate": "Compensate", "announcements": "Announcements", "promo": "Promo Banner",
+    "leaderboard": "Referrals & Leaderboard", "referrals": "Referrals & Leaderboard", "transactions": "Transactions", "commissions": "Commissions",
+    "manual": "Manual Orders", "compensate": "Compensate", "announcements": "Notifications", "notifications": "Notifications", "promo": "Promo Banner",
     "sms": "SMS Messaging", "apikeys": "API Keys", "settings": "Settings",
+    "customers": "Customers", "mashup-bundles": "Mashup Bundles", "network-providers": "Network Providers",
+    "coupons": "Coupons", "withdrawals": "Withdrawal Requests", "agent-ranks": "Agent Ranks",
+    "analytics": "Analytics", "developer-api": "Developer API", "paystack-split": "Paystack Split Payments",
   };
 
   return (
@@ -1513,22 +1719,31 @@ export default function AdminDashboard() {
             </div>
           ) : stats ? (
             <>
-              {tab === "overview"        && <Dashboard stats={stats} animated={animated} onNavigate={setTab} />}
-              {isOrderTab(tab)           && <OrdersView orders={stats.orders.all} onRefresh={fetchStats} defaultFilter={tabToOrderFilter[tab]} />}
-              {tab === "data-bundles"    && <PricesView />}
-              {tab === "bundle-prices"   && <AgentPricesAdmin allAgents={stats.agents.all} />}
-              {isAgentTab(tab)           && <AgentsView stats={stats} onRefresh={fetchStats} defaultTab={tab === "agent-applications" ? "pending" : "approved"} />}
-              {tab === "agent-wallets"   && <AgentWalletsAdmin />}
-              {tab === "leaderboard"     && <LeaderboardView stats={stats} />}
-              {tab === "transactions"    && <PnLView orders={stats.orders.all} agents={stats.agents.all} />}
-              {tab === "commissions"     && <CommissionAdmin />}
-              {tab === "manual"          && <ManualOrdersAdmin />}
-              {tab === "compensate"      && <CompensateView />}
-              {tab === "announcements"   && <AnnouncementsAdmin />}
-              {tab === "promo"           && <PromoBannerAdmin />}
-              {tab === "sms"             && <SMSAdmin agents={stats.agents.all} />}
-              {tab === "apikeys"         && <ApiKeysAdmin />}
-              {tab === "settings"        && <SettingsView onChangePassword={() => setShowChangePw(true)} />}
+              {tab === "overview"          && <Dashboard stats={stats} animated={animated} onNavigate={setTab} />}
+              {isOrderTab(tab)             && <OrdersView orders={stats.orders.all} onRefresh={fetchStats} defaultFilter={tabToOrderFilter[tab]} />}
+              {tab === "data-bundles"      && <PricesView />}
+              {tab === "bundle-prices"     && <AgentPricesAdmin allAgents={stats.agents.all} />}
+              {isAgentTab(tab)             && <AgentsView stats={stats} onRefresh={fetchStats} defaultTab={tab === "agent-applications" ? "pending" : "approved"} />}
+              {tab === "agent-wallets"     && <AgentWalletsAdmin />}
+              {(tab === "leaderboard" || tab === "referrals") && <LeaderboardView stats={stats} />}
+              {tab === "agent-ranks"       && <LeaderboardView stats={stats} />}
+              {tab === "transactions"      && <PnLView orders={stats.orders.all} agents={stats.agents.all} />}
+              {tab === "commissions"       && <CommissionAdmin />}
+              {tab === "manual"            && <ManualOrdersAdmin />}
+              {tab === "compensate"        && <CompensateView />}
+              {(tab === "announcements" || tab === "notifications") && <AnnouncementsAdmin />}
+              {tab === "promo"             && <PromoBannerAdmin />}
+              {tab === "sms"               && <SMSAdmin agents={stats.agents.all} />}
+              {tab === "apikeys"           && <ApiKeysAdmin />}
+              {tab === "developer-api"     && <ApiKeysAdmin />}
+              {tab === "settings"          && <SettingsView onChangePassword={() => setShowChangePw(true)} />}
+              {tab === "customers"         && <CustomersAdmin />}
+              {tab === "mashup-bundles"    && <MashupBundlesAdmin />}
+              {tab === "network-providers" && <NetworkProvidersAdmin />}
+              {tab === "coupons"           && <CouponsAdmin />}
+              {tab === "withdrawals"       && <WithdrawalsAdmin />}
+              {tab === "analytics"         && <AnalyticsAdmin orders={stats.orders.all as never} />}
+              {tab === "paystack-split"    && <PaystackSplitAdmin />}
             </>
           ) : null}
         </main>
