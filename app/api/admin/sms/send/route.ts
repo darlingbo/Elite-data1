@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   const senderId = process.env.AT_SENDER_ID ?? "";
 
   if (!apiKey || !username) {
-    return Response.json({ error: "SMS not configured. Add AT_API_KEY and AT_USERNAME to Netlify environment variables." }, { status: 500 });
+    return Response.json({ error: "SMS not configured. Add AT_API_KEY and AT_USERNAME to environment variables." }, { status: 500 });
   }
 
   // Normalise Ghana numbers: 024XXXXXXX → +233XXXXXXXX

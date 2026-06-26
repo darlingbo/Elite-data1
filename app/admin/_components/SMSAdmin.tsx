@@ -1,54 +1,107 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 
 interface Agent {
-  id: string; name: string; email: string; phone: string; whatsapp?: string;
-  business_name: string; referral_code: string; status: string; agent_type?: string;
-  commission_balance: number; wallet_balance?: number; total_sales: number;
-  total_revenue: number; created_at: string;
+  id: string; name: string; email: string; phone: string;
+  business_name: string; referral_code: string; status: string;
+  agent_type?: string; commission_balance: number; wallet_balance?: number;
+  total_sales: number; total_revenue: number; created_at: string;
+}
+interface SmsLog {
+  id: string; audience: string; recipient_count: number; message: string;
+  sent_count: number; failed_count: number; status: string; created_at: string;
+}
+interface Scheduled {
+  id: string; audience: string; phones: string[]; message: string;
+  send_at: string; status: string; created_at: string;
 }
 
-const BG = "#0f172a"; const CARD = "#1e293b"; const BORDER = "#334155";
+const BG = "#0b1120", CARD = "#111827", BORDER = "#1f2937";
 
-const TEMPLATES = [
-  { label: "Low Balance Alert", text: "Hi {name}, your Elite Data wallet balance is low. Top up now to keep selling data bundles. Visit your dashboard at elitedata.com" },
-  { label: "New Bundle Available", text: "Hi {name}, new data bundles are now available on Elite Data! Log in to your agent dashboard to see the latest prices. Sell more, earn more!" },
-  { label: "Payment Received", text: "Hi {name}, your wallet has been topped up on Elite Data. Your updated balance is ready. Log in to start selling!" },
-  { label: "Promotion", text: "Hi {name}, great news from Elite Data! We have exciting promotions for agents this week. Log in now to take advantage. Happy selling!" },
-  { label: "System Update", text: "Hi {name}, Elite Data system update: We have improved our platform to serve you better. Log in and explore the new features in your dashboard." },
+const DEFAULT_TEMPLATES = [
+  { id: "t1", label: "Low Balance Alert",   text: "Hi {name}, your Elite Data wallet is low. Top up now to keep selling! Visit your agent dashboard." },
+  { id: "t2", label: "New Bundle",          text: "Hi {name}, new data bundles are live on Elite Data! Log in to see the latest prices and start selling." },
+  { id: "t3", label: "Payment Received",    text: "Hi {name}, your wallet has been topped up on Elite Data. Your new balance is ready — start selling!" },
+  { id: "t4", label: "Promotion",           text: "Hi {name}, exciting offers this week on Elite Data! Log in to your agent dashboard and take advantage now." },
+  { id: "t5", label: "System Update",       text: "Hi {name}, Elite Data has been improved! New features are live. Log in to your dashboard to explore." },
+  { id: "t6", label: "Order Confirmed",     text: "Hi {name}, your data bundle order has been confirmed and delivered. Thank you for using Elite Data!" },
 ];
 
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button onClick={() => onChange(!checked)} className="relative inline-flex items-center h-6 rounded-full w-11 transition-colors shrink-0"
+      style={{ background: checked ? "#16a34a" : "#374151" }}>
+      <span className="inline-block w-5 h-5 transform rounded-full bg-white shadow transition-transform"
+        style={{ transform: checked ? "translateX(22px)" : "translateX(2px)" }} />
+    </button>
+  );
+}
+
 export default function SMSAdmin({ agents }: { agents: Agent[] }) {
+  const [activeTab, setActiveTab] = useState<"compose" | "templates" | "reports" | "schedule">("compose");
   const [mode, setMode] = useState<"bulk" | "individual">("bulk");
 
-  // Bulk state
+  // Bulk
   const [audience, setAudience] = useState<"all" | "custom_price" | "commission" | "selected" | "customers">("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkMsg, setBulkMsg] = useState("");
   const [bulkSending, setBulkSending] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ ok: boolean; text: string } | null>(null);
-
-  // Customer phones state
   const [customerPhones, setCustomerPhones] = useState<string[] | null>(null);
   const [customersLoading, setCustomersLoading] = useState(false);
 
-  // Individual state
+  // Individual
   const [testPhone, setTestPhone] = useState("");
   const [testMsg, setTestMsg] = useState("");
   const [testSending, setTestSending] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // Templates
+  const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
+  const [newTplLabel, setNewTplLabel] = useState("");
+  const [newTplText, setNewTplText] = useState("");
+
+  // Reports
+  const [logs, setLogs] = useState<SmsLog[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  // Schedule
+  const [scheduled, setScheduled] = useState<Scheduled[]>([]);
+  const [schedLoading, setSchedLoading] = useState(false);
+  const [schedMsg, setSchedMsg] = useState("");
+  const [schedDate, setSchedDate] = useState("");
+  const [schedTime, setSchedTime] = useState("");
+  const [schedAudience, setSchedAudience] = useState<"all" | "customers">("all");
+  const [schedText, setSchedText] = useState("");
+  const [schedSaving, setSchedSaving] = useState(false);
+  const [processing, setProcessing] = useState(false);
+
   const approvedAgents = useMemo(() => agents.filter(a => a.status === "approved"), [agents]);
 
-  // Fetch customer phones when customers audience selected
   useEffect(() => {
     if (audience !== "customers" || customerPhones !== null || customersLoading) return;
     setCustomersLoading(true);
-    fetch("/api/admin/sms/customers")
-      .then(r => r.json())
-      .then(d => setCustomerPhones(d.phones ?? []))
-      .finally(() => setCustomersLoading(false));
+    fetch("/api/admin/sms/customers").then(r => r.json()).then(d => setCustomerPhones(d.phones ?? [])).finally(() => setCustomersLoading(false));
   }, [audience, customerPhones, customersLoading]);
+
+  const loadReports = useCallback(async () => {
+    setLogsLoading(true);
+    const r = await fetch("/api/admin/sms/reports").then(r => r.json());
+    setLogs(r.logs ?? []);
+    setLogsLoading(false);
+  }, []);
+
+  const loadScheduled = useCallback(async () => {
+    setSchedLoading(true);
+    const r = await fetch("/api/admin/sms/schedule").then(r => r.json());
+    setScheduled(r.scheduled ?? []);
+    setSchedLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "reports") loadReports();
+    if (activeTab === "schedule") loadScheduled();
+  }, [activeTab, loadReports, loadScheduled]);
 
   const recipients = useMemo(() => {
     if (audience === "all") return approvedAgents;
@@ -64,30 +117,29 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
   }, [audience, recipients, customerPhones]);
 
   const recipientCount = audience === "customers" ? (customerPhones?.length ?? 0) : recipients.length;
+  const currentMsg = mode === "bulk" ? bulkMsg : testMsg;
+  const charCount = currentMsg.length;
+  const smsCount = Math.ceil(charCount / 160) || 1;
 
-  function toggleAgent(id: string) {
-    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  function applyTemplate(text: string) {
+    if (mode === "bulk") setBulkMsg(text);
+    else setTestMsg(text);
   }
-  function selectAll() { setSelected(new Set(approvedAgents.map(a => a.id))); }
-  function clearAll() { setSelected(new Set()); }
 
-  function applyTemplate(t: typeof TEMPLATES[0]) {
-    if (mode === "bulk") setBulkMsg(t.text);
-    else setTestMsg(t.text);
+  async function logSend(opts: { audience: string; recipientCount: number; message: string; sentCount: number; failedCount: number; status: string }) {
+    await fetch("/api/admin/sms/reports", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(opts) }).catch(() => {});
   }
 
   async function sendBulk() {
     if (!bulkMsg.trim() || sendPhones.length === 0) return;
     setBulkSending(true); setBulkResult(null);
     try {
-      const res = await fetch("/api/admin/sms/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phones: sendPhones, message: bulkMsg }),
-      });
+      const res = await fetch("/api/admin/sms/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phones: sendPhones, message: bulkMsg }) });
       const d = await res.json();
+      const ok = res.ok && !d.error;
       const label = audience === "customers" ? "customers" : "agents";
-      setBulkResult({ ok: res.ok && !d.error, text: d.error ?? `Sent to ${sendPhones.length} ${label} successfully!` });
+      setBulkResult({ ok, text: d.error ?? `✓ Sent to ${d.sent ?? sendPhones.length} ${label} successfully!` });
+      await logSend({ audience, recipientCount: sendPhones.length, message: bulkMsg, sentCount: d.sent ?? 0, failedCount: d.failed ?? 0, status: ok ? "success" : "failed" });
     } catch (e) {
       setBulkResult({ ok: false, text: String(e) });
     } finally { setBulkSending(false); }
@@ -98,217 +150,473 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
     if (!phone || !testMsg.trim()) return;
     setTestSending(true); setTestResult(null);
     try {
-      const res = await fetch("/api/admin/sms/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phones: [phone], message: testMsg }),
-      });
+      const res = await fetch("/api/admin/sms/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phones: [phone], message: testMsg }) });
       const d = await res.json();
-      setTestResult({ ok: res.ok && !d.error, text: d.error ?? `Test SMS sent to ${phone}!` });
+      const ok = res.ok && !d.error;
+      setTestResult({ ok, text: d.error ?? `✓ Test SMS sent to ${phone}!` });
+      await logSend({ audience: "individual", recipientCount: 1, message: testMsg, sentCount: ok ? 1 : 0, failedCount: ok ? 0 : 1, status: ok ? "success" : "failed" });
     } catch (e) {
       setTestResult({ ok: false, text: String(e) });
     } finally { setTestSending(false); }
   }
 
-  const charCount = (mode === "bulk" ? bulkMsg : testMsg).length;
-  const smsCount = Math.ceil(charCount / 160) || 1;
+  function saveTemplate() {
+    if (!newTplLabel.trim() || !newTplText.trim()) return;
+    setTemplates(t => [...t, { id: `c${Date.now()}`, label: newTplLabel.trim(), text: newTplText.trim() }]);
+    setNewTplLabel(""); setNewTplText("");
+  }
+
+  async function scheduleMsg() {
+    if (!schedText.trim() || !schedDate || !schedTime) return;
+    setSchedSaving(true);
+    const sendAt = new Date(`${schedDate}T${schedTime}`).toISOString();
+    const phones = schedAudience === "all" ? approvedAgents.map(a => a.phone).filter(Boolean) : (customerPhones ?? []);
+    const r = await fetch("/api/admin/sms/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ audience: schedAudience, phones, message: schedText, sendAt }) }).then(r => r.json());
+    if (r.success) { setSchedMsg("✓ Scheduled!"); setSchedText(""); setSchedDate(""); setSchedTime(""); loadScheduled(); }
+    else setSchedMsg(r.error ?? "Failed");
+    setSchedSaving(false);
+    setTimeout(() => setSchedMsg(""), 3000);
+  }
+
+  async function deleteScheduled(id: string) {
+    await fetch("/api/admin/sms/schedule", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    loadScheduled();
+  }
+
+  async function processScheduled() {
+    setProcessing(true);
+    const r = await fetch("/api/admin/sms/schedule", { method: "PATCH" }).then(r => r.json());
+    setSchedMsg(`✓ Processed ${r.processed ?? 0} scheduled message(s)`);
+    loadScheduled();
+    setProcessing(false);
+    setTimeout(() => setSchedMsg(""), 4000);
+  }
+
+  const tabs = [
+    { id: "compose" as const,   label: "✉️ Compose" },
+    { id: "templates" as const, label: "📋 Templates" },
+    { id: "schedule" as const,  label: "🕐 Schedule" },
+    { id: "reports" as const,   label: "📊 Reports" },
+  ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {/* Mode toggle */}
-      <div style={{ display: "flex", gap: 8 }}>
-        {([["bulk", "📢 Bulk SMS"], ["individual", "🧪 Test / Individual"]] as const).map(([m, label]) => (
-          <button key={m} onClick={() => setMode(m)} style={{
-            padding: "10px 22px", borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: "pointer",
-            background: mode === m ? "linear-gradient(90deg,#3b82f6,#8b5cf6)" : CARD,
-            color: mode === m ? "white" : "#94a3b8",
-            border: `1px solid ${mode === m ? "transparent" : BORDER}`,
-          }}>{label}</button>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-xl font-black text-white">SMS Broadcast</h1>
+          <p className="text-sm text-slate-500">Send messages to agents and customers via Africa&apos;s Talking</p>
+        </div>
+        {/* Quick Send All button */}
+        <button onClick={() => { setMode("bulk"); setAudience("all"); setActiveTab("compose"); }}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black text-white"
+          style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
+          📢 Send to All Agents
+        </button>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 flex-wrap">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setActiveTab(t.id)}
+            className="px-4 py-2 rounded-xl text-sm font-bold border transition-all"
+            style={activeTab === t.id ? { background: "#1e3a5f", color: "#60a5fa", borderColor: "#1e3a5f" } : { background: "transparent", color: "#6b7280", borderColor: BORDER }}>
+            {t.label}
+          </button>
         ))}
       </div>
 
-      {/* Message templates */}
-      <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, padding: "18px 20px" }}>
-        <p style={{ color: "#94a3b8", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 12px" }}>Message Templates</p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {TEMPLATES.map(t => (
-            <button key={t.label} onClick={() => applyTemplate(t)} style={{
-              padding: "6px 14px", borderRadius: 8, border: `1px solid ${BORDER}`, background: "#0f172a",
-              color: "#60a5fa", fontSize: 12, fontWeight: 600, cursor: "pointer",
-            }}>{t.label}</button>
-          ))}
-        </div>
-      </div>
+      {/* ── COMPOSE TAB ── */}
+      {activeTab === "compose" && (
+        <div className="space-y-4">
+          {/* Mode toggle */}
+          <div className="flex gap-2">
+            {([["bulk", "📢 Bulk SMS"], ["individual", "🧪 Test / Individual"]] as const).map(([m, label]) => (
+              <button key={m} onClick={() => setMode(m)}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold border transition-all"
+                style={mode === m ? { background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", color: "white", borderColor: "transparent" } : { background: CARD, color: "#94a3b8", borderColor: BORDER }}>
+                {label}
+              </button>
+            ))}
+          </div>
 
-      {mode === "bulk" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 20 }} className="sms-grid">
-          {/* Left: message + send */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {/* Message */}
-            <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, padding: "20px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <p style={{ color: "white", fontWeight: 700, fontSize: 15, margin: 0 }}>Compose Message</p>
-                <span style={{ fontSize: 12, color: charCount > 160 ? "#f87171" : "#94a3b8" }}>
-                  {charCount} chars · {smsCount} SMS
-                </span>
-              </div>
-              <textarea
-                value={bulkMsg}
-                onChange={e => setBulkMsg(e.target.value)}
-                placeholder="Type your message here… Use {name} to personalise (e.g. Hi {name}, your Elite Data wallet…)"
-                rows={6}
-                style={{ width: "100%", background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "12px 14px", color: "white", fontSize: 14, resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
-              />
-              <p style={{ color: "#64748b", fontSize: 12, margin: "8px 0 0" }}>
-                Tip: <code style={{ color: "#94a3b8" }}>{"{name}"}</code> is replaced with each agent's first name automatically.
-              </p>
-            </div>
-
-            {/* Send button + result */}
-            <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, padding: "20px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-                <div>
-                  <p style={{ color: "white", fontWeight: 700, fontSize: 14, margin: 0 }}>
-                    Sending to <span style={{ color: "#60a5fa" }}>{recipientCount} {audience === "customers" ? "customer" : "agent"}{recipientCount !== 1 ? "s" : ""}</span>
-                  </p>
-                  <p style={{ color: "#64748b", fontSize: 12, margin: "2px 0 0" }}>
-                    Estimated: {recipientCount * smsCount} SMS credit{recipientCount * smsCount !== 1 ? "s" : ""}
-                  </p>
-                </div>
-                <button
-                  onClick={sendBulk}
-                  disabled={bulkSending || !bulkMsg.trim() || sendPhones.length === 0 || customersLoading}
-                  style={{ background: bulkSending || !bulkMsg.trim() || sendPhones.length === 0 ? "#1e293b" : "linear-gradient(90deg,#3b82f6,#8b5cf6)", color: bulkSending ? "#64748b" : "white", border: "none", borderRadius: 10, padding: "12px 28px", fontSize: 14, fontWeight: 800, cursor: bulkSending ? "not-allowed" : "pointer" }}>
-                  {bulkSending ? "Sending…" : customersLoading ? "Loading customers…" : `Send to ${recipientCount} ${audience === "customers" ? "Customer" : "Agent"}${recipientCount !== 1 ? "s" : ""}`}
+          {/* Quick template chips */}
+          <div className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
+            <p className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-3">Quick Templates</p>
+            <div className="flex flex-wrap gap-2">
+              {templates.map(t => (
+                <button key={t.id} onClick={() => applyTemplate(t.text)}
+                  className="px-3 py-1.5 rounded-lg border text-xs font-semibold text-blue-400 hover:bg-blue-900/20 transition-all"
+                  style={{ background: BG, borderColor: BORDER }}>
+                  {t.label}
                 </button>
-              </div>
-              {bulkResult && (
-                <div style={{ marginTop: 14, padding: "12px 16px", borderRadius: 10, background: bulkResult.ok ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)", border: `1px solid ${bulkResult.ok ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}` }}>
-                  <p style={{ color: bulkResult.ok ? "#4ade80" : "#f87171", fontWeight: 700, fontSize: 13, margin: 0 }}>
-                    {bulkResult.ok ? "✓" : "✗"} {bulkResult.text}
-                  </p>
-                </div>
-              )}
+              ))}
             </div>
           </div>
 
-          {/* Right: audience picker */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, padding: "20px" }}>
-              <p style={{ color: "white", fontWeight: 700, fontSize: 15, margin: "0 0 14px" }}>Recipients</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-                {([
-                  ["all", `All Agents (${approvedAgents.length})`],
-                  ["custom_price", `Price Mode Agents (${approvedAgents.filter(a => a.agent_type === "custom_price").length})`],
-                  ["commission", `Commission Agents (${approvedAgents.filter(a => a.agent_type !== "custom_price").length})`],
-                  ["customers", customersLoading ? "All Customers (loading…)" : `All Customers (${customerPhones?.length ?? "click to load"})`],
-                  ["selected", `Select Manually (${selected.size} chosen)`],
-                ] as const).map(([val, label]) => (
-                  <label key={val} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "10px 12px", borderRadius: 8, background: audience === val ? "rgba(59,130,246,0.1)" : "transparent", border: `1px solid ${audience === val ? "rgba(59,130,246,0.4)" : BORDER}` }}>
-                    <input type="radio" checked={audience === val} onChange={() => setAudience(val)} style={{ accentColor: "#3b82f6" }} />
-                    <span style={{ color: audience === val ? "#60a5fa" : "#94a3b8", fontSize: 13, fontWeight: 600 }}>{label}</span>
-                  </label>
-                ))}
+          {mode === "bulk" && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Message compose */}
+              <div className="lg:col-span-2 space-y-4">
+                <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="font-bold text-white">Compose Message</p>
+                    <span className="text-xs font-semibold" style={{ color: charCount > 160 ? "#f87171" : "#6b7280" }}>
+                      {charCount} chars · {smsCount} SMS
+                    </span>
+                  </div>
+                  <textarea value={bulkMsg} onChange={e => setBulkMsg(e.target.value)} rows={6} placeholder={`Type your message… Use {name} for personalisation\nE.g. Hi {name}, your Elite Data order is confirmed!`}
+                    className="w-full rounded-xl px-4 py-3 text-sm text-white border focus:outline-none focus:border-blue-500 resize-y"
+                    style={{ background: BG, borderColor: BORDER, fontFamily: "inherit" }} />
+                  <p className="text-xs text-slate-600 mt-2">Tip: <code className="text-slate-400 bg-slate-800 px-1 rounded">{"{name}"}</code> is replaced with each recipient&apos;s first name.</p>
+                </div>
+
+                {/* Preview */}
+                {bulkMsg && (
+                  <div className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
+                    <p className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-2">Preview</p>
+                    <div className="rounded-xl p-3" style={{ background: BG }}>
+                      <p className="text-sm text-slate-200 leading-relaxed">
+                        {bulkMsg.replace(/\{name\}/g, recipients[0]?.name?.split(" ")[0] ?? audience === "customers" ? "Customer" : "Agent")}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Send */}
+                <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                      <p className="font-bold text-white">
+                        Sending to <span className="text-blue-400">{recipientCount} {audience === "customers" ? "customer" : "agent"}{recipientCount !== 1 ? "s" : ""}</span>
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">~{recipientCount * smsCount} SMS credit{recipientCount * smsCount !== 1 ? "s" : ""}</p>
+                    </div>
+                    <button onClick={sendBulk} disabled={bulkSending || !bulkMsg.trim() || sendPhones.length === 0 || customersLoading}
+                      className="px-6 py-3 rounded-xl text-sm font-black text-white disabled:opacity-50 transition-all"
+                      style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
+                      {bulkSending ? "Sending…" : customersLoading ? "Loading…" : `Send to ${recipientCount} ${audience === "customers" ? "Customer" : "Agent"}${recipientCount !== 1 ? "s" : ""} →`}
+                    </button>
+                  </div>
+                  {bulkResult && (
+                    <div className="mt-3 p-3 rounded-xl" style={{ background: bulkResult.ok ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${bulkResult.ok ? "rgba(74,222,128,0.3)" : "rgba(248,113,113,0.3)"}` }}>
+                      <p className="text-sm font-bold" style={{ color: bulkResult.ok ? "#4ade80" : "#f87171" }}>{bulkResult.text}</p>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {audience === "selected" && (
+              {/* Recipients */}
+              <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+                <p className="font-bold text-white mb-4">Recipients</p>
+                {/* One-click shortcuts */}
+                <div className="space-y-2 mb-4">
+                  <button onClick={() => { setAudience("customers"); if (!customerPhones) { setCustomersLoading(true); fetch("/api/admin/sms/customers").then(r=>r.json()).then(d=>{setCustomerPhones(d.phones??[]); setCustomersLoading(false);}); } }}
+                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border font-semibold text-sm transition-all"
+                    style={audience === "customers" ? { background: "rgba(59,130,246,0.15)", color: "#60a5fa", borderColor: "rgba(59,130,246,0.4)" } : { background: BG, color: "#6b7280", borderColor: BORDER }}>
+                    <span>👥 All Customers</span>
+                    <span className="text-xs">{customersLoading ? "…" : customerPhones?.length ?? "load"}</span>
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {([
+                    ["all", `All Agents (${approvedAgents.length})`],
+                    ["custom_price", `Price Mode (${approvedAgents.filter(a => a.agent_type === "custom_price").length})`],
+                    ["commission", `Commission (${approvedAgents.filter(a => a.agent_type !== "custom_price").length})`],
+                    ["selected", `Select Manually (${selected.size})`],
+                  ] as const).map(([val, label]) => (
+                    <label key={val} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-all"
+                      style={audience === val ? { background: "rgba(59,130,246,0.1)", borderColor: "rgba(59,130,246,0.4)" } : { background: BG, borderColor: BORDER }}>
+                      <input type="radio" checked={audience === val} onChange={() => setAudience(val)} className="accent-blue-500" />
+                      <span className="text-sm font-semibold" style={{ color: audience === val ? "#60a5fa" : "#6b7280" }}>{label}</span>
+                    </label>
+                  ))}
+                </div>
+
+                {audience === "selected" && (
+                  <div className="mt-3">
+                    <div className="flex gap-2 mb-2">
+                      <button onClick={() => setSelected(new Set(approvedAgents.map(a => a.id)))} className="flex-1 py-1.5 rounded-lg text-xs font-bold text-blue-400 border" style={{ borderColor: BORDER }}>All</button>
+                      <button onClick={() => setSelected(new Set())} className="flex-1 py-1.5 rounded-lg text-xs font-bold text-red-400 border" style={{ borderColor: BORDER }}>Clear</button>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto space-y-1">
+                      {approvedAgents.map(a => (
+                        <label key={a.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-white/5">
+                          <input type="checkbox" checked={selected.has(a.id)} onChange={() => setSelected(p => { const n = new Set(p); n.has(a.id) ? n.delete(a.id) : n.add(a.id); return n; })} className="accent-blue-500" />
+                          <div>
+                            <p className="text-xs font-bold text-white">{a.name}</p>
+                            <p className="text-[10px] text-slate-500">{a.phone}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {mode === "individual" && (
+            <div className="max-w-lg">
+              <div className="rounded-2xl border p-6 space-y-4" style={{ background: CARD, borderColor: BORDER }}>
+                <p className="font-bold text-white text-base">🧪 Individual / Test SMS</p>
                 <div>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                    <button onClick={selectAll} style={{ flex: 1, padding: "6px", borderRadius: 6, border: `1px solid ${BORDER}`, background: "transparent", color: "#60a5fa", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Select All</button>
-                    <button onClick={clearAll} style={{ flex: 1, padding: "6px", borderRadius: 6, border: `1px solid ${BORDER}`, background: "transparent", color: "#f87171", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Clear</button>
-                  </div>
-                  <div style={{ maxHeight: 260, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
-                    {approvedAgents.map(a => (
-                      <label key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "8px 10px", borderRadius: 6, background: selected.has(a.id) ? "rgba(59,130,246,0.08)" : "transparent" }}>
-                        <input type="checkbox" checked={selected.has(a.id)} onChange={() => toggleAgent(a.id)} style={{ accentColor: "#3b82f6" }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ color: "white", fontSize: 12, fontWeight: 700, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</p>
-                          <p style={{ color: "#64748b", fontSize: 11, margin: 0 }}>{a.phone}</p>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">Recipient Phone Number</label>
+                  <input type="tel" value={testPhone} onChange={e => setTestPhone(e.target.value)} placeholder="0241234567 or +233241234567"
+                    className="w-full rounded-xl px-4 py-3 text-sm text-white border focus:outline-none focus:border-blue-500"
+                    style={{ background: BG, borderColor: BORDER }} />
+                  <p className="text-xs text-slate-600 mt-1">Ghana: 024XXXXXXX · International: 233241XXXXXX</p>
                 </div>
-              )}
-            </div>
-
-            {/* Preview */}
-            {bulkMsg && (
-              <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, padding: "16px 18px" }}>
-                <p style={{ color: "#94a3b8", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 10px" }}>Preview (first agent)</p>
-                <div style={{ background: "#0f172a", borderRadius: 10, padding: "12px 14px" }}>
-                  <p style={{ color: "#e2e8f0", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
-                    {bulkMsg.replace(/\{name\}/g, recipients[0]?.name?.split(" ")[0] ?? "Agent")}
-                  </p>
+                <div>
+                  <div className="flex justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wide">Message</label>
+                    <span className="text-xs font-semibold" style={{ color: charCount > 160 ? "#f87171" : "#6b7280" }}>{charCount} chars · {smsCount} SMS</span>
+                  </div>
+                  <textarea value={testMsg} onChange={e => setTestMsg(e.target.value)} rows={5} placeholder="Type your test message…"
+                    className="w-full rounded-xl px-4 py-3 text-sm text-white border focus:outline-none focus:border-blue-500 resize-y"
+                    style={{ background: BG, borderColor: BORDER, fontFamily: "inherit" }} />
                 </div>
+                <button onClick={sendTest} disabled={testSending || !testPhone.trim() || !testMsg.trim()}
+                  className="w-full py-3 rounded-xl text-sm font-black text-white disabled:opacity-50"
+                  style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
+                  {testSending ? "Sending…" : "Send Test SMS"}
+                </button>
+                {testResult && (
+                  <div className="p-3 rounded-xl" style={{ background: testResult.ok ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${testResult.ok ? "rgba(74,222,128,0.3)" : "rgba(248,113,113,0.3)"}` }}>
+                    <p className="text-sm font-bold" style={{ color: testResult.ok ? "#4ade80" : "#f87171" }}>{testResult.text}</p>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── TEMPLATES TAB ── */}
+      {activeTab === "templates" && (
+        <div className="space-y-4">
+          {/* Add template */}
+          <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+            <h2 className="font-bold text-white mb-4">Create New Template</h2>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">Template Name</label>
+                <input value={newTplLabel} onChange={e => setNewTplLabel(e.target.value)} placeholder="e.g. Weekly Promo"
+                  className="w-full rounded-xl px-4 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500"
+                  style={{ background: BG, borderColor: BORDER }} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">Message <span className="text-slate-600 normal-case font-normal">— use {"{name}"} to personalise</span></label>
+                <textarea value={newTplText} onChange={e => setNewTplText(e.target.value)} rows={4} placeholder="Hi {name}, …"
+                  className="w-full rounded-xl px-4 py-3 text-sm text-white border focus:outline-none focus:border-blue-500 resize-y"
+                  style={{ background: BG, borderColor: BORDER, fontFamily: "inherit" }} />
+                <p className="text-xs text-slate-600 mt-1">{newTplText.length} chars · {Math.ceil(newTplText.length / 160) || 1} SMS</p>
+              </div>
+              <button onClick={saveTemplate} disabled={!newTplLabel.trim() || !newTplText.trim()}
+                className="w-full py-3 rounded-xl text-sm font-black text-white disabled:opacity-50"
+                style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
+                Save Template
+              </button>
+            </div>
+          </div>
+
+          {/* Template list */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {templates.map(t => (
+              <div key={t.id} className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <p className="font-bold text-white text-sm">{t.label}</p>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button onClick={() => { setBulkMsg(t.text); setActiveTab("compose"); setMode("bulk"); }}
+                      className="text-xs px-2.5 py-1 rounded-lg font-bold text-blue-400 border border-blue-900 hover:bg-blue-900/20">Use</button>
+                    {!t.id.startsWith("t") && (
+                      <button onClick={() => setTemplates(prev => prev.filter(x => x.id !== t.id))}
+                        className="text-xs px-2.5 py-1 rounded-lg font-bold text-red-400 border border-red-900 hover:bg-red-900/20">Del</button>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed line-clamp-3">{t.text}</p>
+                <p className="text-[10px] text-slate-600 mt-2">{t.text.length} chars · {Math.ceil(t.text.length / 160)} SMS</p>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {mode === "individual" && (
-        <div style={{ maxWidth: 580 }}>
-          <div style={{ background: CARD, borderRadius: 14, border: `1px solid ${BORDER}`, padding: "24px" }}>
-            <p style={{ color: "white", fontWeight: 700, fontSize: 16, margin: "0 0 20px" }}>🧪 Individual / Test SMS</p>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ color: "#94a3b8", fontSize: 12, fontWeight: 700, display: "block", marginBottom: 6 }}>RECIPIENT PHONE NUMBER</label>
-              <input
-                type="tel"
-                value={testPhone}
-                onChange={e => setTestPhone(e.target.value)}
-                placeholder="e.g. 0241234567 or 233241234567"
-                style={{ width: "100%", background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "12px 14px", color: "white", fontSize: 14, outline: "none", boxSizing: "border-box" }}
-              />
-              <p style={{ color: "#64748b", fontSize: 11, margin: "6px 0 0" }}>Enter any phone number to test. Use Ghana format: 024XXXXXXX or international: 233241XXXXXX</p>
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                <label style={{ color: "#94a3b8", fontSize: 12, fontWeight: 700 }}>MESSAGE</label>
-                <span style={{ fontSize: 12, color: charCount > 160 ? "#f87171" : "#64748b" }}>{charCount} chars · {smsCount} SMS</span>
+      {/* ── SCHEDULE TAB ── */}
+      {activeTab === "schedule" && (
+        <div className="space-y-4">
+          <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-5">
+              <div>
+                <h2 className="font-bold text-white">Schedule SMS</h2>
+                <p className="text-xs text-slate-500">Set a future date and time — message fires automatically</p>
               </div>
-              <textarea
-                value={testMsg}
-                onChange={e => setTestMsg(e.target.value)}
-                placeholder="Type your test message here…"
-                rows={5}
-                style={{ width: "100%", background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "12px 14px", color: "white", fontSize: 14, resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
-              />
+              <button onClick={processScheduled} disabled={processing}
+                className="text-xs px-3 py-2 rounded-xl font-bold border text-amber-400 border-amber-900 hover:bg-amber-900/20 disabled:opacity-50">
+                {processing ? "Processing…" : "⚡ Process Due Now"}
+              </button>
             </div>
 
-            <button
-              onClick={sendTest}
-              disabled={testSending || !testPhone.trim() || !testMsg.trim()}
-              style={{ width: "100%", background: testSending || !testPhone.trim() || !testMsg.trim() ? "#1e293b" : "linear-gradient(90deg,#3b82f6,#8b5cf6)", color: testSending ? "#64748b" : "white", border: "none", borderRadius: 10, padding: "14px", fontSize: 14, fontWeight: 800, cursor: testSending ? "not-allowed" : "pointer" }}>
-              {testSending ? "Sending…" : "Send Test SMS"}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">Audience</label>
+                <select value={schedAudience} onChange={e => setSchedAudience(e.target.value as "all" | "customers")}
+                  className="w-full rounded-xl px-4 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500"
+                  style={{ background: BG, borderColor: BORDER }}>
+                  <option value="all">All Agents ({approvedAgents.length})</option>
+                  <option value="customers">All Customers</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">Date</label>
+                <input type="date" value={schedDate} onChange={e => setSchedDate(e.target.value)} min={new Date().toISOString().split("T")[0]}
+                  className="w-full rounded-xl px-4 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500"
+                  style={{ background: BG, borderColor: BORDER }} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">Time (Ghana)</label>
+                <input type="time" value={schedTime} onChange={e => setSchedTime(e.target.value)}
+                  className="w-full rounded-xl px-4 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500"
+                  style={{ background: BG, borderColor: BORDER }} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">Message</label>
+                <textarea value={schedText} onChange={e => setSchedText(e.target.value)} rows={4} placeholder="Hi {name}, …"
+                  className="w-full rounded-xl px-4 py-3 text-sm text-white border focus:outline-none focus:border-blue-500 resize-y"
+                  style={{ background: BG, borderColor: BORDER, fontFamily: "inherit" }} />
+                <p className="text-xs text-slate-600 mt-1">{schedText.length} chars · {Math.ceil(schedText.length / 160) || 1} SMS</p>
+              </div>
+            </div>
+            <button onClick={scheduleMsg} disabled={schedSaving || !schedText.trim() || !schedDate || !schedTime}
+              className="w-full py-3 rounded-xl text-sm font-black text-white disabled:opacity-50"
+              style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
+              {schedSaving ? "Scheduling…" : "Schedule Message"}
             </button>
+            {schedMsg && <p className="text-sm font-bold text-green-400 mt-2">{schedMsg}</p>}
+          </div>
 
-            {testResult && (
-              <div style={{ marginTop: 14, padding: "12px 16px", borderRadius: 10, background: testResult.ok ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)", border: `1px solid ${testResult.ok ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}` }}>
-                <p style={{ color: testResult.ok ? "#4ade80" : "#f87171", fontWeight: 700, fontSize: 13, margin: 0 }}>
-                  {testResult.ok ? "✓" : "✗"} {testResult.text}
-                </p>
+          {/* Scheduled list */}
+          <div className="rounded-2xl border overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
+            <div className="px-5 py-3 border-b" style={{ borderColor: BORDER }}>
+              <p className="font-bold text-white text-sm">Scheduled Messages</p>
+            </div>
+            {schedLoading ? (
+              <div className="py-12 flex justify-center"><div className="w-6 h-6 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>
+            ) : scheduled.length === 0 ? (
+              <div className="py-12 text-center"><p className="text-4xl mb-2">🕐</p><p className="text-slate-500 text-sm font-semibold">No scheduled messages</p></div>
+            ) : (
+              <div className="divide-y" style={{ borderColor: BORDER }}>
+                {scheduled.map(s => {
+                  const statusColor = s.status === "pending" ? "#f59e0b" : s.status === "sent" ? "#4ade80" : "#f87171";
+                  return (
+                    <div key={s.id} className="px-5 py-4 flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: `${statusColor}20`, color: statusColor }}>{s.status}</span>
+                          <span className="text-xs text-slate-500">{s.audience} · {s.phones?.length ?? 0} recipients</span>
+                          <span className="text-xs text-slate-500">{new Date(s.send_at).toLocaleString("en-GH", { dateStyle: "medium", timeStyle: "short" })}</span>
+                        </div>
+                        <p className="text-sm text-slate-300 line-clamp-2">{s.message}</p>
+                      </div>
+                      {s.status === "pending" && (
+                        <button onClick={() => deleteScheduled(s.id)} className="text-xs px-2.5 py-1.5 rounded-lg font-bold text-red-400 border border-red-900 hover:bg-red-900/20 shrink-0">Cancel</button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Info box */}
-          <div style={{ marginTop: 16, background: "rgba(59,130,246,0.08)", borderRadius: 12, border: "1px solid rgba(59,130,246,0.2)", padding: "14px 16px" }}>
-            <p style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13, margin: "0 0 6px" }}>ℹ️ About Test Mode</p>
-            <p style={{ color: "#94a3b8", fontSize: 12, margin: 0, lineHeight: 1.6 }}>
-              Use individual mode to test your messages before sending to all agents. Send to your own phone number to preview exactly how the SMS will appear to recipients.
-            </p>
+          <div className="rounded-xl border p-4" style={{ background: "#0e1928", borderColor: "#1e3050" }}>
+            <p className="text-xs font-bold text-blue-400 mb-1">ℹ️ How scheduling works</p>
+            <p className="text-xs text-slate-400 leading-relaxed">Messages are stored and fire when you click <strong className="text-white">Process Due Now</strong> or visit this page. For fully automatic sending, set up a cron job calling <code className="text-blue-300 bg-slate-800 px-1 rounded">/api/admin/sms/schedule</code> with PATCH method.</p>
           </div>
         </div>
       )}
 
-      <style>{`
-        @media (max-width: 767px) {
-          .sms-grid { grid-template-columns: 1fr !important; }
-        }
-      `}</style>
+      {/* ── REPORTS TAB ── */}
+      {activeTab === "reports" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div><h2 className="font-bold text-white">Delivery Reports</h2><p className="text-xs text-slate-500">History of all SMS sends from this dashboard</p></div>
+            <button onClick={loadReports} className="text-xs border px-3 py-1.5 rounded-lg text-slate-400 hover:text-white" style={{ borderColor: BORDER }}>↺ Refresh</button>
+          </div>
+
+          {/* Summary stats */}
+          {logs.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Total Sends", value: logs.length },
+                { label: "Total Recipients", value: logs.reduce((s, l) => s + l.recipient_count, 0).toLocaleString() },
+                { label: "Successfully Sent", value: logs.reduce((s, l) => s + (l.sent_count ?? 0), 0).toLocaleString(), color: "#4ade80" },
+                { label: "Failed", value: logs.reduce((s, l) => s + (l.failed_count ?? 0), 0).toLocaleString(), color: "#f87171" },
+              ].map(s => (
+                <div key={s.label} className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
+                  <p className="text-xs text-slate-500 mb-1">{s.label}</p>
+                  <p className="text-2xl font-black" style={{ color: s.color ?? "white" }}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="rounded-2xl border overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
+            {logsLoading ? (
+              <div className="py-16 flex justify-center"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>
+            ) : logs.length === 0 ? (
+              <div className="py-16 text-center"><p className="text-4xl mb-3">📊</p><p className="text-slate-500 font-semibold">No reports yet</p><p className="text-xs text-slate-600 mt-1">Reports appear here after you send your first SMS</p></div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-xs text-slate-500 uppercase tracking-wider" style={{ background: BG, borderColor: BORDER }}>
+                      {["Date", "Audience", "Recipients", "Sent", "Failed", "Status", "Message"].map(h => (
+                        <th key={h} className="px-4 py-3 text-left font-semibold">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {logs.map(l => {
+                      const statusStyle = l.status === "success" ? { bg: "rgba(74,222,128,0.15)", color: "#4ade80" } : { bg: "rgba(248,113,113,0.15)", color: "#f87171" };
+                      return (
+                        <tr key={l.id} className="border-b last:border-0 hover:bg-white/[0.02]" style={{ borderColor: BORDER }}>
+                          <td className="px-4 py-3.5 text-xs text-slate-500 whitespace-nowrap">{new Date(l.created_at).toLocaleString("en-GH", { dateStyle: "short", timeStyle: "short" })}</td>
+                          <td className="px-4 py-3.5 text-xs font-semibold text-white capitalize">{l.audience?.replace("_", " ")}</td>
+                          <td className="px-4 py-3.5 font-bold text-white">{l.recipient_count}</td>
+                          <td className="px-4 py-3.5 font-bold text-green-400">{l.sent_count ?? "—"}</td>
+                          <td className="px-4 py-3.5 font-bold" style={{ color: (l.failed_count ?? 0) > 0 ? "#f87171" : "#6b7280" }}>{l.failed_count ?? "—"}</td>
+                          <td className="px-4 py-3.5">
+                            <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: statusStyle.bg, color: statusStyle.color }}>{l.status}</span>
+                          </td>
+                          <td className="px-4 py-3.5 text-xs text-slate-400 max-w-xs truncate">{l.message}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* SQL setup note */}
+          <div className="rounded-xl border p-4" style={{ background: "#0e1928", borderColor: "#1e3050" }}>
+            <p className="text-xs font-semibold text-amber-400 mb-2">💡 Run this SQL once in Supabase if reports are empty:</p>
+            <pre className="text-xs text-blue-300 font-mono whitespace-pre-wrap">{`CREATE TABLE IF NOT EXISTS sms_logs (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  audience text, recipient_count int, message text,
+  sent_count int DEFAULT 0, failed_count int DEFAULT 0,
+  status text DEFAULT 'success', created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sms_scheduled (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  audience text, phones text[], message text,
+  send_at timestamptz, status text DEFAULT 'pending',
+  created_at timestamptz DEFAULT now()
+);`}</pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
