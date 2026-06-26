@@ -49,9 +49,9 @@ interface StatsData {
 }
 
 const PAGE_SIZE = 50;
-const BG = "#0b1120";
-const CARD = "#111827";
-const BORDER = "#1f2937";
+const BG = "#080f1e";
+const CARD = "#0d1b2e";
+const BORDER = "#1e3a5f";
 const BORDER2 = "#1e3050";
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -361,10 +361,12 @@ function Sidebar({ tab, setTab, pendingOrders, pendingAgents, onLogout, onChange
     const active = tab === item.id;
     return (
       <button onClick={() => { setTab(item.id); onMobileClose(); }}
-        className="w-full flex items-center justify-between gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left"
-        style={active ? { background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", color: "#fff" } : { color: "#6b7280" }}
-        onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "#1f2937"; }}
-        onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = ""; }}>
+        className="w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all text-left"
+        style={active
+          ? { background: "rgba(59,130,246,0.18)", color: "#60a5fa", borderLeft: "3px solid #3b82f6", paddingLeft: 9 }
+          : { color: "#64748b", borderLeft: "3px solid transparent", paddingLeft: 9 }}
+        onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; (e.currentTarget as HTMLElement).style.color = "#94a3b8"; } }}
+        onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = ""; (e.currentTarget as HTMLElement).style.color = "#64748b"; } }}>
         <span className="flex items-center gap-2.5">{item.icon}{item.label}</span>
         {item.badge ? <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-orange-400 text-gray-900 leading-none">{item.badge}</span> : null}
       </button>
@@ -372,19 +374,19 @@ function Sidebar({ tab, setTab, pendingOrders, pendingAgents, onLogout, onChange
   }
 
   return (
-    <aside className={`fixed inset-y-0 left-0 z-50 w-56 flex flex-col border-r transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
-      style={{ background: BG, borderColor: BORDER }}>
-      <button onClick={onMobileClose} className="md:hidden absolute top-4 right-4 text-slate-400 hover:text-white">
+    <aside className={`fixed inset-y-0 left-0 z-50 w-60 flex flex-col border-r transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
+      style={{ background: "#080f1e", borderColor: "#1e3a5f" }}>
+      <button onClick={onMobileClose} className="md:hidden absolute top-4 right-4 z-10 w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10">
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
       </button>
 
-      {/* Logo */}
-      <div className="px-4 pt-5 pb-4 border-b" style={{ borderColor: BORDER }}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center font-black text-white text-sm" style={{ background: "linear-gradient(135deg,#3b82f6,#8b5cf6)" }}>E</div>
+      {/* Brand header */}
+      <div className="px-4 pt-5 pb-4 border-b" style={{ borderColor: "#1e3a5f" }}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl flex items-center justify-center font-black text-white text-base shadow-lg" style={{ background: "linear-gradient(135deg,#3b82f6,#7c3aed)" }}>E</div>
           <div>
             <p className="font-black text-white text-sm leading-none">Elite Data</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">Admin Dashboard</p>
+            <p className="text-[10px] uppercase tracking-widest mt-0.5" style={{ color: "#3b82f6" }}>Admin Panel</p>
           </div>
         </div>
       </div>
@@ -392,10 +394,12 @@ function Sidebar({ tab, setTab, pendingOrders, pendingAgents, onLogout, onChange
       {/* Dashboard link */}
       <div className="px-3 pt-3 pb-1">
         <button onClick={() => { setTab("overview"); onMobileClose(); }}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all"
-          style={tab === "overview" ? { background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", color: "#fff" } : { color: "#6b7280" }}
-          onMouseEnter={e => { if (tab !== "overview") (e.currentTarget as HTMLElement).style.background = "#1f2937"; }}
-          onMouseLeave={e => { if (tab !== "overview") (e.currentTarget as HTMLElement).style.background = ""; }}>
+          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all"
+          style={tab === "overview"
+            ? { background: "rgba(59,130,246,0.18)", color: "#60a5fa", borderLeft: "3px solid #3b82f6", paddingLeft: 9 }
+            : { color: "#64748b", borderLeft: "3px solid transparent", paddingLeft: 9 }}
+          onMouseEnter={e => { if (tab !== "overview") { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; } }}
+          onMouseLeave={e => { if (tab !== "overview") { (e.currentTarget as HTMLElement).style.background = ""; } }}>
           <Ic.home /> Dashboard
         </button>
       </div>
@@ -404,7 +408,11 @@ function Sidebar({ tab, setTab, pendingOrders, pendingAgents, onLogout, onChange
       <nav className="flex-1 px-3 py-2 overflow-y-auto space-y-4">
         {sections.map(sec => (
           <div key={sec.label}>
-            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-3 mb-1.5">{sec.label}</p>
+            <div className="flex items-center gap-2 px-3 mb-1.5">
+              <div className="h-px flex-1" style={{ background: "#1e3a5f" }} />
+              <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">{sec.label}</p>
+              <div className="h-px flex-1" style={{ background: "#1e3a5f" }} />
+            </div>
             <div className="space-y-0.5">
               {sec.items.map(item => <NavItem key={item.id} item={item} />)}
             </div>
@@ -412,27 +420,32 @@ function Sidebar({ tab, setTab, pendingOrders, pendingAgents, onLogout, onChange
         ))}
       </nav>
 
-      {/* Bottom */}
-      <div className="px-3 pb-4 border-t pt-3" style={{ borderColor: BORDER }}>
-        <a href="/" target="_blank" rel="noreferrer"
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all text-slate-500 hover:text-slate-300"
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#1f2937"; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ""; }}>
-          <Ic.website /> View Website
-        </a>
-        <button onClick={onChangePassword}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-300 transition-all"
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#1f2937"; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ""; }}>
-          <Ic.key /> Change Password
-        </button>
-        <button onClick={onLogout}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all"
-          style={{ color: "#f87171" }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#1f1212"; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ""; }}>
-          <Ic.logout /> Sign Out
-        </button>
+      {/* Bottom: admin profile + actions */}
+      <div className="border-t" style={{ borderColor: "#1e3a5f" }}>
+        {/* Admin profile pill */}
+        <div className="mx-3 my-3 px-3 py-2.5 rounded-xl flex items-center gap-2.5" style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)" }}>
+          <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-white text-xs shrink-0" style={{ background: "linear-gradient(135deg,#3b82f6,#7c3aed)" }}>A</div>
+          <div className="min-w-0">
+            <p className="text-xs font-black text-white leading-none truncate">Administrator</p>
+            <p className="text-[10px] mt-0.5" style={{ color: "#3b82f6" }}>Super Admin</p>
+          </div>
+          <span className="ml-auto text-[8px] font-black px-1.5 py-0.5 rounded-full text-green-900 bg-green-400 shrink-0">LIVE</span>
+        </div>
+        <div className="px-3 pb-3 space-y-0.5">
+          <a href="/" target="_blank" rel="noreferrer"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all text-slate-500 hover:text-slate-300 hover:bg-white/5">
+            <Ic.website /> View Website
+          </a>
+          <button onClick={onChangePassword}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all">
+            <Ic.key /> Change Password
+          </button>
+          <button onClick={onLogout}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all hover:bg-red-900/20"
+            style={{ color: "#f87171" }}>
+            <Ic.logout /> Sign Out
+          </button>
+        </div>
       </div>
     </aside>
   );
@@ -482,12 +495,12 @@ function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; animated
   }
 
   const statCards = [
-    { label: "Total Orders",     value: stats.orders.total.toLocaleString(),        pct: cmp.orders,    invert: false, icon: "🛒", iconBg: "#1e3a5f", iconColor: "#3b82f6" },
-    { label: "Completed Orders", value: stats.orders.completed.toLocaleString(),    pct: cmp.completed, invert: false, icon: "✅", iconBg: "#14302a", iconColor: "#10b981" },
-    { label: "Pending Orders",   value: stats.orders.pending.toLocaleString(),      pct: cmp.pending,   invert: true,  icon: "⏳", iconBg: "#2a1e0a", iconColor: "#f59e0b" },
-    { label: "Failed Orders",    value: stats.orders.failed.toLocaleString(),       pct: cmp.failed,    invert: true,  icon: "❌", iconBg: "#2a0f0f", iconColor: "#f87171" },
-    { label: "Total Revenue",    value: `GH₵${totalRev.toFixed(2)}`,               pct: cmp.revenue,   invert: false, icon: "💰", iconBg: "#1e2a50", iconColor: "#a78bfa" },
-    { label: "Total Agents",     value: stats.agents.total.toLocaleString(),        pct: cmp.agents,    invert: false, icon: "👥", iconBg: "#0a2a1f", iconColor: "#34d399" },
+    { label: "Total Orders",     value: stats.orders.total.toLocaleString(),        pct: cmp.orders,    invert: false, icon: "🛒", grad: "linear-gradient(135deg,#1e3a5f,#1e40af)" },
+    { label: "Completed Orders", value: stats.orders.completed.toLocaleString(),    pct: cmp.completed, invert: false, icon: "✅", grad: "linear-gradient(135deg,#064e3b,#065f46)" },
+    { label: "Pending Orders",   value: stats.orders.pending.toLocaleString(),      pct: cmp.pending,   invert: true,  icon: "⏳", grad: "linear-gradient(135deg,#451a03,#78350f)" },
+    { label: "Failed Orders",    value: stats.orders.failed.toLocaleString(),       pct: cmp.failed,    invert: true,  icon: "❌", grad: "linear-gradient(135deg,#450a0a,#7f1d1d)" },
+    { label: "Total Revenue",    value: `GH₵${totalRev.toFixed(2)}`,               pct: cmp.revenue,   invert: false, icon: "💰", grad: "linear-gradient(135deg,#2e1065,#4c1d95)" },
+    { label: "Total Agents",     value: stats.agents.total.toLocaleString(),        pct: cmp.agents,    invert: false, icon: "👥", grad: "linear-gradient(135deg,#052e16,#14532d)" },
   ];
 
   const recentOrders = useMemo(() =>
@@ -509,15 +522,14 @@ function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; animated
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         {statCards.map((c, i) => (
-          <div key={c.label} className="rounded-xl p-4 border" style={{ background: CARD, borderColor: BORDER, animation: `slideUp .3s ease both`, animationDelay: `${i * 50}ms` }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style={{ background: c.iconBg }}>{c.icon}</div>
-            </div>
+          <div key={c.label} className="rounded-2xl p-4 border relative overflow-hidden" style={{ background: CARD, borderColor: BORDER, animation: `slideUp .3s ease both`, animationDelay: `${i * 50}ms` }}>
+            <div className="absolute top-0 right-0 w-20 h-20 rounded-full opacity-10 -translate-y-4 translate-x-4" style={{ background: c.grad }} />
+            <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg mb-3" style={{ background: c.grad }}>{c.icon}</div>
             <p className="text-xl font-black text-white leading-none mb-1">{c.value}</p>
             <p className="text-[11px] text-slate-500 mb-2">{c.label}</p>
             <div className="flex items-center gap-1.5">
               <PctBadge val={c.pct} invert={c.invert} />
-              <span className="text-[10px] text-slate-600">vs last 7 days</span>
+              <span className="text-[10px] text-slate-600">vs last 7d</span>
             </div>
           </div>
         ))}
@@ -1676,26 +1688,27 @@ export default function AdminDashboard() {
       {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}
       {mobileSidebarOpen && <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={() => setMobileSidebarOpen(false)} />}
 
-      <div className="md:ml-56 flex flex-col min-h-screen">
+      <div className="md:ml-60 flex flex-col min-h-screen">
         {/* Header */}
-        <header className="px-6 py-3.5 flex items-center justify-between sticky top-0 z-30 border-b" style={{ background: BG, borderColor: BORDER }}>
-          <div className="flex items-center gap-4">
-            <button onClick={() => setMobileSidebarOpen(true)} className="md:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-[#1f2937] transition-colors">
+        <header className="px-4 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-30 border-b backdrop-blur-sm" style={{ background: "rgba(8,15,30,0.92)", borderColor: BORDER }}>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setMobileSidebarOpen(true)} className="md:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
               <Ic.menu />
             </button>
-            <div className="hidden sm:flex items-center gap-2 border rounded-xl px-4 py-2" style={{ background: CARD, borderColor: BORDER }}>
-              <span className="text-slate-500"><Ic.search /></span>
-              <span className="text-sm text-slate-600">Search anything…</span>
-              <span className="text-xs text-slate-700 ml-2 border px-1.5 py-0.5 rounded" style={{ borderColor: BORDER }}>Ctrl + K</span>
+            {/* Breadcrumb */}
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-xs text-slate-600 font-semibold">Elite Data</span>
+              <span className="text-slate-700">/</span>
+              <span className="text-xs font-bold text-white">{pageTitle[tab] ?? "Dashboard"}</span>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <div className="relative">
-              <button className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-[#1f2937] transition-colors"><Ic.bell /></button>
-              {(stats?.agents.pending ?? 0) > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
+              <button className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors"><Ic.bell /></button>
+              {(stats?.agents.pending ?? 0) > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-red-900" />}
             </div>
-            <div className="flex items-center gap-2.5 border rounded-xl px-3 py-2" style={{ background: CARD, borderColor: BORDER }}>
-              <div className="w-7 h-7 rounded-full flex items-center justify-center font-black text-white text-xs" style={{ background: "linear-gradient(135deg,#3b82f6,#8b5cf6)" }}>A</div>
+            <div className="flex items-center gap-2.5 border rounded-xl px-3 py-1.5" style={{ background: "rgba(30,58,95,0.4)", borderColor: BORDER }}>
+              <div className="w-7 h-7 rounded-full flex items-center justify-center font-black text-white text-xs" style={{ background: "linear-gradient(135deg,#3b82f6,#7c3aed)" }}>A</div>
               <div className="hidden sm:block text-right">
                 <p className="text-xs font-bold text-white leading-none">Admin</p>
                 <p className="text-[10px] text-slate-500">Super Admin</p>
@@ -1705,13 +1718,21 @@ export default function AdminDashboard() {
         </header>
 
         {/* Page header */}
-        <div className="px-6 py-4 border-b" style={{ borderColor: BORDER }}>
-          <h1 className="text-lg font-black text-white">{pageTitle[tab] ?? "Dashboard"}</h1>
-          {tab === "overview" && <p className="text-sm text-slate-500 mt-0.5">Welcome back, Admin 👋</p>}
+        <div className="px-4 sm:px-6 py-4 border-b flex items-center justify-between gap-4" style={{ borderColor: BORDER }}>
+          <div>
+            <h1 className="text-lg font-black text-white leading-none">{pageTitle[tab] ?? "Dashboard"}</h1>
+            {tab === "overview" && <p className="text-sm mt-1" style={{ color: "#64748b" }}>Welcome back, Admin — here&apos;s what&apos;s happening today.</p>}
+          </div>
+          {tab === "overview" && (
+            <div className="hidden sm:flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-xl" style={{ background: "rgba(16,185,129,0.1)", color: "#34d399", border: "1px solid rgba(16,185,129,0.2)" }}>
+              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              System Live
+            </div>
+          )}
         </div>
 
         {/* Content */}
-        <main className="flex-1 px-3 sm:px-6 py-5">
+        <main className="flex-1 px-3 sm:px-6 py-5 pb-20 md:pb-5">
           {loadingStats && !stats ? (
             <div className="flex flex-col items-center justify-center py-40 gap-4">
               <div className="w-10 h-10 border-4 border-[#3b82f6] border-t-transparent rounded-full animate-spin" />
@@ -1748,6 +1769,26 @@ export default function AdminDashboard() {
           ) : null}
         </main>
       </div>
+
+      {/* Mobile bottom nav */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t flex" style={{ background: "#080f1e", borderColor: "#1e3a5f" }}>
+        {([
+          { id: "overview" as Tab,        icon: "🏠", label: "Home" },
+          { id: "all-orders" as Tab,      icon: "📦", label: "Orders", badge: stats?.orders.pending },
+          { id: "all-agents" as Tab,      icon: "👥", label: "Agents", badge: stats?.agents.pending },
+          { id: "sms" as Tab,             icon: "✉️", label: "SMS" },
+          { id: "settings" as Tab,        icon: "⚙️", label: "Settings" },
+        ] as { id: Tab; icon: string; label: string; badge?: number }[]).map(item => (
+          <button key={item.id} onClick={() => setTab(item.id)}
+            className="flex-1 flex flex-col items-center gap-0.5 py-2.5 relative transition-all"
+            style={{ color: tab === item.id ? "#60a5fa" : "#475569" }}>
+            <span className="text-lg leading-none">{item.icon}</span>
+            <span className="text-[9px] font-bold">{item.label}</span>
+            {(item.badge ?? 0) > 0 && <span className="absolute top-1.5 right-1/4 text-[8px] font-black px-1 rounded-full bg-orange-400 text-gray-900 leading-4 min-w-[14px] text-center">{item.badge}</span>}
+            {tab === item.id && <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-blue-400" />}
+          </button>
+        ))}
+      </nav>
 
       <style>{`
         @keyframes slideUp {
