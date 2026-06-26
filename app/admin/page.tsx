@@ -1377,209 +1377,204 @@ function LeaderboardView({ stats }: { stats: StatsData }) {
 
 // ─── Settings View ────────────────────────────────────────────────────────────
 function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
-  const [netSettings, setNetSettings] = useState<{ mtn: boolean; telecel: boolean; at: boolean; autoHours: boolean; autoStart: string; autoEnd: string } | null>(null);
-  const [datifySettings, setDatifySettings] = useState<{ override: boolean; startTime: string; endTime: string; activeProvider: string } | null>(null);
-  const [netSaving, setNetSaving] = useState(false);
-  const [netToast, setNetToast] = useState("");
-  const [integrationsStatus, setIntegrationsStatus] = useState<Record<string, string> | null>(null);
+  const [net, setNet] = useState<{ mtn: boolean; telecel: boolean; at: boolean; autoHours: boolean; autoStart: string; autoEnd: string } | null>(null);
+  const [netError, setNetError] = useState("");
+  const [netSaving, setNetSaving] = useState<string | null>(null);
+  const [toast, setToast] = useState("");
+  const [toastOk, setToastOk] = useState(true);
   const [checkingInt, setCheckingInt] = useState(false);
+  const [intStatus, setIntStatus] = useState<Record<string, { value: string; ok: boolean }> | null>(null);
+  const [hoursSaving, setHoursSaving] = useState(false);
+
+  function showToast(msg: string, ok = true) { setToast(msg); setToastOk(ok); setTimeout(() => setToast(""), 3500); }
 
   useEffect(() => {
-    fetch("/api/admin/network-settings").then(r => r.json()).then(setNetSettings).catch(() => {});
-    fetch("/api/admin/network-providers").then(r => r.json()).then(d => setDatifySettings({ override: d.datifyOverride, startTime: d.datifyStartTime ?? "18:40", endTime: d.datifyEndTime ?? "09:00", activeProvider: d.activeProvider })).catch(() => {});
+    fetch("/api/admin/network-settings")
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setNetError("Could not load settings. Run the SQL below in Supabase first."); return; }
+        setNet(d);
+      })
+      .catch(() => setNetError("Network error loading settings."));
   }, []);
 
-  function toast3(msg: string) { setNetToast(msg); setTimeout(() => setNetToast(""), 3000); }
-
-  async function saveNet(patch: Partial<typeof netSettings>) {
-    if (!netSettings) return;
-    const updated = { ...netSettings, ...patch };
-    setNetSettings(updated);
-    setNetSaving(true);
-    await fetch("/api/admin/network-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
-    toast3("Saved!");
-    setNetSaving(false);
+  async function toggleNet(key: "mtn" | "telecel" | "at", value: boolean) {
+    if (!net) return;
+    setNet(prev => prev ? { ...prev, [key]: value } : prev);
+    setNetSaving(key);
+    const r = await fetch("/api/admin/network-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [key]: value }) }).then(r => r.json());
+    setNetSaving(null);
+    if (r.success) showToast(`✓ ${key.toUpperCase()} ${value ? "enabled" : "disabled"}`);
+    else { showToast("❌ Save failed — check Supabase SQL below", false); setNet(prev => prev ? { ...prev, [key]: !value } : prev); }
   }
 
-  async function saveDatify() {
-    if (!datifySettings) return;
-    setNetSaving(true);
-    await fetch("/api/admin/network-providers", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ datifyOverride: datifySettings.override, datifyStartTime: datifySettings.startTime, datifyEndTime: datifySettings.endTime }) });
-    toast3("Saved!");
-    setNetSaving(false);
+  async function toggleAutoHours(value: boolean) {
+    if (!net) return;
+    setNet(prev => prev ? { ...prev, autoHours: value } : prev);
+    setNetSaving("autoHours");
+    const r = await fetch("/api/admin/network-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ autoHours: value }) }).then(r => r.json());
+    setNetSaving(null);
+    if (r.success) showToast(`✓ Auto hours ${value ? "enabled" : "disabled"}`);
+    else showToast("❌ Save failed", false);
+  }
+
+  async function saveStoreHours() {
+    if (!net) return;
+    setHoursSaving(true);
+    const r = await fetch("/api/admin/network-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ autoStart: net.autoStart, autoEnd: net.autoEnd }) }).then(r => r.json());
+    setHoursSaving(false);
+    if (r.success) showToast("✓ Store hours saved!");
+    else showToast("❌ Save failed", false);
   }
 
   async function checkIntegrations() {
-    setCheckingInt(true);
-    const results: Record<string, string> = {};
+    setCheckingInt(true); setIntStatus(null);
+    const results: Record<string, { value: string; ok: boolean }> = {};
     try {
-      const tg = await fetch("/api/admin/inventor-balance").then(r => r.json());
-      results["Inventor API"] = tg.balance !== null ? `GH₵${Number(tg.balance).toFixed(2)}` : "Unreachable";
-    } catch { results["Inventor API"] = "Error"; }
-    setIntegrationsStatus(results);
+      const d = await fetch("/api/admin/inventor-balance").then(r => r.json());
+      results["Inventor API"] = d.balance !== null ? { value: `✓ Balance: GH₵${Number(d.balance).toFixed(2)}`, ok: true } : { value: "✗ Unreachable", ok: false };
+    } catch { results["Inventor API"] = { value: "✗ Error", ok: false }; }
+    const atKey = !!process.env.AT_API_KEY; // won't work client-side but shows intent
+    results["Africa's Talking SMS"] = { value: "Check Vercel env: AT_API_KEY + AT_USERNAME", ok: false };
+    results["Supabase DB"] = net ? { value: "✓ Connected", ok: true } : { value: "✗ Not connected — run SQL below", ok: false };
+    setIntStatus(results);
     setCheckingInt(false);
   }
 
-  function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void; color?: string }) {
+  function SettingToggle({ checked, onChange, saving }: { checked: boolean; onChange: (v: boolean) => void; saving?: boolean }) {
     return (
-      <button onClick={() => onChange(!checked)} className="relative inline-flex items-center h-6 rounded-full w-11 transition-colors shrink-0"
+      <button onClick={() => !saving && onChange(!checked)} disabled={saving}
+        className="relative inline-flex items-center h-7 rounded-full w-12 transition-colors shrink-0 disabled:opacity-60"
         style={{ background: checked ? "#16a34a" : "#374151" }}>
-        <span className="inline-block w-5 h-5 transform rounded-full bg-white shadow transition-transform" style={{ transform: checked ? "translateX(22px)" : "translateX(2px)" }} />
+        {saving ? <span className="absolute inset-0 flex items-center justify-center"><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /></span>
+          : <span className="inline-block w-5 h-5 transform rounded-full bg-white shadow transition-transform" style={{ transform: checked ? "translateX(26px)" : "translateX(2px)" }} />}
       </button>
     );
   }
 
+  const SQL = `-- Run this ONCE in Supabase SQL Editor:\nCREATE TABLE IF NOT EXISTS system_settings (\n  key text PRIMARY KEY,\n  value text NOT NULL,\n  updated_at timestamptz DEFAULT now()\n);`;
+
   return (
     <div className="max-w-xl space-y-5">
-      <div><h1 className="text-xl font-black text-white">Settings</h1><p className="text-sm text-slate-500">Admin account settings</p></div>
+      <div><h1 className="text-xl font-black text-white">Settings</h1><p className="text-sm text-slate-500">Store availability, hours, and account settings</p></div>
+
+      {/* SQL banner if table missing */}
+      {netError && (
+        <div className="rounded-2xl border p-4" style={{ background: "#120a00", borderColor: "#92400e" }}>
+          <p className="text-sm font-bold text-amber-400 mb-2">⚠️ {netError}</p>
+          <pre className="text-xs text-blue-300 font-mono whitespace-pre-wrap">{SQL}</pre>
+        </div>
+      )}
 
       {/* Network Availability */}
       <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
         <h2 className="font-bold text-white mb-1">Network Availability</h2>
-        <p className="text-xs text-slate-500 mb-4">Turn a network off to hide it from customers when it has issues</p>
-        <div className="space-y-3">
-          {netSettings && [
-            { key: "mtn" as const, label: "MTN", color: "#f59e0b", dot: "#f59e0b" },
-            { key: "telecel" as const, label: "Telecel", color: "#ef4444", dot: "#ef4444" },
-            { key: "at" as const, label: "AirtelTigo", color: "#3b82f6", dot: "#3b82f6" },
+        <p className="text-xs text-slate-500 mb-4">Switch a network off to hide it from customers when it has issues</p>
+        {!net && !netError && <div className="flex items-center gap-2 text-sm text-slate-500"><div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /> Loading…</div>}
+        <div className="space-y-4">
+          {net && [
+            { key: "mtn" as const, label: "MTN",        dot: "#f59e0b" },
+            { key: "telecel" as const, label: "Telecel", dot: "#ef4444" },
+            { key: "at" as const, label: "AirtelTigo",  dot: "#3b82f6" },
           ].map(n => (
-            <div key={n.key} className="flex items-center justify-between py-2">
-              <div className="flex items-center gap-2.5">
-                <span className="w-3 h-3 rounded-full" style={{ background: n.dot }} />
-                <span className="font-semibold text-white">{n.label}</span>
-                <span className="text-xs font-bold text-green-400" style={{ color: netSettings[n.key] ? "#4ade80" : "#f87171" }}>
-                  {netSettings[n.key] ? "Available" : "Disabled"}
-                </span>
+            <div key={n.key} className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="w-3 h-3 rounded-full shrink-0" style={{ background: n.dot }} />
+                <div>
+                  <p className="font-semibold text-white text-sm">{n.label}</p>
+                  <p className="text-xs font-bold" style={{ color: net[n.key] ? "#4ade80" : "#f87171" }}>
+                    {net[n.key] ? "Available" : "Disabled"}
+                  </p>
+                </div>
               </div>
-              <Toggle checked={netSettings[n.key]} onChange={v => saveNet({ [n.key]: v })} />
+              <SettingToggle checked={net[n.key]} saving={netSaving === n.key} onChange={v => toggleNet(n.key, v)} />
             </div>
           ))}
         </div>
       </div>
 
       {/* Auto Store Hours */}
-      {netSettings && (
+      {net && (
         <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-4">
             <div>
               <p className="font-bold text-white">⏰ Auto Store Hours</p>
               <p className="text-xs text-slate-500">Store auto-closes outside these times (Ghana time)</p>
             </div>
-            <Toggle checked={netSettings.autoHours} onChange={v => saveNet({ autoHours: v })} />
+            <SettingToggle checked={net.autoHours} saving={netSaving === "autoHours"} onChange={toggleAutoHours} />
           </div>
-          {netSettings.autoHours && (
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              <div>
-                <label className="block text-xs text-slate-400 uppercase tracking-wide mb-1">Open Time</label>
-                <input type="time" value={netSettings.autoStart} onChange={e => setNetSettings(s => s ? { ...s, autoStart: e.target.value } : s)}
-                  onBlur={() => saveNet({ autoStart: netSettings.autoStart })}
-                  className="w-full rounded-xl px-3 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500"
-                  style={{ background: BG, borderColor: BORDER }} />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 uppercase tracking-wide mb-1">Close Time</label>
-                <input type="time" value={netSettings.autoEnd} onChange={e => setNetSettings(s => s ? { ...s, autoEnd: e.target.value } : s)}
-                  onBlur={() => saveNet({ autoEnd: netSettings.autoEnd })}
-                  className="w-full rounded-xl px-3 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500"
-                  style={{ background: BG, borderColor: BORDER }} />
-              </div>
-            </div>
-          )}
-          <button onClick={() => saveNet({})} className="mt-3 px-4 py-2 rounded-xl text-sm font-bold border text-slate-400 hover:text-white" style={{ borderColor: BORDER }}>
-            Save {netSaving ? "…" : "(disabled)"}
-          </button>
-        </div>
-      )}
-
-      {/* Datify Delivery */}
-      {datifySettings && (
-        <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
-          <div className="flex items-center justify-between mb-4">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <p className="font-bold text-white">⚡ Datify Delivery</p>
-              <p className="text-xs text-slate-500">Second delivery provider — auto on by schedule or manual override</p>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">Open Time</label>
+              <input type="time" value={net.autoStart}
+                onChange={e => setNet(s => s ? { ...s, autoStart: e.target.value } : s)}
+                className="w-full rounded-xl px-3 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500"
+                style={{ background: BG, borderColor: BORDER }} />
             </div>
-            <span className="text-xs font-bold px-2 py-1 rounded border" style={{ borderColor: BORDER, color: datifySettings.activeProvider === "datify" ? "#4ade80" : "#94a3b8" }}>
-              {datifySettings.activeProvider === "datify" ? "Datify Active" : "Inventor Active"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="font-semibold text-white">Manual Override</p>
-              <p className="text-xs text-slate-500">Force Datify on regardless of time</p>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">Close Time</label>
+              <input type="time" value={net.autoEnd}
+                onChange={e => setNet(s => s ? { ...s, autoEnd: e.target.value } : s)}
+                className="w-full rounded-xl px-3 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500"
+                style={{ background: BG, borderColor: BORDER }} />
             </div>
-            <Toggle checked={datifySettings.override} onChange={async v => { setDatifySettings(s => s ? { ...s, override: v } : s); await fetch("/api/admin/network-providers", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ datifyOverride: v }) }); }} />
           </div>
-          <h3 className="font-semibold text-white text-sm mb-2">Auto Schedule <span className="text-slate-500 font-normal">Ghana time (UTC+0)</span></h3>
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            {(["startTime", "endTime"] as const).map((key, idx) => (
-              <div key={key}>
-                <label className="block text-xs text-slate-400 uppercase tracking-wide mb-1">{idx === 0 ? "START TIME" : "END TIME"}</label>
-                <input type="time" value={datifySettings[key]}
-                  onChange={e => setDatifySettings(s => s ? { ...s, [key]: e.target.value } : s)}
-                  className="w-full rounded-xl px-3 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500"
-                  style={{ background: BG, borderColor: BORDER }} />
-              </div>
-            ))}
-          </div>
-          <button onClick={saveDatify} disabled={netSaving}
-            className="px-5 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-50"
+          <button onClick={saveStoreHours} disabled={hoursSaving}
+            className="mt-4 w-full py-2.5 rounded-xl text-sm font-black text-white disabled:opacity-60"
             style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
-            {netSaving ? "Saving…" : "Save"}
+            {hoursSaving ? "Saving…" : "Save Store Hours"}
           </button>
+          {!net.autoHours && <p className="text-xs text-slate-600 mt-2 text-center">Enable the toggle above to activate auto hours</p>}
         </div>
       )}
 
       {/* Integrations */}
       <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-2">
           <div>
-            <p className="font-bold text-white">🔌 Integrations</p>
-            <p className="text-xs text-slate-500">Telegram bots and SMS — check status and fix with one tap</p>
+            <p className="font-bold text-white">🔌 Integrations Status</p>
+            <p className="text-xs text-slate-500">Check API connections</p>
           </div>
           <button onClick={checkIntegrations} disabled={checkingInt}
-            className="text-xs border px-3 py-1.5 rounded-lg text-blue-400 border-blue-900 hover:bg-blue-900/20 font-bold">
-            {checkingInt ? "Checking…" : "Check Status"}
+            className="text-xs border px-3 py-1.5 rounded-lg font-bold text-blue-400 border-blue-900 hover:bg-blue-900/20 disabled:opacity-50">
+            {checkingInt ? "Checking…" : "Check Now"}
           </button>
         </div>
-        {integrationsStatus && (
-          <div className="mt-4 space-y-2">
-            {Object.entries(integrationsStatus).map(([k, v]) => (
-              <div key={k} className="flex justify-between text-sm">
-                <span className="text-slate-400">{k}</span>
-                <span className="font-semibold" style={{ color: v.includes("Error") || v === "Unreachable" ? "#f87171" : "#4ade80" }}>{v}</span>
+        {intStatus && (
+          <div className="mt-3 space-y-2.5">
+            {Object.entries(intStatus).map(([k, v]) => (
+              <div key={k} className="flex items-start justify-between gap-3">
+                <span className="text-sm text-slate-400 shrink-0">{k}</span>
+                <span className="text-xs font-semibold text-right" style={{ color: v.ok ? "#4ade80" : "#fbbf24" }}>{v.value}</span>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* Fingerprint Login */}
-      <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <p className="font-bold text-white">🔒 Fingerprint Login</p>
-            <p className="text-xs text-slate-500">Log in with fingerprint, Face ID, or phone PIN — no password needed</p>
-          </div>
-          <span className="text-xs font-bold text-green-400 border border-green-800 px-2 py-0.5 rounded">Active</span>
-        </div>
-        <div className="flex gap-3">
-          <button className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>Re-register Fingerprint</button>
-          <button className="px-4 py-2.5 rounded-xl text-sm font-bold text-red-400 border border-red-900 hover:bg-red-900/20">Remove</button>
-        </div>
-      </div>
-
       {/* Admin Account */}
       <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
         <p className="font-bold text-white mb-1">Admin Account</p>
-        <p className="text-xs text-slate-500 mb-4">You are logged in as <span className="text-white font-semibold">Admin (Super Admin)</span></p>
-        <button onClick={onChangePassword} className="flex items-center gap-3 px-4 py-3 rounded-xl border w-full text-left transition-all hover:border-blue-500" style={{ background: BG, borderColor: BORDER }}>
+        <p className="text-xs text-slate-500 mb-4">Logged in as <span className="text-white font-semibold">Super Admin</span></p>
+        <button onClick={onChangePassword}
+          className="flex items-center gap-3 px-4 py-3 rounded-xl border w-full text-left transition-all hover:border-blue-500"
+          style={{ background: BG, borderColor: BORDER }}>
           <span className="text-2xl">🔑</span>
-          <div><p className="text-sm font-bold text-white">Change Password</p><p className="text-xs text-slate-500">Update your admin login password</p></div>
+          <div>
+            <p className="text-sm font-bold text-white">Change Password</p>
+            <p className="text-xs text-slate-500">Update your admin login password</p>
+          </div>
         </button>
       </div>
 
-      {netToast && <p className="text-sm font-semibold text-green-400">{netToast}</p>}
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl text-sm font-bold shadow-xl"
+          style={{ background: toastOk ? "#14532d" : "#7f1d1d", color: toastOk ? "#4ade80" : "#f87171", border: `1px solid ${toastOk ? "#166534" : "#991b1b"}` }}>
+          {toast}
+        </div>
+      )}
+
     </div>
   );
 }
