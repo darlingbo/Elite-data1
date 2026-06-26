@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles";
 import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
-import { sendCustomerSMS, orderConfirmedSMS } from "@/lib/sms";
+import { sendCustomerSMS, orderReceivedSMS, orderConfirmedSMS } from "@/lib/sms";
 
 const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
@@ -494,6 +494,9 @@ export async function POST(request: NextRequest) {
     fmtOrder({ ref: paystackRef, network: bundleMeta.network, size: bundleMeta.size, phone, amount: chargedAmount, profit, agentName })
   );
 
+  // SMS to customer immediately after purchase — fire and forget
+  sendCustomerSMS(phone, orderReceivedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
+
   // Mark referral credit as used (fire and forget)
   if (referralCreditId) {
     supabase
@@ -613,7 +616,7 @@ export async function POST(request: NextRequest) {
 
     await sendAdminAlert(`${fmtDelivered(paystackRef, phone, bundleMeta.network, actualSize)}\n${inventorLog}`);
 
-    // SMS confirmation to customer
+    // SMS to customer after delivery confirmed
     sendCustomerSMS(phone, orderConfirmedSMS(name, bundleMeta.network, actualSize, phone, paystackRef)).catch(() => {});
 
     // Notify agent on Telegram (fire and forget)
