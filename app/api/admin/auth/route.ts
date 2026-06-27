@@ -37,7 +37,7 @@ async function verifyAdminPassword(password: string): Promise<boolean> {
   // Check DB-stored hash first (set via Change Password feature)
   try {
     const { data } = await supabase
-      .from("admin_config")
+      .from("system_settings")
       .select("value")
       .eq("key", "admin_password_hash")
       .maybeSingle();

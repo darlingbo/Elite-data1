@@ -23,11 +23,11 @@ function getOrigin() {
   return process.env.SITE_URL ?? "https://elitedata1.com";
 }
 const ADMIN_USER_ID = new TextEncoder().encode("elite-admin");
-const CHALLENGE_TTL = 5 * 60 * 1000; // 5 minutes
+const CHALLENGE_TTL = 5 * 60 * 1000;
 
 type StoredCredential = {
   credentialId: string;
-  publicKey: string; // base64url
+  publicKey: string;
   counter: number;
   deviceType: CredentialDeviceType;
   backedUp: boolean;
@@ -35,41 +35,55 @@ type StoredCredential = {
   createdAt: string;
 };
 
+// Uses system_settings table (same schema as network settings, one table for everything)
+async function getKV(key: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("system_settings").select("value").eq("key", key).maybeSingle();
+  if (error) console.error(`[biometric] getKV(${key}) error:`, error.message);
+  return data?.value ?? null;
+}
+
+async function setKV(key: string, value: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase
+    .from("system_settings")
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+  if (error) {
+    console.error(`[biometric] setKV(${key}) error:`, error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
 async function getCredentials(): Promise<StoredCredential[]> {
-  const { data } = await supabase
-    .from("admin_config").select("value").eq("key", "biometric_credentials").maybeSingle();
-  if (!data?.value) return [];
-  try { return JSON.parse(data.value) as StoredCredential[]; } catch { return []; }
+  const val = await getKV("biometric_credentials");
+  if (!val) return [];
+  try { return JSON.parse(val) as StoredCredential[]; } catch { return []; }
 }
 
-async function saveCredentials(creds: StoredCredential[]) {
-  const val = JSON.stringify(creds);
-  const { data: ex } = await supabase.from("admin_config").select("id").eq("key", "biometric_credentials").maybeSingle();
-  if (ex) { await supabase.from("admin_config").update({ value: val }).eq("key", "biometric_credentials"); }
-  else { await supabase.from("admin_config").insert({ key: "biometric_credentials", value: val }); }
+async function saveCredentials(creds: StoredCredential[]): Promise<{ ok: boolean; error?: string }> {
+  return setKV("biometric_credentials", JSON.stringify(creds));
 }
 
-async function saveChallenge(challenge: string) {
-  const val = JSON.stringify({ challenge, expiresAt: Date.now() + CHALLENGE_TTL });
-  const { data: ex } = await supabase.from("admin_config").select("id").eq("key", "biometric_challenge").maybeSingle();
-  if (ex) { await supabase.from("admin_config").update({ value: val }).eq("key", "biometric_challenge"); }
-  else { await supabase.from("admin_config").insert({ key: "biometric_challenge", value: val }); }
+async function saveChallenge(challenge: string): Promise<void> {
+  await setKV("biometric_challenge", JSON.stringify({ challenge, expiresAt: Date.now() + CHALLENGE_TTL }));
 }
 
 async function getAndClearChallenge(): Promise<string | null> {
-  const { data } = await supabase.from("admin_config").select("value").eq("key", "biometric_challenge").maybeSingle();
-  if (!data?.value) return null;
+  const val = await getKV("biometric_challenge");
+  if (!val) return null;
   try {
-    const parsed = JSON.parse(data.value);
+    const parsed = JSON.parse(val);
     if (!parsed.challenge || parsed.expiresAt < Date.now()) return null;
-    await supabase.from("admin_config").update({ value: JSON.stringify({ challenge: "", expiresAt: 0 }) }).eq("key", "biometric_challenge");
+    await setKV("biometric_challenge", JSON.stringify({ challenge: "", expiresAt: 0 }));
     return parsed.challenge;
   } catch { return null; }
 }
 
 function requireAdminSession(request: NextRequest): boolean {
   const session = request.cookies.get("admin_session")?.value;
-  return session === process.env.ADMIN_SESSION_TOKEN;
+  const token = process.env.ADMIN_SESSION_TOKEN;
+  if (!token) return false;
+  return session === token;
 }
 
 export async function GET(request: NextRequest) {
@@ -77,7 +91,7 @@ export async function GET(request: NextRequest) {
 
   if (action === "registration-options") {
     if (!requireAdminSession(request)) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
+      return Response.json({ error: "Unauthorized — please log in first" }, { status: 401 });
     }
     const existingCreds = await getCredentials();
     const options = await generateRegistrationOptions({
@@ -134,7 +148,7 @@ export async function POST(request: NextRequest) {
     if (!requireAdminSession(request)) return Response.json({ error: "Unauthorized" }, { status: 401 });
     const body = await request.json();
     const expectedChallenge = await getAndClearChallenge();
-    if (!expectedChallenge) return Response.json({ error: "Challenge expired. Try again." }, { status: 400 });
+    if (!expectedChallenge) return Response.json({ error: "Challenge expired — tap the button again" }, { status: 400 });
 
     let verification;
     try {
@@ -146,11 +160,11 @@ export async function POST(request: NextRequest) {
         requireUserVerification: true,
       });
     } catch (e) {
-      return Response.json({ error: String(e) }, { status: 400 });
+      return Response.json({ error: `Verification error: ${String(e)}` }, { status: 400 });
     }
 
     if (!verification.verified || !verification.registrationInfo) {
-      return Response.json({ error: "Verification failed." }, { status: 400 });
+      return Response.json({ error: "Biometric verification failed." }, { status: 400 });
     }
 
     const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
@@ -166,20 +180,22 @@ export async function POST(request: NextRequest) {
       createdAt: new Date().toISOString(),
     };
 
-    // Replace if same credential ID already exists, else append
     const updated = [...creds.filter(c => c.credentialId !== newCred.credentialId), newCred];
-    await saveCredentials(updated);
+    const saved = await saveCredentials(updated);
+    if (!saved.ok) {
+      return Response.json({ error: `Could not save credential: ${saved.error}. Run SQL in Supabase: CREATE TABLE IF NOT EXISTS system_settings (key text PRIMARY KEY, value text NOT NULL, updated_at timestamptz DEFAULT now());` }, { status: 500 });
+    }
     return Response.json({ success: true });
   }
 
   if (action === "authentication-verify") {
     const body = await request.json();
     const expectedChallenge = await getAndClearChallenge();
-    if (!expectedChallenge) return Response.json({ error: "Challenge expired. Try again." }, { status: 400 });
+    if (!expectedChallenge) return Response.json({ error: "Challenge expired — try again" }, { status: 400 });
 
     const creds = await getCredentials();
     const matchedCred = creds.find(c => c.credentialId === body.id);
-    if (!matchedCred) return Response.json({ error: "Credential not recognised." }, { status: 400 });
+    if (!matchedCred) return Response.json({ error: "Credential not recognised — re-register in Settings" }, { status: 400 });
 
     let verification;
     try {
@@ -197,12 +213,11 @@ export async function POST(request: NextRequest) {
         },
       });
     } catch (e) {
-      return Response.json({ error: String(e) }, { status: 400 });
+      return Response.json({ error: `Auth error: ${String(e)}` }, { status: 400 });
     }
 
     if (!verification.verified) return Response.json({ error: "Biometric verification failed." }, { status: 401 });
 
-    // Update counter
     const updated = creds.map(c =>
       c.credentialId === matchedCred.credentialId
         ? { ...c, counter: verification.authenticationInfo.newCounter }
@@ -210,9 +225,8 @@ export async function POST(request: NextRequest) {
     );
     await saveCredentials(updated);
 
-    // Issue session cookie
     const token = process.env.ADMIN_SESSION_TOKEN;
-    if (!token) return Response.json({ error: "Server misconfigured." }, { status: 500 });
+    if (!token) return Response.json({ error: "ADMIN_SESSION_TOKEN not set in Vercel env vars" }, { status: 500 });
     const cookieStore = await cookies();
     cookieStore.set("admin_session", token, {
       httpOnly: true,
