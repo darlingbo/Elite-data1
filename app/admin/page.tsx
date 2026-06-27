@@ -836,6 +836,7 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
   const [retrying, setRetrying] = useState<string | null>(null);
   const [retryMsg, setRetryMsg] = useState<{ ref: string; ok: boolean; text: string } | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
+  const [deletingOne, setDeletingOne] = useState<string | null>(null);
   const [deletingFailed, setDeletingFailed] = useState(false);
   const [deleteFailedMsg, setDeleteFailedMsg] = useState("");
   // AI chat
@@ -860,6 +861,17 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
       else setRetryMsg({ ref: reference, ok: false, text: "Retry failed" });
     } catch { setRetryMsg({ ref: reference, ok: false, text: "Network error" }); }
     finally { setRetrying(null); setTimeout(() => setRetryMsg(null), 6000); }
+  }
+
+  async function handleDeleteOne(reference: string) {
+    setDeletingOne(reference);
+    try {
+      const res = await fetch("/api/admin/orders/patch", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference }) });
+      const d = await res.json();
+      if (d.success) onRefresh();
+      else setRetryMsg({ ref: reference, ok: false, text: d.error ?? "Delete failed" });
+    } catch { setRetryMsg({ ref: reference, ok: false, text: "Network error" }); }
+    finally { setDeletingOne(null); }
   }
 
   async function handleForceComplete(reference: string) {
@@ -1064,13 +1076,21 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
                             <span className={`text-xs font-bold ${retryMsg.ok ? "text-green-400" : "text-red-400"}`}>{retryMsg.text}</span>
                           ) : (
                             <>
-                              <button onClick={() => handleRetry(o.reference)} disabled={retrying === o.reference || completing === o.reference}
+                              <button onClick={() => handleRetry(o.reference)} disabled={retrying === o.reference || completing === o.reference || deletingOne === o.reference}
                                 className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ background: "rgba(251,146,60,0.15)", color: "#fb923c", border: "1px solid rgba(251,146,60,0.3)" }}>
                                 {retrying === o.reference ? "…" : "🔄"}
                               </button>
-                              <button onClick={() => handleForceComplete(o.reference)} disabled={completing === o.reference || retrying === o.reference}
+                              <button onClick={() => handleForceComplete(o.reference)} disabled={completing === o.reference || retrying === o.reference || deletingOne === o.reference}
                                 title="Force complete" className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.3)" }}>
                                 {completing === o.reference ? "…" : "✓"}
+                              </button>
+                              <button
+                                onClick={() => { if (window.confirm("Delete this failed order? This cannot be undone.")) handleDeleteOne(o.reference); }}
+                                disabled={deletingOne === o.reference || retrying === o.reference || completing === o.reference}
+                                title="Delete order"
+                                className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
+                                style={{ background: "rgba(248,113,113,0.12)", color: "#f87171", border: "1px solid rgba(248,113,113,0.3)" }}>
+                                {deletingOne === o.reference ? "…" : "🗑"}
                               </button>
                             </>
                           )
