@@ -67,11 +67,23 @@ export default function AnnouncementsAdmin() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [target, setTarget] = useState<"all" | "customers" | "agents" | "agents_commission" | "agents_custom_price">("all");
-  const [duration, setDuration] = useState("168"); // default 7 days
+  const [duration, setDuration] = useState("168");
   const [hourSchedule, setHourSchedule] = useState<HourSchedule>("always");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
+  // Store control
+  const [storeOpen, setStoreOpen] = useState<boolean | null>(null);
+  const [closedMsg, setClosedMsg] = useState("");
+  const [storeLoading, setStoreLoading] = useState(false);
+  const [storeSaved, setStoreSaved] = useState("");
+
+  useEffect(() => {
+    fetch("/api/admin/store-status").then(r => r.json()).then(d => {
+      setStoreOpen(d.open !== false);
+      setClosedMsg(d.closedMessage ?? "");
+    }).catch(() => setStoreOpen(true));
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -138,16 +150,77 @@ export default function AnnouncementsAdmin() {
     load();
   }
 
+  async function toggleStore() {
+    const newState = !storeOpen;
+    setStoreOpen(newState);
+    setStoreLoading(true);
+    await fetch("/api/admin/store-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ open: newState }) }).catch(() => {});
+    setStoreLoading(false);
+    setStoreSaved(newState ? "Store is now OPEN" : "Store is now CLOSED");
+    setTimeout(() => setStoreSaved(""), 3000);
+  }
+
+  async function saveClosedMessage() {
+    setStoreLoading(true);
+    await fetch("/api/admin/store-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ closedMessage: closedMsg }) }).catch(() => {});
+    setStoreLoading(false);
+    setStoreSaved("Message saved!");
+    setTimeout(() => setStoreSaved(""), 3000);
+  }
+
   const active = announcements.filter((a) => a.active);
   const inactive = announcements.filter((a) => !a.active);
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 style={{ color: "#f1f5f9", fontWeight: 900, fontSize: 22, margin: 0 }}>Announcements</h2>
+        <h2 style={{ color: "#f1f5f9", fontWeight: 900, fontSize: 22, margin: 0 }}>Notifications</h2>
         <p style={{ color: "#64748b", fontSize: 14, marginTop: 4 }}>
-          Send banner messages to customers, agents, or everyone. Set time limits and hour schedules — they disappear automatically.
+          Send banner messages to customers and agents, or close the whole store with a custom message.
         </p>
+      </div>
+
+      {/* ── Store Control ── */}
+      <div style={{ background: "#162032", border: "1px solid #1e3050", borderRadius: 16, padding: 20 }}>
+        <h3 style={{ color: "#f1f5f9", fontWeight: 800, fontSize: 18, margin: "0 0 4px" }}>Announcements &amp; Store Control</h3>
+        <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 18px" }}>Send banner messages, or close the whole store with a custom message.</p>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: storeOpen !== false ? "#4ade80" : "#f87171", display: "inline-block", boxShadow: storeOpen !== false ? "0 0 6px #4ade80" : "0 0 6px #f87171" }} />
+          <span style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 16 }}>Store is {storeOpen !== false ? "OPEN" : "CLOSED"}</span>
+        </div>
+        <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 14px" }}>
+          When closed, the buy page and all agent stores show your message instead of the shop.
+        </p>
+        <button
+          onClick={toggleStore}
+          disabled={storeLoading || storeOpen === null}
+          style={{
+            background: storeOpen !== false ? "#dc2626" : "#16a34a",
+            color: "#fff", border: "none", borderRadius: 12,
+            padding: "12px 28px", fontWeight: 800, fontSize: 14,
+            cursor: "pointer", opacity: storeLoading ? 0.6 : 1, marginBottom: 18,
+          }}>
+          {storeLoading ? "Saving…" : storeOpen !== false ? "Close Store" : "Open Store"}
+        </button>
+
+        <p style={{ color: "#94a3b8", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+          Message to show customers when closed
+        </p>
+        <textarea
+          rows={4}
+          value={closedMsg}
+          onChange={e => setClosedMsg(e.target.value)}
+          placeholder="e.g. We're temporarily closed for maintenance. We'll be back soon!"
+          style={{ width: "100%", background: "#0e1928", border: "1px solid #1e3050", borderRadius: 10, padding: "12px 14px", color: "#f1f5f9", fontSize: 14, resize: "vertical", outline: "none", boxSizing: "border-box", fontFamily: "inherit", marginBottom: 10 }}
+        />
+        <button
+          onClick={saveClosedMessage}
+          disabled={storeLoading}
+          style={{ background: "#1e3a5f", color: "#60a5fa", border: "1px solid #1e4080", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: storeLoading ? 0.6 : 1 }}>
+          {storeLoading ? "Saving…" : "Save Message"}
+        </button>
+        {storeSaved && <p style={{ color: "#4ade80", fontSize: 13, fontWeight: 700, marginTop: 8 }}>✓ {storeSaved}</p>}
       </div>
 
       {/* SQL setup */}

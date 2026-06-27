@@ -147,6 +147,53 @@ function getTopBundles(orders: Order[]) {
   return { bundles: result, total: completed.length };
 }
 
+function getTodayStats(orders: Order[]) {
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const today = orders.filter(o => new Date(o.created_at) >= todayStart);
+  const delivered = today.filter(o => o.status.toLowerCase() === "completed");
+  return {
+    orders: today.length,
+    delivered: delivered.length,
+    revenue: delivered.reduce((s, o) => s + Number(o.amount), 0),
+    profit: delivered.reduce((s, o) => s + Number(o.admin_commission ?? 0), 0),
+    viaAgents: today.filter(o => o.agent_id).length,
+  };
+}
+
+function getDataSold(orders: Order[]): string {
+  const completed = orders.filter(o => o.status.toLowerCase() === "completed");
+  let totalGB = 0;
+  for (const o of completed) {
+    const raw = (o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel)\s+/i, "").trim();
+    const m = raw.match(/^([\d.]+)\s*(gb|tb|mb)?/i);
+    if (m) {
+      const val = parseFloat(m[1]);
+      const unit = (m[2] ?? "GB").toUpperCase();
+      totalGB += unit === "TB" ? val * 1024 : unit === "MB" ? val / 1024 : val;
+    }
+  }
+  return totalGB >= 1024 ? `${(totalGB / 1024).toFixed(2)} TB` : `${totalGB.toFixed(0)} GB`;
+}
+
+function getRevenueBreakdown(orders: Order[]) {
+  const completed = orders.filter(o => o.status.toLowerCase() === "completed");
+  const total = completed.reduce((s, o) => s + Number(o.amount), 0) || 1;
+  const map: Record<string, number> = {};
+  for (const o of completed) {
+    const net = (o.network ?? "other").toLowerCase();
+    map[net] = (map[net] ?? 0) + Number(o.amount);
+  }
+  const DOT: Record<string, string> = { mtn: "#f59e0b", telecel: "#ef4444", airteltigo: "#3b82f6" };
+  return Object.entries(map)
+    .sort((a, b) => b[1] - a[1])
+    .map(([net, rev]) => ({
+      label: net === "mtn" ? "MTN" : net === "telecel" ? "Telecel" : net.includes("airtel") ? "AirtelTigo" : net.toUpperCase(),
+      revenue: rev,
+      pct: (rev / total) * 100,
+      dot: DOT[net] ?? "#6b7280",
+    }));
+}
+
 function getNetBadge(network: string) {
   const net = (network ?? "").toLowerCase();
   if (net === "mtn") return { bg: "#78350f", color: "#fbbf24", label: "MTN" };
@@ -456,15 +503,20 @@ function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; animated
   const cmp = useMemo(() => get7DayComparison(stats.orders.all), [stats.orders.all]);
   const weekly = useMemo(() => getWeeklyRevenue(stats.orders.all), [stats.orders.all]);
   const { bundles, total: bundleTotal } = useMemo(() => getTopBundles(stats.orders.all), [stats.orders.all]);
-  const [, setSyncing] = useState(false);
+  const todayStats = useMemo(() => getTodayStats(stats.orders.all), [stats.orders.all]);
+  const revBreakdown = useMemo(() => getRevenueBreakdown(stats.orders.all), [stats.orders.all]);
+  const dataSold = useMemo(() => getDataSold(stats.orders.all), [stats.orders.all]);
+  const totalCustomers = useMemo(() => new Set(stats.orders.all.map(o => o.phone).filter(Boolean)).size, [stats.orders.all]);
+  const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
-  const [apiOk, setApiOk] = useState<boolean | null>(null);
+  const [apiBalance, setApiBalance] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/admin/inventor-balance").then(r => r.json()).then(d => setApiOk(d.balance !== null)).catch(() => setApiOk(false));
+    fetch("/api/admin/inventor-balance").then(r => r.json()).then(d => setApiBalance(d.balance !== null ? `GH₵${Number(d.balance).toFixed(2)}` : null)).catch(() => setApiBalance(null));
   }, []);
 
   const totalRev = useCountUp(stats.revenue.total, 1200, animated);
+  const totalProfit = useCountUp(stats.profit.gross, 1200, animated);
   const leaderboard = useMemo(() =>
     [...stats.agents.all].filter(a => a.status === "approved").sort((a, b) => Number(b.total_revenue) - Number(a.total_revenue)).slice(0, 5),
     [stats.agents.all]
@@ -473,8 +525,7 @@ function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; animated
   async function handleSync() {
     setSyncing(true); setSyncMsg("");
     try {
-      const res = await fetch("/api/admin/sync-orders", { method: "POST" });
-      const d = await res.json();
+      const d = await fetch("/api/admin/sync-orders", { method: "POST" }).then(r => r.json());
       setSyncMsg(d.updated > 0 ? `✓ ${d.updated} orders updated` : "✓ All up to date");
     } catch { setSyncMsg("Sync failed"); }
     finally { setSyncing(false); setTimeout(() => setSyncMsg(""), 3000); }
@@ -483,30 +534,16 @@ function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; animated
   const weeklyTotal = weekly.reduce((s, d) => s + d.revenue, 0);
   const weeklyTxns  = weekly.reduce((s, d) => s + d.count, 0);
   const weeklyAvg   = weeklyTxns > 0 ? weeklyTotal / weeklyTxns : 0;
+  const avatarColors = ["#f59e0b", "#94a3b8", "#10b981", "#3b82f6", "#8b5cf6"];
 
-  function PctBadge({ val, invert }: { val: number; invert?: boolean }) {
-    const positive = invert ? val < 0 : val >= 0;
+  function PctBadge({ val }: { val: number }) {
     return (
-      <span className="flex items-center gap-0.5 text-xs font-bold" style={{ color: positive ? "#10b981" : "#f87171" }}>
-        {positive ? <Ic.up /> : <Ic.down />}
+      <span className="flex items-center gap-0.5 text-xs font-bold" style={{ color: val >= 0 ? "#10b981" : "#f87171" }}>
+        {val >= 0 ? <Ic.up /> : <Ic.down />}
         {Math.abs(val).toFixed(1)}%
       </span>
     );
   }
-
-  const statCards = [
-    { label: "Total Orders",     value: stats.orders.total.toLocaleString(),        pct: cmp.orders,    invert: false, icon: "🛒", grad: "linear-gradient(135deg,#1e3a5f,#1e40af)" },
-    { label: "Completed Orders", value: stats.orders.completed.toLocaleString(),    pct: cmp.completed, invert: false, icon: "✅", grad: "linear-gradient(135deg,#064e3b,#065f46)" },
-    { label: "Pending Orders",   value: stats.orders.pending.toLocaleString(),      pct: cmp.pending,   invert: true,  icon: "⏳", grad: "linear-gradient(135deg,#451a03,#78350f)" },
-    { label: "Failed Orders",    value: stats.orders.failed.toLocaleString(),       pct: cmp.failed,    invert: true,  icon: "❌", grad: "linear-gradient(135deg,#450a0a,#7f1d1d)" },
-    { label: "Total Revenue",    value: `GH₵${totalRev.toFixed(2)}`,               pct: cmp.revenue,   invert: false, icon: "💰", grad: "linear-gradient(135deg,#2e1065,#4c1d95)" },
-    { label: "Total Agents",     value: stats.agents.total.toLocaleString(),        pct: cmp.agents,    invert: false, icon: "👥", grad: "linear-gradient(135deg,#052e16,#14532d)" },
-  ];
-
-  const recentOrders = useMemo(() =>
-    [...stats.orders.all].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 6),
-    [stats.orders.all]
-  );
 
   const statusStyle: Record<string, { bg: string; color: string }> = {
     COMPLETED:  { bg: "rgba(16,185,129,0.15)",  color: "#34d399" },
@@ -515,213 +552,273 @@ function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; animated
     FAILED:     { bg: "rgba(248,113,113,0.15)", color: "#f87171" },
   };
 
-  const avatarColors = ["#3b82f6", "#8b5cf6", "#10b981", "#f59e0b", "#f87171"];
+  const recentOrders = useMemo(() =>
+    [...stats.orders.all].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5),
+    [stats.orders.all]
+  );
 
   return (
-    <div className="space-y-5">
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-        {statCards.map((c, i) => (
-          <div key={c.label} className="rounded-2xl p-4 border relative overflow-hidden" style={{ background: CARD, borderColor: BORDER, animation: `slideUp .3s ease both`, animationDelay: `${i * 50}ms` }}>
-            <div className="absolute top-0 right-0 w-20 h-20 rounded-full opacity-10 -translate-y-4 translate-x-4" style={{ background: c.grad }} />
-            <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg mb-3" style={{ background: c.grad }}>{c.icon}</div>
-            <p className="text-xl font-black text-white leading-none mb-1">{c.value}</p>
-            <p className="text-[11px] text-slate-500 mb-2">{c.label}</p>
-            <div className="flex items-center gap-1.5">
-              <PctBadge val={c.pct} invert={c.invert} />
-              <span className="text-[10px] text-slate-600">vs last 7d</span>
+    <div className="space-y-4">
+
+      {/* ── Today so far ── */}
+      <div className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
+        <p className="font-bold text-white mb-3 text-sm">📅 Today so far</p>
+        <div className="grid grid-cols-3 gap-2 mb-2">
+          {[
+            { label: "Orders",    val: todayStats.orders.toString(),              color: "text-white" },
+            { label: "Delivered", val: todayStats.delivered.toString(),           color: "text-green-400" },
+            { label: "Revenue",   val: `GH₵${todayStats.revenue.toFixed(2)}`,    color: "text-white", sm: true },
+          ].map(s => (
+            <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: BG }}>
+              <p className={`font-black ${s.color} ${s.sm ? "text-sm" : "text-lg"} leading-tight`}>{s.val}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">{s.label}</p>
             </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-xl p-3 text-center" style={{ background: BG }}>
+            <p className="font-black text-sm leading-tight" style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>GH₵{todayStats.profit.toFixed(2)}</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Profit</p>
+          </div>
+          <div className="rounded-xl p-3 text-center" style={{ background: BG }}>
+            <p className="text-lg font-black text-orange-400 leading-tight">{todayStats.viaAgents}</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Via Agents</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 4 stat cards 2x2 ── */}
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          { label: "Total Customers", value: totalCustomers.toLocaleString(),     pct: cmp.agents,   icon: "👥", grad: "linear-gradient(135deg,#1e3a5f,#1e40af)" },
+          { label: "Total Orders",    value: stats.orders.total.toLocaleString(), pct: cmp.orders,   icon: "🛒", grad: "linear-gradient(135deg,#2e1065,#4c1d95)" },
+          { label: "Total Revenue",   value: `GH₵${totalRev.toFixed(2)}`,        pct: cmp.revenue,  icon: "💰", grad: "linear-gradient(135deg,#064e3b,#065f46)" },
+          { label: "Data Sold",       value: dataSold,                            pct: cmp.completed,icon: "📡", grad: "linear-gradient(135deg,#1a2940,#0f2438)" },
+        ].map((c, i) => (
+          <div key={c.label} className="rounded-2xl p-4 border relative overflow-hidden" style={{ background: CARD, borderColor: BORDER, animation: `slideUp .3s ease both`, animationDelay: `${i * 60}ms` }}>
+            <div className="flex items-start justify-between mb-3">
+              <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl" style={{ background: c.grad }}>{c.icon}</div>
+              <PctBadge val={c.pct} />
+            </div>
+            <p className="text-xl font-black text-white leading-tight">{c.value}</p>
+            <p className="text-xs text-slate-500 mt-1">{c.label}</p>
+            <p className="text-[10px] text-blue-500 mt-1.5 font-semibold">vs last 7 days →</p>
           </div>
         ))}
       </div>
 
-      {/* Revenue chart + Recent orders */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-        {/* Revenue chart */}
-        <div className="lg:col-span-3 rounded-xl border" style={{ background: CARD, borderColor: BORDER }}>
-          <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: BORDER }}>
-            <div>
-              <p className="font-bold text-white">Revenue Overview</p>
-            </div>
-            <span className="text-xs text-slate-500 border px-3 py-1.5 rounded-lg" style={{ borderColor: BORDER }}>This Week ▾</span>
-          </div>
-          <div className="px-4 pt-3">
-            <LineChart data={weekly} />
-          </div>
-          <div className="grid grid-cols-3 gap-px border-t" style={{ borderColor: BORDER }}>
-            {[
-              { label: "Total Revenue", value: `GH₵${weeklyTotal.toFixed(2)}` },
-              { label: "Total Transactions", value: weeklyTxns.toLocaleString() },
-              { label: "Average Order Value", value: `GH₵${weeklyAvg.toFixed(2)}` },
-            ].map(s => (
-              <div key={s.label} className="px-4 py-3">
-                <p className="text-xs text-slate-500 mb-0.5">{s.label}</p>
-                <p className="font-black text-white text-sm">{s.value}</p>
-              </div>
-            ))}
-          </div>
+      {/* ── Total Profit (full width) ── */}
+      <div className="rounded-2xl p-4 border relative overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
+        <div className="flex items-start justify-between mb-3">
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl" style={{ background: "linear-gradient(135deg,#450a0a,#7f1d1d)" }}>📈</div>
+          <PctBadge val={cmp.revenue} />
         </div>
+        <p className="text-2xl font-black text-white">GH₵{totalProfit.toFixed(2)}</p>
+        <p className="text-xs text-slate-500 mt-1">Total Profit</p>
+        <p className="text-[10px] text-blue-500 mt-1.5 font-semibold">vs last 7 days →</p>
+      </div>
 
-        {/* Recent orders */}
-        <div className="lg:col-span-2 rounded-xl border flex flex-col" style={{ background: CARD, borderColor: BORDER }}>
-          <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: BORDER }}>
-            <p className="font-bold text-white">Recent Orders</p>
-            <button onClick={() => onNavigate("all-orders")} className="text-xs text-blue-400 hover:text-blue-300 font-semibold">View All Orders</button>
-          </div>
-          <div className="overflow-x-auto flex-1">
-            <table className="w-full text-xs">
-              <thead>
-                <tr style={{ background: BG, borderBottom: `1px solid ${BORDER}` }}>
-                  {["ORDER ID", "CUSTOMER", "PLAN", "AMOUNT", "STATUS"].map(h => (
-                    <th key={h} className="px-3 py-2.5 text-left font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {recentOrders.map((o, i) => {
-                  const nb = getNetBadge(o.network);
-                  const st = statusStyle[(o.status ?? "").toUpperCase()] ?? { bg: "transparent", color: "#94a3b8" };
-                  const cleanSize = (o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel)\s+/i, "").trim();
-                  const shortRef = `#${(o.reference ?? "").replace(/[^A-Z0-9]/gi, "").slice(-6).toUpperCase()}`;
-                  return (
-                    <tr key={i} className="border-b hover:bg-white/[0.02] transition-colors" style={{ borderColor: BORDER }}>
-                      <td className="px-3 py-2.5 font-mono font-bold" style={{ color: "#60a5fa" }}>{shortRef}</td>
-                      <td className="px-3 py-2.5 text-white font-medium truncate max-w-[80px]">{(o.customer_name || o.phone || "—").slice(0, 12)}</td>
-                      <td className="px-3 py-2.5">
-                        <span className="text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: nb.bg, color: nb.color }}>{nb.label}</span>
-                        <span className="text-slate-500 ml-1">{cleanSize}</span>
-                      </td>
-                      <td className="px-3 py-2.5 font-black text-white whitespace-nowrap">GH₵{Number(o.amount).toFixed(2)}</td>
-                      <td className="px-3 py-2.5">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: st.bg, color: st.color }}>
-                          {(o.status ?? "").charAt(0) + (o.status ?? "").slice(1).toLowerCase()}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <button onClick={() => onNavigate("all-orders")} className="px-5 py-3 text-xs text-blue-400 hover:text-blue-300 font-semibold border-t text-left" style={{ borderColor: BORDER }}>
-            View all orders →
-          </button>
+      {/* ── Revenue Overview chart ── */}
+      <div className="rounded-2xl border" style={{ background: CARD, borderColor: BORDER }}>
+        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: BORDER }}>
+          <p className="font-bold text-white">Revenue Overview</p>
+          <span className="text-xs text-slate-400 border px-2.5 py-1 rounded-lg" style={{ borderColor: BORDER }}>This Week ▾</span>
+        </div>
+        <div className="px-3 pt-2">
+          <LineChart data={weekly} />
+        </div>
+        <div className="grid grid-cols-3 gap-px border-t" style={{ borderColor: BORDER }}>
+          {[
+            { label: "Total Revenue",        value: `GH₵${weeklyTotal.toFixed(2)}` },
+            { label: "Total Transactions",   value: weeklyTxns.toLocaleString() },
+            { label: "Average Order Value",  value: `GH₵${weeklyAvg.toFixed(2)}` },
+          ].map(s => (
+            <div key={s.label} className="px-3 py-3">
+              <p className="text-[10px] text-slate-500 mb-0.5">{s.label}</p>
+              <p className="font-black text-white text-sm">{s.value}</p>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Bottom row: Bundles | Leaderboard | System | Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-        {/* Top Selling Bundles */}
-        <div className="rounded-xl border" style={{ background: CARD, borderColor: BORDER }}>
-          <div className="px-5 py-4 border-b" style={{ borderColor: BORDER }}>
-            <p className="font-bold text-white">Top Selling Bundles</p>
-          </div>
-          <div className="p-4 flex gap-4 items-center">
-            {bundles.length > 0 ? (
-              <DonutChart bundles={bundles} total={bundleTotal} />
-            ) : (
-              <div className="w-[140px] h-[140px] flex items-center justify-center rounded-full border-8" style={{ borderColor: BORDER }}>
-                <span className="text-slate-600 text-xs">No data</span>
-              </div>
-            )}
-            <div className="flex-1 space-y-2">
-              {bundles.map((b, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background: b.color }} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[11px] text-white font-semibold truncate">{b.label}</p>
-                    <p className="text-[10px] text-slate-500">{b.count} ({b.pct.toFixed(1)}%)</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="px-5 py-3 border-t" style={{ borderColor: BORDER }}>
-            <p className="text-xs text-slate-500">Total Sales <span className="text-white font-bold ml-1">{bundleTotal.toLocaleString()}</span></p>
-          </div>
+      {/* ── Recent Orders ── */}
+      <div className="rounded-2xl border overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
+        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: BORDER }}>
+          <p className="font-bold text-white">Recent Orders</p>
+          <button onClick={() => onNavigate("all-orders")} className="text-xs text-blue-400 font-semibold">View All Orders</button>
         </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr style={{ background: BG, borderBottom: `1px solid ${BORDER}` }}>
+                {["ORDER ID", "CUSTOMER", "PLAN", "AMOUNT", "STATUS"].map(h => (
+                  <th key={h} className="px-3 py-2.5 text-left font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {recentOrders.map((o, i) => {
+                const nb = getNetBadge(o.network);
+                const st = statusStyle[(o.status ?? "").toUpperCase()] ?? { bg: "transparent", color: "#94a3b8" };
+                const cleanSize = (o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel)\s+/i, "").trim();
+                const shortRef = `#${(o.reference ?? "").replace(/[^A-Z0-9]/gi, "").slice(-6).toUpperCase()}`;
+                return (
+                  <tr key={i} className="border-b" style={{ borderColor: BORDER }}>
+                    <td className="px-3 py-2.5 font-mono font-bold" style={{ color: "#60a5fa" }}>{shortRef}</td>
+                    <td className="px-3 py-2.5 text-white font-medium max-w-[70px] truncate">{(o.customer_name || o.phone || "—").slice(0, 10)}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded mr-1" style={{ background: nb.bg, color: nb.color }}>{nb.label}</span>
+                      <span className="text-slate-400">{cleanSize}</span>
+                    </td>
+                    <td className="px-3 py-2.5 font-black text-white whitespace-nowrap">GH₵{Number(o.amount).toFixed(2)}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: st.bg, color: st.color }}>
+                        {(o.status ?? "").toLowerCase()}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-        {/* Agent Leaderboard */}
-        <div className="rounded-xl border" style={{ background: CARD, borderColor: BORDER }}>
-          <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: BORDER }}>
-            <p className="font-bold text-white">Agent Leaderboard</p>
-            <button onClick={() => onNavigate("leaderboard")} className="text-xs text-blue-400 hover:text-blue-300 font-semibold">View All</button>
-          </div>
-          <div className="divide-y" style={{ borderColor: BORDER }}>
-            {leaderboard.length === 0 ? (
-              <p className="text-center text-slate-600 py-8 text-sm">No agents yet</p>
-            ) : leaderboard.map((a, i) => (
-              <div key={a.id} className="flex items-center gap-3 px-4 py-2.5">
-                <span className="text-xs font-black text-slate-600 w-4 text-center">{i + 1}</span>
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-white shrink-0" style={{ background: avatarColors[i % avatarColors.length] }}>
-                  {(a.name ?? "?").charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-white truncate">{a.name}</p>
-                  <p className="text-[10px] text-slate-500">@{(a.referral_code ?? "").toLowerCase()}</p>
+      {/* ── Top Data Bundles (table) ── */}
+      <div className="rounded-2xl border overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
+        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: BORDER }}>
+          <p className="font-bold text-white">Top Data Bundles</p>
+          <button onClick={() => onNavigate("data-bundles")} className="text-xs text-blue-400 font-semibold">View All</button>
+        </div>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b" style={{ background: BG, borderColor: BORDER }}>
+              {["BUNDLE", "NETWORK", "SOLD", "%"].map(h => (
+                <th key={h} className="px-4 py-2.5 text-left font-bold text-slate-500 text-[10px] uppercase tracking-wide">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {bundles.map((b, i) => {
+              const [size, net] = b.label.split(" – ");
+              const nb = getNetBadge(net ?? "");
+              return (
+                <tr key={i} className="border-b" style={{ borderColor: BORDER }}>
+                  <td className="px-4 py-3 font-bold text-white">{size}</td>
+                  <td className="px-4 py-3">
+                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: nb.bg, color: nb.color }}>{net === "OTHERS" ? "Others" : nb.label}</span>
+                  </td>
+                  <td className="px-4 py-3 font-bold text-white">{b.count}</td>
+                  <td className="px-4 py-3 text-slate-400">{b.pct.toFixed(1)}%</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <div className="px-4 py-3 border-t" style={{ borderColor: BORDER }}>
+          <p className="text-xs text-slate-500">Total completed: <span className="font-bold text-white">{bundleTotal}</span></p>
+        </div>
+      </div>
+
+      {/* ── Revenue Breakdown ── */}
+      <div className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
+        <div className="flex items-center justify-between mb-4">
+          <p className="font-bold text-white">Revenue Breakdown</p>
+          <button onClick={() => onNavigate("transactions")} className="text-xs text-blue-400 font-semibold">View Report</button>
+        </div>
+        <div className="space-y-4">
+          {revBreakdown.slice(0, 5).map((r, i) => (
+            <div key={i}>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full shrink-0" style={{ background: r.dot }} />
+                  <span className="text-sm font-semibold text-white">{r.label}</span>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs font-black text-white">GH₵{Number(a.total_revenue).toFixed(0)}</p>
-                  <p className="text-[10px] text-green-400">{a.total_sales} sales</p>
+                  <span className="text-sm font-black text-white">GH₵{r.revenue.toFixed(2)}</span>
+                  <span className="text-xs text-slate-500 ml-2">{r.pct.toFixed(1)}%</span>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* System Overview */}
-        <div className="rounded-xl border" style={{ background: CARD, borderColor: BORDER }}>
-          <div className="px-5 py-4 border-b" style={{ borderColor: BORDER }}>
-            <p className="font-bold text-white">System Overview</p>
-          </div>
-          <div className="divide-y" style={{ borderColor: BORDER }}>
-            {[
-              { label: "API Status",    value: apiOk === null ? "Checking…" : apiOk ? "All Systems Operational" : "Check Inventor Balance", ok: apiOk !== false, icon: "📡" },
-              { label: "Telegram Bot",  value: "Connected",  ok: true,  icon: "✈️" },
-              { label: "Database",      value: "Connected",  ok: true,  icon: "🗄️" },
-              { label: "Cron Jobs",     value: "Running",    ok: true,  icon: "🕐" },
-              { label: "Last Backup",   value: "2 hours ago", ok: null, icon: "☁️" },
-            ].map(s => (
-              <div key={s.label} className="flex items-center justify-between px-5 py-3">
-                <div className="flex items-center gap-2.5">
-                  <span className="text-base">{s.icon}</span>
-                  <span className="text-sm text-slate-400">{s.label}</span>
-                </div>
-                {s.ok === null ? (
-                  <span className="text-xs text-slate-500">{s.value}</span>
-                ) : (
-                  <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: s.ok ? "rgba(16,185,129,0.15)" : "rgba(248,113,113,0.15)", color: s.ok ? "#34d399" : "#f87171" }}>{s.value}</span>
-                )}
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "#1e3050" }}>
+                <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(r.pct, 100)}%`, background: r.dot }} />
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="rounded-xl border" style={{ background: CARD, borderColor: BORDER }}>
-          <div className="px-5 py-4 border-b" style={{ borderColor: BORDER }}>
-            <p className="font-bold text-white">Quick Actions</p>
-          </div>
-          <div className="p-4 grid grid-cols-2 gap-2.5">
-            {[
-              { label: "Add New Bundle", icon: <Ic.bundle />, action: () => onNavigate("data-bundles"), color: "#3b82f6" },
-              { label: "Sync All Orders", icon: <Ic.sync />, action: handleSync, color: "#8b5cf6" },
-              { label: "Add Agent", icon: <Ic.agents />, action: () => onNavigate("agent-applications"), color: "#10b981" },
-              { label: "Announcement", icon: <Ic.mega />, action: () => onNavigate("announcements"), color: "#f59e0b" },
-              { label: "Agent Wallets", icon: <Ic.wallet />, action: () => onNavigate("agent-wallets"), color: "#f87171" },
-              { label: "System Settings", icon: <Ic.gear />, action: () => onNavigate("settings"), color: "#6b7280" },
-            ].map(qa => (
-              <button key={qa.label} onClick={qa.action}
-                className="flex flex-col items-center gap-2 py-3 px-2 rounded-xl text-center transition-all hover:opacity-90 border"
-                style={{ background: `${qa.color}18`, borderColor: `${qa.color}30`, color: qa.color }}>
-                <span>{qa.icon}</span>
-                <span className="text-[10px] font-semibold leading-tight">{qa.label}</span>
-              </button>
-            ))}
-          </div>
-          {syncMsg && <p className="px-4 pb-3 text-xs font-semibold text-green-400 text-center">{syncMsg}</p>}
+            </div>
+          ))}
+          {revBreakdown.length === 0 && <p className="text-sm text-slate-600 text-center py-4">No revenue data yet</p>}
         </div>
       </div>
+
+      {/* ── Agent Leaderboard ── */}
+      <div className="rounded-2xl border overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
+        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: BORDER }}>
+          <p className="font-bold text-white">Agent Leaderboard</p>
+          <button onClick={() => onNavigate("leaderboard")} className="text-xs text-blue-400 font-semibold">View All</button>
+        </div>
+        {leaderboard.length === 0
+          ? <p className="text-center text-slate-600 py-8 text-sm">No agents yet</p>
+          : leaderboard.map((a, i) => (
+            <div key={a.id} className="flex items-center gap-3 px-4 py-3 border-b last:border-0" style={{ borderColor: BORDER }}>
+              <span className="text-sm font-black w-5 text-center" style={{ color: i === 0 ? "#f59e0b" : i === 2 ? "#cd7f32" : "#64748b" }}>{i + 1}</span>
+              <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-black text-white shrink-0" style={{ background: avatarColors[i % avatarColors.length] }}>
+                {(a.name ?? "?").charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white truncate">{a.name}</p>
+                <p className="text-xs text-slate-500">{a.total_sales} sales</p>
+              </div>
+              <p className="text-sm font-black text-white">GH₵{Number(a.total_revenue).toFixed(0)}</p>
+            </div>
+          ))}
+      </div>
+
+      {/* ── Quick Actions 2×3 ── */}
+      <div className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
+        <p className="font-bold text-white mb-3">Quick Actions</p>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { label: "Add Bundle",    emoji: "📦", action: () => onNavigate("data-bundles"),    bg: "#0d1f3c", color: "#60a5fa" },
+            { label: "Sync Orders",   emoji: "🔄", action: handleSync,                          bg: "#1a0d3c", color: "#c084fc" },
+            { label: "Add Agent",     emoji: "👤", action: () => onNavigate("agent-applications"), bg: "#0d2e1a", color: "#4ade80" },
+            { label: "Notification",  emoji: "📢", action: () => onNavigate("notifications"),   bg: "#2a1a00", color: "#fb923c" },
+            { label: "View Reports",  emoji: "📊", action: () => onNavigate("analytics"),       bg: "#2a0d0d", color: "#f87171" },
+            { label: "API Settings",  emoji: "🔌", action: () => onNavigate("apikeys"),         bg: "#111827", color: "#6b7280" },
+          ].map(qa => (
+            <button key={qa.label} onClick={qa.action}
+              className="flex flex-col items-center gap-2.5 py-5 px-3 rounded-2xl text-center transition-all hover:opacity-90"
+              style={{ background: qa.bg, border: `1px solid ${qa.color}22` }}>
+              <span className="text-2xl">{qa.emoji}</span>
+              <span className="text-xs font-bold" style={{ color: qa.color }}>{qa.label}</span>
+            </button>
+          ))}
+        </div>
+        {syncMsg && <p className="mt-3 text-xs font-semibold text-green-400 text-center">{syncMsg}</p>}
+        {syncing && <p className="mt-3 text-xs text-slate-500 text-center">Syncing…</p>}
+      </div>
+
+      {/* ── System Status 2×2 ── */}
+      <div className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
+        <div className="flex items-center justify-between mb-3">
+          <p className="font-bold text-white">System Status</p>
+          <button onClick={() => onNavigate("network-providers")} className="text-xs text-blue-400 font-semibold">Manage Providers →</button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { icon: "📡", label: "Inventor API",  value: apiBalance ?? "Checking…", ok: apiBalance !== null },
+            { icon: "✈️", label: "Telegram Bot",  value: "Live ✓",                  ok: true },
+            { icon: "🗄️", label: "Database",      value: "Live ✓",                  ok: true },
+            { icon: "⏰", label: "Cron Jobs",      value: "Live ✓",                  ok: true },
+          ].map(s => (
+            <div key={s.label} className="rounded-xl p-3" style={{ background: BG, border: `1px solid ${BORDER}` }}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-base">{s.icon}</span>
+                <span className="text-xs text-slate-400">{s.label}</span>
+              </div>
+              <p className="text-sm font-black" style={{ color: s.ok ? "#4ade80" : "#94a3b8" }}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
     </div>
   );
 }
@@ -1876,7 +1973,7 @@ export default function AdminDashboard() {
         <div className="px-4 sm:px-6 py-4 border-b flex items-center justify-between gap-4" style={{ borderColor: BORDER }}>
           <div>
             <h1 className="text-lg font-black text-white leading-none">{pageTitle[tab] ?? "Dashboard"}</h1>
-            {tab === "overview" && <p className="text-sm mt-1" style={{ color: "#64748b" }}>Welcome back, Admin — here&apos;s what&apos;s happening today.</p>}
+            {tab === "overview" && <p className="text-sm mt-1" style={{ color: "#64748b" }}>Welcome back, Admin 👋</p>}
           </div>
           {tab === "overview" && (
             <div className="hidden sm:flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-xl" style={{ background: "rgba(16,185,129,0.1)", color: "#34d399", border: "1px solid rgba(16,185,129,0.2)" }}>
@@ -1925,24 +2022,25 @@ export default function AdminDashboard() {
         </main>
       </div>
 
-      {/* Mobile bottom nav */}
+      {/* Mobile bottom nav — 5 tabs */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t flex" style={{ background: "#080f1e", borderColor: "#1e3a5f" }}>
         {([
-          { id: "overview" as Tab,      icon: "🏠", label: "Dashboard" },
-          { id: "all-orders" as Tab,    icon: "📦", label: "Orders",   badge: stats?.orders.pending },
-          { id: "transactions" as Tab,  icon: "💰", label: "Financial" },
-          { id: "__more__" as Tab,      icon: "☰",  label: "More" },
-        ] as { id: Tab; icon: string; label: string; badge?: number }[]).map(item => {
+          { id: "overview" as Tab,     label: "Home",    svg: <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> },
+          { id: "all-orders" as Tab,   label: "Orders",  svg: <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>, badge: stats?.orders.pending },
+          { id: "all-agents" as Tab,   label: "Agents",  svg: <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>, badge: stats?.agents.pending },
+          { id: "transactions" as Tab, label: "Finance", svg: <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg> },
+          { id: "__more__" as Tab,     label: "More",    svg: <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg> },
+        ] as { id: Tab; label: string; svg: React.ReactNode; badge?: number }[]).map(item => {
           const isMore = item.id === ("__more__" as Tab);
           const active = !isMore && tab === item.id;
           return (
             <button key={item.id}
               onClick={() => isMore ? setMobileSidebarOpen(true) : setTab(item.id)}
               className="flex-1 flex flex-col items-center gap-0.5 py-2.5 relative transition-all"
-              style={{ color: active ? "#60a5fa" : isMore ? "#94a3b8" : "#475569" }}>
-              <span className={`${isMore ? "text-xl" : "text-lg"} leading-none`}>{item.icon}</span>
-              <span className="text-[9px] font-bold">{item.label}</span>
-              {(item.badge ?? 0) > 0 && <span className="absolute top-1.5 right-1/4 text-[8px] font-black px-1 rounded-full bg-orange-400 text-gray-900 leading-4 min-w-[14px] text-center">{item.badge}</span>}
+              style={{ color: active ? "#60a5fa" : "#475569" }}>
+              {item.svg}
+              <span className="text-[9px] font-bold mt-0.5">{item.label}</span>
+              {(item.badge ?? 0) > 0 && <span className="absolute top-1 right-1/4 text-[8px] font-black px-1 rounded-full bg-orange-400 text-gray-900 leading-4 min-w-[14px] text-center">{item.badge}</span>}
               {active && <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-blue-400" />}
             </button>
           );
