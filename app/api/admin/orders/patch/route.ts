@@ -103,5 +103,5 @@ export async function DELETE(req: NextRequest) {
   const { error } = await supabase.from("orders").delete().eq("status", status);
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
-  return Response.json({ success: true,// Deleted-: count });
+  return Response.json({ success: true, deleted: count });
 }
