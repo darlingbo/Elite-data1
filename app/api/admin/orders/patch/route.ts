@@ -74,12 +74,32 @@ export async function POST(req: NextRequest) {
   return Response.json({ success: true, patched: Object.keys(patch) });
 }
 
-// DELETE — remove all orders with a given status (e.g. failed)
+// DELETE — remove a single order by reference, or all orders with a given status (e.g. failed)
 export async function DELETE(req: NextRequest) {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { status } = await req.json() as { status: string };
-  if (!status) return Response.json({ error: "status required" }, { status: 400 });
+  const body = await req.json() as { status?: string; reference?: string };
+
+  // Single-order deletion by reference
+  if (body.reference) {
+    const { reference } = body;
+    const { data: order } = await supabase.from("orders").select("status, reference").eq("reference", reference).maybeSingle();
+    if (!order) return Response.json({ error: "Order not found" }, { status: 404 });
+
+    const allowedStatuses = ["failed", "pending", "processing"];
+    if (!allowedStatuses.includes((order.status ?? "").toLowerCase())) {
+      return Response.json({ error: `Can only delete orders with status: ${allowedStatuses.join(", ")}` }, { status: 400 });
+    }
+
+    const { error } = await supabase.from("orders").delete().eq("reference", reference);
+    if (error) return Response.json({ error: error.message }, { status: 500 });
+
+    return Response.json({ success: true, deleted: 1 });
+  }
+
+  // Bulk deletion by status
+  const { status } = body;
+  if (!status) return Response.json({ error: "status or reference required" }, { status: 400 });
 
   const allowedStatuses = ["failed", "pending", "processing"];
   if (!allowedStatuses.includes(status)) {

@@ -838,6 +838,8 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
   const [completing, setCompleting] = useState<string | null>(null);
   const [deletingFailed, setDeletingFailed] = useState(false);
   const [deleteFailedMsg, setDeleteFailedMsg] = useState("");
+  const [deletingOrder, setDeletingOrder] = useState<string | null>(null);
+  const [deleteOrderMsg, setDeleteOrderMsg] = useState<{ ref: string; ok: boolean; text: string } | null>(null);
   // AI chat
   const [aiOpen, setAiOpen] = useState(false);
   const [aiInput, setAiInput] = useState("");
@@ -894,6 +896,18 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
       else setDeleteFailedMsg(d.error ?? "Delete failed");
     } catch { setDeleteFailedMsg("Network error"); }
     finally { setDeletingFailed(false); setTimeout(() => setDeleteFailedMsg(""), 5000); }
+  }
+
+  async function handleDeleteOrder(reference: string) {
+    if (!window.confirm(`Delete order ${reference}? This cannot be undone.`)) return;
+    setDeletingOrder(reference); setDeleteOrderMsg(null);
+    try {
+      const res = await fetch("/api/admin/orders/patch", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference }) });
+      const d = await res.json();
+      if (d.success) { setDeleteOrderMsg({ ref: reference, ok: true, text: "✓ Deleted" }); onRefresh(); }
+      else setDeleteOrderMsg({ ref: reference, ok: false, text: d.error ?? "Delete failed" });
+    } catch { setDeleteOrderMsg({ ref: reference, ok: false, text: "Network error" }); }
+    finally { setDeletingOrder(null); setTimeout(() => setDeleteOrderMsg(null), 4000); }
   }
 
   async function handleRecalculate() {
@@ -1073,6 +1087,16 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
                                 {completing === o.reference ? "…" : "✓"}
                               </button>
                             </>
+                          )
+                        )}
+                        {(o.status ?? "").toLowerCase() === "failed" && o.reference && (
+                          deleteOrderMsg?.ref === o.reference ? (
+                            <span className={`text-xs font-bold ${deleteOrderMsg.ok ? "text-green-400" : "text-red-400"}`}>{deleteOrderMsg.text}</span>
+                          ) : (
+                            <button onClick={() => handleDeleteOrder(o.reference)} disabled={deletingOrder === o.reference}
+                              title="Delete order" className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ background: "rgba(239,68,68,0.12)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }}>
+                              {deletingOrder === o.reference ? "…" : "🗑️"}
+                            </button>
                           )
                         )}
                         <button onClick={() => openLogs(o.reference)} title="View logs"
