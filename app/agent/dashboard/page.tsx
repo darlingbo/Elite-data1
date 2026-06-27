@@ -1984,35 +1984,37 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
           {page === "support"      && <SupportPage />}
         </main>
 
-        {/* FuzeServe-style bottom navigation — mobile only */}
-        <nav className="bottom-nav" style={{ display: "none", position: "fixed", bottom: 0, left: 0, right: 0, height: 66, background: SB.bg, borderTop: `1px solid ${SB.border}`, alignItems: "center", justifyContent: "space-around", zIndex: 30, boxShadow: "0 -4px 20px rgba(0,0,0,0.4)" }}>
-          {/* Home */}
-          <button onClick={() => setPage("dashboard")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "dashboard" ? M.amber : SB.muted }}>
-            <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-            <span style={{ fontSize: 10, fontWeight: page === "dashboard" ? 700 : 500 }}>Home</span>
-          </button>
-          {/* Buy Data */}
-          <button onClick={() => setPage("buy_data")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "buy_data" ? M.amber : SB.muted }}>
-            <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>
-            <span style={{ fontSize: 10, fontWeight: page === "buy_data" ? 700 : 500 }}>Buy Data</span>
-          </button>
-          {/* Sale & Earn — elevated central circle (yellow like FuzeServe) */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <button onClick={() => setPage("affiliate")} style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg,#f59e0b,#d97706)", border: `4px solid ${M.bg}`, boxShadow: "0 4px 16px rgba(245,158,11,0.5)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: -24, cursor: "pointer" }}>
-              <svg width={24} height={24} fill="none" stroke="white" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-            </button>
-            <span style={{ fontSize: 10, color: page === "affiliate" ? M.amber : SB.muted, fontWeight: page === "affiliate" ? 700 : 500, marginTop: 3 }}>Sale & Earn</span>
+        {/* Bottom navigation — expanding pill style */}
+        <nav className="bottom-nav" style={{ display: "none", position: "fixed", bottom: 14, left: 0, right: 0, alignItems: "center", justifyContent: "center", zIndex: 30 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 10px", borderRadius: 999, background: "rgba(6,12,28,0.97)", boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.07)", backdropFilter: "blur(24px)" }}>
+            {([
+              { id: "dashboard", label: "Home",      onClick: () => setPage("dashboard"),  active: page === "dashboard",  svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> },
+              { id: "buy_data",  label: "Buy Data",  onClick: () => setPage("buy_data"),   active: page === "buy_data",   svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg> },
+              { id: "affiliate", label: "Sale&Earn", onClick: () => setPage("affiliate"),  active: page === "affiliate",  svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg> },
+              { id: "referrals", label: "Rewards",   onClick: () => setPage("referrals"),  active: page === "referrals",  svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></svg> },
+              { id: "more",      label: "More",      onClick: () => setSidebarOpen(true),  active: sidebarOpen,           svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg> },
+            ] as { id: string; label: string; onClick: () => void; active: boolean; svg: React.ReactNode }[]).map(item => (
+              <button key={item.id}
+                onClick={item.onClick}
+                style={{
+                  position: "relative", display: "flex", alignItems: "center", gap: 7,
+                  height: 44, padding: item.active ? "0 14px 0 6px" : "0 6px",
+                  borderRadius: 999,
+                  background: item.active ? "rgba(245,158,11,0.18)" : "transparent",
+                  boxShadow: item.active ? "0 0 18px rgba(245,158,11,0.2)" : "none",
+                  border: "none", cursor: "pointer", overflow: "hidden", flexShrink: 0,
+                  color: item.active ? "#f59e0b" : "#4b5563",
+                  transition: "background .35s ease, box-shadow .35s ease, padding .4s cubic-bezier(.22,1,.36,1)",
+                }}>
+                <span style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: item.active ? "rgba(245,158,11,0.18)" : "transparent", transition: "background .3s ease" }}>
+                  {item.svg}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", maxWidth: item.active ? 72 : 0, opacity: item.active ? 1 : 0, overflow: "hidden", transform: item.active ? "translateX(0)" : "translateX(-6px)", transition: "max-width .45s cubic-bezier(.22,1,.36,1), opacity .25s ease, transform .35s ease" }}>
+                  {item.label}
+                </span>
+              </button>
+            ))}
           </div>
-          {/* Rewards */}
-          <button onClick={() => setPage("referrals")} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: page === "referrals" ? M.amber : SB.muted }}>
-            <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></svg>
-            <span style={{ fontSize: 10, fontWeight: page === "referrals" ? 700 : 500 }}>Rewards</span>
-          </button>
-          {/* More */}
-          <button onClick={() => setSidebarOpen(true)} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0", color: sidebarOpen ? M.amber : SB.muted }}>
-            <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
-            <span style={{ fontSize: 10, fontWeight: sidebarOpen ? 700 : 500 }}>More</span>
-          </button>
         </nav>
       </div>
 
@@ -2022,8 +2024,8 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
       <style>{`
         /* FuzeServe layout — header + bottom nav always on */
         .mobile-header { display: flex !important; }
-        .bottom-nav { display: flex !important; }
-        .main-content { padding: 16px 16px 88px !important; }
+        .bottom-nav { display: flex !important; justify-content: center !important; }
+        .main-content { padding: 16px 16px 82px !important; }
         /* Dark theme: override hardcoded light inputs */
         input, textarea, select {
           background: #1e293b !important;

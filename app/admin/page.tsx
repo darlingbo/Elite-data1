@@ -2004,7 +2004,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Content */}
-        <main className="flex-1 px-3 sm:px-6 py-5 pb-20 md:pb-5">
+        <main className="flex-1 px-3 sm:px-6 py-5 pb-24 md:pb-5">
           {loadingStats && !stats ? (
             <div className="flex flex-col items-center justify-center py-40 gap-4">
               <div className="w-10 h-10 border-4 border-[#3b82f6] border-t-transparent rounded-full animate-spin" />
@@ -2042,29 +2042,42 @@ export default function AdminDashboard() {
         </main>
       </div>
 
-      {/* Mobile bottom nav — 5 tabs */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t flex" style={{ background: "#080f1e", borderColor: "#1e3a5f" }}>
-        {([
-          { id: "overview" as Tab,     label: "Home",    svg: <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> },
-          { id: "all-orders" as Tab,   label: "Orders",  svg: <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>, badge: stats?.orders.pending },
-          { id: "all-agents" as Tab,   label: "Agents",  svg: <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>, badge: stats?.agents.pending },
-          { id: "transactions" as Tab, label: "Finance", svg: <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg> },
-          { id: "__more__" as Tab,     label: "More",    svg: <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg> },
-        ] as { id: Tab; label: string; svg: React.ReactNode; badge?: number }[]).map(item => {
-          const isMore = item.id === ("__more__" as Tab);
-          const active = !isMore && tab === item.id;
-          return (
-            <button key={item.id}
-              onClick={() => isMore ? setMobileSidebarOpen(true) : setTab(item.id)}
-              className="flex-1 flex flex-col items-center gap-0.5 py-2.5 relative transition-all"
-              style={{ color: active ? "#60a5fa" : "#475569" }}>
-              {item.svg}
-              <span className="text-[9px] font-bold mt-0.5">{item.label}</span>
-              {(item.badge ?? 0) > 0 && <span className="absolute top-1 right-1/4 text-[8px] font-black px-1 rounded-full bg-orange-400 text-gray-900 leading-4 min-w-[14px] text-center">{item.badge}</span>}
-              {active && <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-blue-400" />}
-            </button>
-          );
-        })}
+      {/* Mobile bottom nav — expanding pill style */}
+      <nav className="md:hidden" style={{ position: "fixed", bottom: 14, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 50, pointerEvents: "none" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 10px", borderRadius: 999, background: "rgba(6,12,28,0.97)", boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.07)", backdropFilter: "blur(24px)", pointerEvents: "all" }}>
+          {([
+            { id: "overview" as Tab,     label: "Home",    badge: 0,                          svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> },
+            { id: "all-orders" as Tab,   label: "Orders",  badge: stats?.orders.pending ?? 0, svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg> },
+            { id: "all-agents" as Tab,   label: "Agents",  badge: stats?.agents.pending ?? 0, svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg> },
+            { id: "transactions" as Tab, label: "Finance", badge: 0,                          svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg> },
+            { id: "__more__" as Tab,     label: "More",    badge: 0,                          svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg> },
+          ] as { id: Tab; label: string; svg: React.ReactNode; badge: number }[]).map(item => {
+            const isMore = item.id === ("__more__" as Tab);
+            const active = !isMore && tab === item.id;
+            return (
+              <button key={item.id}
+                onClick={() => isMore ? setMobileSidebarOpen(true) : setTab(item.id)}
+                style={{
+                  position: "relative", display: "flex", alignItems: "center", gap: 7,
+                  height: 44, padding: active ? "0 14px 0 6px" : "0 6px",
+                  borderRadius: 999,
+                  background: active ? "rgba(59,130,246,0.18)" : "transparent",
+                  boxShadow: active ? "0 0 18px rgba(59,130,246,0.25)" : "none",
+                  border: "none", cursor: "pointer", overflow: "hidden", flexShrink: 0,
+                  color: active ? "#fff" : "#4b5563",
+                  transition: "background .35s ease, box-shadow .35s ease, padding .4s cubic-bezier(.22,1,.36,1)",
+                }}>
+                <span style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: active ? "rgba(255,255,255,0.18)" : "transparent", transition: "background .3s ease" }}>
+                  {item.svg}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", maxWidth: active ? 72 : 0, opacity: active ? 1 : 0, overflow: "hidden", transform: active ? "translateX(0)" : "translateX(-6px)", transition: "max-width .45s cubic-bezier(.22,1,.36,1), opacity .25s ease, transform .35s ease" }}>
+                  {item.label}
+                </span>
+                {item.badge > 0 && <span style={{ position: "absolute", top: 4, right: active ? 8 : 2, minWidth: 16, height: 16, borderRadius: 999, background: "#f97316", color: "#fff", fontSize: 9, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>{item.badge}</span>}
+              </button>
+            );
+          })}
+        </div>
       </nav>
 
       <style>{`
