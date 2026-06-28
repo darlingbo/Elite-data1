@@ -75,12 +75,12 @@ export default function Home() {
           <p className="text-blue-100 text-lg md:text-xl mb-8 max-w-xl mx-auto">
             MTN, Telecel &amp; AirtelTigo bundles at the lowest prices. Delivered in minutes. No account needed.
           </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
-            <Link href="/buy" className="bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-8 py-4 rounded-xl text-lg transition-all shadow-lg hover:shadow-yellow-400/30 hover:-translate-y-0.5">
+          <div className="flex flex-col items-center gap-3 mb-8">
+            <Link href="/buy" className="bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-8 py-4 rounded-xl text-lg transition-all shadow-lg hover:shadow-yellow-400/30 hover:-translate-y-0.5 w-full sm:w-auto text-center">
               Buy Data Now ⚡
             </Link>
-            <Link href="/prices" className="bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-4 rounded-xl transition-colors border border-white/30 backdrop-blur">
-              View All Prices
+            <Link href="/vouchers" className="bg-white/10 hover:bg-white/20 text-white font-black px-6 py-4 rounded-xl transition-colors border border-white/30 backdrop-blur w-full sm:w-auto text-center">
+              📋 Result Checker Vouchers
             </Link>
           </div>
           <div className="flex flex-wrap justify-center gap-4 text-sm text-blue-200">
@@ -88,11 +88,6 @@ export default function Home() {
             <span className="flex items-center gap-1">⚡ Auto-Delivery</span>
             <span className="flex items-center gap-1">💬 WhatsApp Support</span>
             <span className="flex items-center gap-1">🔄 100% Refund if Failed</span>
-          </div>
-          <div className="mt-6">
-            <Link href="/vouchers" className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors backdrop-blur">
-              📋 Buy BECE &amp; WASSCE Result Checker Vouchers →
-            </Link>
           </div>
         </div>
       </section>
