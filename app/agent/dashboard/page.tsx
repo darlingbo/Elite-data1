@@ -1390,36 +1390,164 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
 // ─── Referrals / Store Page ───────────────────────────────────────────────────
 function ReferralsPage({ data }: { data: AgentData }) {
   const [copied, setCopied] = useState(false);
+  const [reward, setReward] = useState<{
+    todaySales: number; threshold: number; rewardEarned: boolean;
+    claimed: boolean; rewardBundle: { label: string; price: number } | null;
+    history: { claim_date: string; bundle_label: string; credit_amount: number }[];
+  } | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const [claimMsg, setClaimMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [sqlNeeded, setSqlNeeded] = useState("");
+
   const storeUrl = typeof window !== "undefined" ? `${window.location.origin}/shop/${data.referral_code}` : `/shop/${data.referral_code}`;
   function copyLink() { navigator.clipboard.writeText(storeUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); }
+
+  useEffect(() => {
+    fetch(`/api/agents/daily-reward?agentId=${data.id}`)
+      .then(r => r.json())
+      .then(d => setReward(d))
+      .catch(() => null);
+  }, [data.id]);
+
+  async function claimReward() {
+    setClaiming(true); setClaimMsg(null); setSqlNeeded("");
+    const res  = await fetch("/api/agents/daily-reward", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentId: data.id }),
+    });
+    const d = await res.json();
+    setClaiming(false);
+    if (d.success) {
+      setClaimMsg({ text: `🎉 Reward claimed! GH₵${d.credited} (${d.bundle}) added to your wallet.`, ok: true });
+      setReward(r => r ? { ...r, claimed: true } : r);
+    } else if (d.sqlNeeded) {
+      setSqlNeeded(d.sql);
+      setClaimMsg({ text: d.error, ok: false });
+    } else {
+      setClaimMsg({ text: d.error || "Claim failed.", ok: false });
+    }
+  }
+
+  const pct = reward ? Math.min(100, (reward.todaySales / reward.threshold) * 100) : 0;
+  const remaining = reward ? Math.max(0, reward.threshold - reward.todaySales) : 10;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 560 }}>
-      <div><h2 style={{ color: M.text, fontSize: 18, fontWeight: 900, margin: 0 }}>My Referrals & Store</h2><p style={{ color: M.muted, fontSize: 13, margin: "4px 0 0" }}>Share your store link to earn from every customer purchase.</p></div>
-      <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: 28, textAlign: "center" }}>
-        <div style={{ display: "inline-block", background: M.card, borderRadius: 16, padding: 16, marginBottom: 20, boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
-          <QRCodeSVG value={storeUrl} size={160} />
+      <div>
+        <h2 style={{ color: M.text, fontSize: 18, fontWeight: 900, margin: 0 }}>🎁 Daily Rewards</h2>
+        <p style={{ color: M.muted, fontSize: 13, margin: "4px 0 0" }}>Sell 10+ bundles in a day — earn a free data bundle (3GB+) as a reward!</p>
+      </div>
+
+      {/* ── Daily progress card ── */}
+      <div style={{ background: M.card, borderRadius: 20, border: `1px solid ${M.border}`, padding: 24, position: "relative", overflow: "hidden" }}>
+        {/* Glow when earned */}
+        {reward?.rewardEarned && !reward.claimed && (
+          <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 0%, rgba(74,222,128,0.12) 0%, transparent 70%)", pointerEvents: "none" }} />
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <div>
+            <p style={{ color: M.muted, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.7, margin: "0 0 4px" }}>Today&apos;s Progress</p>
+            <p style={{ color: M.text, fontSize: 28, fontWeight: 900, margin: 0 }}>
+              {reward?.todaySales ?? "—"} <span style={{ color: M.muted, fontSize: 16, fontWeight: 600 }}>/ 10 sales</span>
+            </p>
+          </div>
+          <div style={{ width: 56, height: 56, borderRadius: "50%", background: reward?.rewardEarned ? "linear-gradient(135deg,#16a34a,#4ade80)" : "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, boxShadow: reward?.rewardEarned ? "0 0 20px rgba(74,222,128,0.4)" : "none", transition: "all 0.4s" }}>
+            {reward?.rewardEarned ? "🎁" : "📦"}
+          </div>
         </div>
-        <p style={{ color: M.text, fontWeight: 800, fontSize: 18, margin: "0 0 6px" }}>My Store Link</p>
-        <p style={{ color: M.muted, fontSize: 14, margin: "0 0 20px" }}>Your referral code: <strong style={{ color: M.blue }}>{data.referral_code}</strong></p>
-        <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10, border: `1px solid ${M.border}` }}>
-          <p style={{ color: M.muted, fontSize: 13, margin: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "monospace" }}>{storeUrl}</p>
-          <button onClick={copyLink} style={{ background: copied ? "#16a34a" : "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+
+        {/* Progress bar */}
+        <div style={{ height: 10, background: "rgba(255,255,255,0.06)", borderRadius: 99, overflow: "hidden", marginBottom: 10 }}>
+          <div style={{ height: "100%", width: `${pct}%`, borderRadius: 99, background: reward?.rewardEarned ? "linear-gradient(90deg,#16a34a,#4ade80)" : "linear-gradient(90deg,#3b82f6,#7c3aed)", transition: "width 0.7s cubic-bezier(.4,0,.2,1)" }} />
+        </div>
+        <p style={{ color: M.muted, fontSize: 12, margin: "0 0 18px" }}>
+          {reward?.rewardEarned
+            ? reward.claimed ? "✅ Reward claimed today — keep selling! Resets at midnight." : "🔥 You've hit 10 sales! Claim your free bundle below."
+            : `${remaining} more sale${remaining !== 1 ? "s" : ""} to earn today's free bundle`}
+        </p>
+
+        {/* Claim button */}
+        {reward?.rewardEarned && !reward.claimed && (
+          <button
+            onClick={claimReward}
+            disabled={claiming}
+            style={{ width: "100%", background: claiming ? "#475569" : "linear-gradient(90deg,#16a34a,#22c55e)", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 15, fontWeight: 900, cursor: claiming ? "not-allowed" : "pointer", boxShadow: "0 6px 24px rgba(74,222,128,0.35)", letterSpacing: 0.3 }}
+          >
+            {claiming ? "Claiming…" : `🎁 Claim Free ${reward.rewardBundle?.label ?? "3GB+"} Bundle → GH₵${reward.rewardBundle?.price?.toFixed(2) ?? "0.00"} wallet credit`}
+          </button>
+        )}
+
+        {reward?.rewardEarned && reward.claimed && (
+          <div style={{ background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.25)", borderRadius: 12, padding: "12px 16px", textAlign: "center" }}>
+            <p style={{ color: "#4ade80", fontWeight: 800, fontSize: 14, margin: 0 }}>✅ Reward earned and claimed today!</p>
+            <p style={{ color: M.muted, fontSize: 12, margin: "4px 0 0" }}>Resets at midnight — keep selling tomorrow for another reward.</p>
+          </div>
+        )}
+
+        {claimMsg && (
+          <div style={{ marginTop: 12, background: claimMsg.ok ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${claimMsg.ok ? "rgba(74,222,128,0.3)" : "rgba(248,113,113,0.3)"}`, borderRadius: 10, padding: "10px 14px" }}>
+            <p style={{ color: claimMsg.ok ? "#4ade80" : M.red, fontWeight: 700, fontSize: 13, margin: 0 }}>{claimMsg.text}</p>
+          </div>
+        )}
+
+        {sqlNeeded && (
+          <div style={{ marginTop: 10, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, padding: 14 }}>
+            <p style={{ color: "#fbbf24", fontSize: 11, fontWeight: 700, margin: "0 0 6px" }}>Run this SQL in Supabase → SQL Editor:</p>
+            <pre style={{ color: "#4ade80", fontSize: 11, background: "#0e1928", borderRadius: 8, padding: 10, overflowX: "auto", margin: 0, whiteSpace: "pre-wrap" }}>{sqlNeeded}</pre>
+          </div>
+        )}
+      </div>
+
+      {/* ── How it works ── */}
+      <div style={{ background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: 16, padding: 18 }}>
+        <p style={{ color: M.blue, fontWeight: 800, fontSize: 13, margin: "0 0 10px" }}>💡 How the daily reward works</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {[
+            { n: "1", text: "Sell 10 or more data bundles in a single day" },
+            { n: "2", text: 'Come to this page and click "Claim" before midnight' },
+            { n: "3", text: "A free bundle (3GB+) is credited to your wallet instantly" },
+            { n: "4", text: "Use the credit to buy your next bundle for a customer — or keep it!" },
+          ].map(s => (
+            <div key={s.n} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <div style={{ width: 22, height: 22, borderRadius: "50%", background: M.blue, color: "white", fontSize: 11, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{s.n}</div>
+              <p style={{ color: M.muted, fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Reward history ── */}
+      {reward?.history && reward.history.length > 0 && (
+        <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${M.border}` }}>
+            <p style={{ color: M.text, fontWeight: 800, fontSize: 14, margin: 0 }}>Recent Rewards</p>
+          </div>
+          {reward.history.map((h, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", borderBottom: i < reward.history.length - 1 ? `1px solid ${M.border}` : "none" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 18 }}>🎁</span>
+                <div>
+                  <p style={{ color: M.text, fontWeight: 700, fontSize: 13, margin: 0 }}>{h.bundle_label} bundle</p>
+                  <p style={{ color: M.muted, fontSize: 11, margin: 0 }}>{h.claim_date}</p>
+                </div>
+              </div>
+              <p style={{ color: "#4ade80", fontWeight: 800, fontSize: 14, margin: 0 }}>+GH₵{Number(h.credit_amount).toFixed(2)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Store link ── */}
+      <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: 20 }}>
+        <p style={{ color: M.text, fontWeight: 800, fontSize: 14, margin: "0 0 12px" }}>📎 My Store Link</p>
+        <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, border: `1px solid ${M.border}`, marginBottom: 10 }}>
+          <p style={{ color: M.muted, fontSize: 12, margin: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "monospace" }}>{storeUrl}</p>
+          <button onClick={copyLink} style={{ background: copied ? "#16a34a" : M.blue, color: "white", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
             {copied ? "✓ Copied!" : "Copy"}
           </button>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => window.open(storeUrl, "_blank")} style={{ flex: 1, background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 12, padding: "13px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Open Store ↗</button>
-          <button onClick={copyLink} style={{ flex: 1, background: "rgba(255,255,255,0.05)", border: `1px solid ${M.border}`, color: M.muted, borderRadius: 12, padding: "13px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Share Link</button>
-        </div>
-      </div>
-      <div style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)", borderRadius: 16, padding: 18 }}>
-        <p style={{ color: "#16a34a", fontWeight: 700, fontSize: 14, margin: "0 0 8px" }}>💡 How it works</p>
-        <ul style={{ color: M.muted, fontSize: 13, margin: 0, paddingLeft: 18, lineHeight: 2 }}>
-          <li>Customer visits your link and picks a bundle</li>
-          <li>They pay your set price (or admin price for commission agents)</li>
-          <li>Successful delivery adds to your earnings balance</li>
-          <li>Withdraw your earnings anytime via mobile money</li>
-        </ul>
+        <button onClick={() => window.open(storeUrl, "_blank")} style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: `1px solid ${M.border}`, color: M.muted, borderRadius: 10, padding: "11px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Open My Store ↗</button>
       </div>
     </div>
   );
