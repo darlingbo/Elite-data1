@@ -265,57 +265,116 @@ function LoginForm({ onLogin }: { onLogin: (d: AgentData) => void }) {
     );
   }
 
+  const [leaving, setLeaving] = useState(false);
+  function goRegister() {
+    setLeaving(true);
+    setTimeout(() => { window.location.href = "/agent"; }, 820);
+  }
+
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#0d1b2e,#1e1b4b)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ width: "100%", maxWidth: 400 }}>
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 18, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", fontSize: 22, fontWeight: 900, color: "white" }}>E</div>
-          <h1 style={{ fontSize: 24, fontWeight: 900, color: "#f8fafc", margin: "0 0 6px" }}>Elite Data Agent</h1>
-          <p style={{ fontSize: 14, color: "#94a3b8", margin: 0 }}>Sign in to your agent dashboard</p>
-        </div>
-        <div style={{ background: "white", borderRadius: 20, padding: 28, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
-          <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 12, padding: 4, marginBottom: 22, gap: 4 }}>
-            {(["email", "code"] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)} style={{ flex: 1, padding: "8px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, background: tab === t ? "linear-gradient(90deg,#3b82f6,#7c3aed)" : "transparent", color: tab === t ? "white" : "#64748b" }}>
-                {t === "email" ? "Email & Password" : "Referral Code"}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {tab === "email" ? (
-              <>
-                <div><label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>Email</label><input style={inp} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" onKeyDown={e => e.key === "Enter" && handleLogin()} /></div>
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8 }}>Password</label>
-                    <button type="button" onClick={() => setShowForgot(true)} style={{ background: "none", border: "none", color: "#3b82f6", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>Forgot password?</button>
+    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#060c1c 0%,#0d1b2e 60%,#1e1b4b 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+
+      {/* ── Split-panel auth container ── */}
+      <div className={`auth-container${leaving ? " active" : ""}`} style={{ position: "relative", width: "100%", maxWidth: 860, minHeight: 560, borderRadius: 24, overflow: "hidden", boxShadow: "0 30px 80px rgba(0,0,0,0.55)" }}>
+
+        {/* Form panel — login */}
+        <div className="form-panel--login" style={{ position: "absolute", inset: 0, background: "white", display: "flex", alignItems: "center", padding: "40px 36px" }}>
+          <div style={{ width: "100%", maxWidth: 360 }}>
+            <div style={{ marginBottom: 28 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 900, color: "white", marginBottom: 14 }}>E</div>
+              <h1 style={{ fontSize: 22, fontWeight: 900, color: "#0f172a", margin: "0 0 4px" }}>Welcome back</h1>
+              <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>Sign in to your Elite Data agent dashboard</p>
+            </div>
+
+            {/* Login type tabs */}
+            <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 12, padding: 4, marginBottom: 20, gap: 4 }}>
+              {(["email", "code"] as const).map(t => (
+                <button key={t} onClick={() => setTab(t)} style={{ flex: 1, padding: "8px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, background: tab === t ? "linear-gradient(90deg,#3b82f6,#7c3aed)" : "transparent", color: tab === t ? "white" : "#64748b", transition: "all .25s" }}>
+                  {t === "email" ? "Email & Password" : "Referral Code"}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+              {tab === "email" ? (
+                <>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: 0.8 }}>Email</label>
+                    <input style={inp} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" onKeyDown={e => e.key === "Enter" && handleLogin()} />
                   </div>
-                  <input style={inp} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && handleLogin()} />
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8 }}>Password</label>
+                      <button type="button" onClick={() => setShowForgot(true)} style={{ background: "none", border: "none", color: "#3b82f6", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>Forgot?</button>
+                    </div>
+                    <input style={inp} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && handleLogin()} />
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: 0.8 }}>Referral Code</label>
+                  <input style={inp} value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. STEP0001" onKeyDown={e => e.key === "Enter" && handleLogin()} />
                 </div>
-              </>
-            ) : (
-              <div><label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>Referral Code</label><input style={inp} value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. STEP0001" onKeyDown={e => e.key === "Enter" && handleLogin()} /></div>
-            )}
-            {error && (
-              <div style={{ background: isPending ? "#fef3c7" : "#fee2e2", border: `1px solid ${isPending ? "#fde68a" : "#fecaca"}`, borderRadius: 10, padding: "12px 14px" }}>
-                <p style={{ color: isPending ? "#92400e" : "#dc2626", fontSize: 13, margin: "0 0 6px", fontWeight: 700 }}>{isPending ? "⏳ Application Pending" : error}</p>
-                {isPending && (
-                  <>
-                    <p style={{ color: "#92400e", fontSize: 12, margin: "0 0 8px" }}>Your Free Agent application is under review. Contact admin to get approved faster.</p>
-                    <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#16a34a", color: "white", textDecoration: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700 }}>
-                      💬 Contact Admin on WhatsApp
-                    </a>
-                  </>
-                )}
-              </div>
-            )}
-            <button onClick={handleLogin} disabled={loading} style={{ background: loading ? "#94a3b8" : "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 12, padding: "13px", fontSize: 15, fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", marginTop: 4 }}>
-              {loading ? "Signing in…" : "Sign In"}
-            </button>
+              )}
+              {error && (
+                <div style={{ background: isPending ? "#fef3c7" : "#fee2e2", border: `1px solid ${isPending ? "#fde68a" : "#fecaca"}`, borderRadius: 10, padding: "11px 13px" }}>
+                  <p style={{ color: isPending ? "#92400e" : "#dc2626", fontSize: 13, margin: "0 0 5px", fontWeight: 700 }}>{isPending ? "⏳ Application Pending" : error}</p>
+                  {isPending && <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#16a34a", color: "white", textDecoration: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700 }}>💬 Contact Admin</a>}
+                </div>
+              )}
+              <button onClick={handleLogin} disabled={loading} style={{ background: loading ? "#94a3b8" : "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 12, padding: "13px", fontSize: 15, fontWeight: 800, cursor: loading ? "not-allowed" : "pointer" }}>
+                {loading ? "Signing in…" : "Sign In →"}
+              </button>
+            </div>
+
+            {/* Mobile-only register link */}
+            <p className="mobile-reg-link" style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, marginTop: 20, display: "none" }}>
+              Not an agent? <a href="/agent" style={{ color: "#3b82f6", fontWeight: 700 }}>Register here →</a>
+            </p>
           </div>
         </div>
-        <p style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, marginTop: 20 }}>Not an agent yet? <a href="/agent" style={{ color: "#60a5fa", fontWeight: 600 }}>Apply here →</a></p>
+
+        {/* Overlay panel — starts on right, slides left on .active */}
+        <div className="overlay-panel" style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#1d4ed8 0%,#7c3aed 60%,#4f46e5 100%)", display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "40px 48px" }}>
+          <div style={{ maxWidth: 280, textAlign: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>🚀</div>
+            <h2 style={{ fontSize: 24, fontWeight: 900, color: "white", margin: "0 0 12px", lineHeight: 1.2 }}>New Here?</h2>
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.8)", margin: "0 0 28px", lineHeight: 1.6 }}>
+              Join Elite Data as an agent. Set your own prices and earn from every data sale.
+            </p>
+            <button onClick={goRegister} style={{ background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.4)", color: "white", borderRadius: 14, padding: "12px 28px", fontSize: 14, fontWeight: 800, cursor: "pointer", backdropFilter: "blur(8px)", transition: "background .2s" }}>
+              Register as Agent →
+            </button>
+            <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, marginTop: 20 }}>GH₵40 one-time fee · Instant approval</p>
+          </div>
+        </div>
+
       </div>
+
+      <style>{`
+        .overlay-panel {
+          clip-path: polygon(14% 0, 100% 0, 100% 100%, 0 100%);
+          transition: transform 900ms cubic-bezier(.77,0,.18,1), clip-path 900ms cubic-bezier(.77,0,.18,1);
+        }
+        .auth-container.active .overlay-panel {
+          transform: translateX(-100%);
+          clip-path: polygon(0 0, 86% 0, 100% 100%, 0 100%);
+        }
+        .form-panel--login {
+          transition: opacity 450ms ease, transform 450ms ease, filter 450ms ease;
+        }
+        .auth-container.active .form-panel--login {
+          opacity: 0;
+          transform: translateX(-80px);
+          filter: blur(6px);
+        }
+        @media (max-width: 600px) {
+          .overlay-panel { display: none !important; }
+          .mobile-reg-link { display: block !important; }
+          .auth-container { min-height: auto !important; border-radius: 20px !important; }
+          .form-panel--login { position: relative !important; padding: 32px 24px !important; }
+        }
+      `}</style>
     </div>
   );
 }

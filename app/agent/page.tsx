@@ -1,14 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 
-const perks = [
-  { icon: "🏷️", title: "Set Your Own Prices", desc: "You decide what to charge customers. Add any markup you want above the admin base price." },
-  { icon: "💳", title: "Wallet-Based System", desc: "Top up your wallet, each sale deducts the base cost, you keep the difference as profit." },
-  { icon: "🔗", title: "Your Own Shop Link", desc: "Get a personal shop page and link. Customers buy from your shop at your prices." },
-  { icon: "💰", title: "Withdraw Anytime", desc: "Your profits + Paystack deposits are always withdrawable to your MoMo." },
-];
 
 const EyeIcon = ({ open }: { open: boolean }) =>
   open ? (
@@ -143,222 +136,127 @@ export default function AgentPage() {
               ))}
             </div>
           </div>
-          <Link href="/agent/dashboard"
+          <a href="/agent/dashboard"
             className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white font-black px-6 py-4 rounded-2xl text-base transition-colors shadow-lg mb-4">
             Go to My Dashboard →
-          </Link>
-          <Link href="/" className="text-blue-600 hover:underline text-sm font-semibold">Back to Home</Link>
+          </a>
+          <a href="/" className="text-blue-600 hover:underline text-sm font-semibold">Back to Home</a>
         </div>
       </div>
     );
   }
 
+  const [leaving, setLeaving] = useState(false);
+  function goLogin() {
+    setLeaving(true);
+    setTimeout(() => { window.location.href = "/agent/dashboard"; }, 820);
+  }
+
+  const inp = "w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
+
   return (
-    <div>
-      {/* Hero */}
-      <section className="bg-gradient-to-br from-blue-700 to-blue-500 text-white py-14 px-4 text-center">
-        <div className="max-w-2xl mx-auto">
-          <span className="inline-block bg-white/20 text-xs font-semibold px-3 py-1 rounded-full mb-4 uppercase tracking-wider">Agent Programme</span>
-          <h1 className="text-4xl font-black mb-3">Start Your Own Data Bundle Business</h1>
-          <p className="text-blue-100 text-lg mb-6">Set your own prices, build your own customer base, keep all your profit. Pay once — sell forever.</p>
-          <a href="#apply" className="bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-8 py-3.5 rounded-xl text-lg transition-colors shadow-lg inline-block">
-            Register Now — GH₵40 One-Time Fee
-          </a>
-        </div>
-      </section>
+    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#060c1c 0%,#0d1b2e 60%,#1e1b4b 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}>
 
-      {/* How it works */}
-      <section className="py-14 px-4 bg-white">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-10">
-            <h2 className="text-2xl font-black text-gray-800 mb-2">How It Works</h2>
-            <p className="text-gray-500">Everything you need to know before registering</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Step 1 */}
-            <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 rounded-full bg-blue-600 text-white font-black flex items-center justify-center shrink-0">1</div>
-                <h3 className="font-black text-gray-800">Pay GH₵40 Registration Fee</h3>
-              </div>
-              <p className="text-gray-600 text-sm leading-relaxed">Pay once via Paystack and your account is instantly approved — no waiting, no manual review. This fee gives you lifetime access to the agent platform.</p>
+      {/* ── Split-panel auth container ── */}
+      <div className={`auth-container${leaving ? " active" : ""}`} style={{ position: "relative", width: "100%", maxWidth: 900, minHeight: 640, borderRadius: 24, overflow: "hidden", boxShadow: "0 30px 80px rgba(0,0,0,0.55)" }}>
+
+        {/* Form panel — register (right side on desktop, full on mobile) */}
+        <div className="form-panel--register" style={{ position: "absolute", inset: 0, background: "white", display: "flex", alignItems: "flex-start", justifyContent: "flex-end", padding: "36px 36px 36px 0" }}>
+          <div style={{ width: "100%", maxWidth: 420, overflowY: "auto", maxHeight: "calc(100vh - 80px)" }}>
+            <div style={{ marginBottom: 22 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 900, color: "white", marginBottom: 12 }}>E</div>
+              <h1 style={{ fontSize: 20, fontWeight: 900, color: "#0f172a", margin: "0 0 3px" }}>Create Agent Account</h1>
+              <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>Pay GH₵40 once — activated instantly, no waiting</p>
             </div>
-            {/* Step 2 */}
-            <div className="bg-green-50 border border-green-100 rounded-2xl p-6">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 rounded-full bg-green-600 text-white font-black flex items-center justify-center shrink-0">2</div>
-                <h3 className="font-black text-gray-800">Top Up Your Wallet</h3>
-              </div>
-              <p className="text-gray-600 text-sm leading-relaxed">After logging in, go to <strong>Wallet → Add Funds</strong> and top up via Paystack. This is your buying power — each sale deducts the bundle&apos;s base cost from your wallet automatically.</p>
-            </div>
-            {/* Step 3 */}
-            <div className="bg-purple-50 border border-purple-100 rounded-2xl p-6">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 rounded-full bg-purple-600 text-white font-black flex items-center justify-center shrink-0">3</div>
-                <h3 className="font-black text-gray-800">Set Your Own Selling Prices</h3>
-              </div>
-              <p className="text-gray-600 text-sm leading-relaxed">Go to <strong>My Prices</strong> and set the price you want to charge customers for each bundle. You add your markup on top of the admin base price — that markup is 100% yours.</p>
-            </div>
-            {/* Step 4 */}
-            <div className="bg-amber-50 border border-amber-100 rounded-2xl p-6">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 rounded-full bg-amber-500 text-white font-black flex items-center justify-center shrink-0">4</div>
-                <h3 className="font-black text-gray-800">Share Your Shop & Earn</h3>
-              </div>
-              <p className="text-gray-600 text-sm leading-relaxed">You get a personal shop link (e.g. <strong>elitedata1.com/shop/YOURCODE</strong>). Share it on WhatsApp, social media, or anywhere. Customers buy at your price — data is delivered automatically, your profit is recorded instantly.</p>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      {/* Earnings example */}
-      <section className="py-10 px-4 bg-gray-50">
-        <div className="max-w-2xl mx-auto">
-          <h2 className="text-2xl font-black text-gray-800 text-center mb-6">How Your Earnings Work</h2>
-          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <p className="text-gray-500 text-sm mb-4 text-center">Example: Admin base price for MTN 2GB = <strong>GH₵10</strong>. You sell at <strong>GH₵13</strong>.</p>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-gray-600">Customer pays</span><span className="font-bold">GH₵13.00</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Deducted from your wallet</span><span className="font-bold text-red-500">−GH₵10.00</span></div>
-              <div className="border-t border-gray-100 pt-2 flex justify-between text-green-700 font-black text-base"><span>Your profit</span><span>GH₵3.00 ✅</span></div>
-            </div>
-            <p className="text-xs text-gray-400 mt-4 text-center">The more you sell, the more you earn. No limits on how much you can make.</p>
-          </div>
+            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {error && <div style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 13, padding: "10px 12px", borderRadius: 10 }}>{error}</div>}
 
-          {/* Wallet & Withdrawal */}
-          <div className="mt-6 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <h3 className="font-black text-gray-800 mb-3">Wallet &amp; Withdrawals</h3>
-            <div className="space-y-2 text-sm text-gray-600">
-              <p>💳 <strong>Wallet balance</strong> — used to fund deliveries. Top up via Paystack anytime.</p>
-              <p>💰 <strong>Profit balance</strong> — your earnings from sales. Always withdrawable.</p>
-              <p>📤 <strong>Withdraw to MoMo</strong> — go to Wallet → Withdraw. Minimum GH₵50. Sent instantly via Paystack to your MTN MoMo, Telecel Cash, or AirtelTigo.</p>
-              <p>⚠️ <strong>Note:</strong> Only Paystack top-ups are withdrawable as wallet funds. Admin manual credits are for buying power only.</p>
-            </div>
-          </div>
-        </div>
-      </section>
+              <div><label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Full Name <span style={{ color: "#ef4444" }}>*</span></label>
+                <input type="text" placeholder="e.g. Kwame Mensah" value={form.name} onChange={(e) => set("name", e.target.value)} className={inp} /></div>
 
-      {/* Perks */}
-      <section className="py-14 px-4 bg-white">
-        <div className="max-w-5xl mx-auto">
-          <h2 className="text-2xl font-black text-gray-800 text-center mb-8">Why Join Elite Data?</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-            {perks.map((p) => (
-              <div key={p.title} className="bg-gray-50 rounded-2xl p-6 shadow-sm text-center">
-                <div className="text-4xl mb-3">{p.icon}</div>
-                <h3 className="font-bold text-gray-800 mb-2">{p.title}</h3>
-                <p className="text-gray-500 text-sm">{p.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+              <div><label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Email <span style={{ color: "#ef4444" }}>*</span></label>
+                <input type="email" placeholder="kwame@gmail.com" value={form.email} onChange={(e) => set("email", e.target.value)} className={inp} /></div>
 
-      {/* Application Form */}
-      <section id="apply" className="py-14 px-4 bg-gray-50">
-        <div className="max-w-lg mx-auto">
-          {/* Register / Login toggle */}
-          <div className="flex rounded-xl border border-gray-200 bg-white overflow-hidden mb-8 shadow-sm">
-            <div className="flex-1 py-3 text-center text-sm font-black text-blue-600 bg-blue-50 border-b-2 border-blue-600">
-              Register
-            </div>
-            <Link href="/agent/dashboard"
-              className="flex-1 py-3 text-center text-sm font-semibold text-gray-500 hover:text-blue-600 hover:bg-gray-50 transition-colors">
-              Login to Dashboard
-            </Link>
-          </div>
-
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-black text-gray-800 mb-2">Create Your Agent Account</h2>
-            <p className="text-gray-500 text-sm">Pay GH₵40 once — account activated instantly, no waiting</p>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Full Name <span className="text-red-400">*</span></label>
-                <input type="text" placeholder="e.g. Kwame Mensah" value={form.name} onChange={(e) => set("name", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div><label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Phone <span style={{ color: "#ef4444" }}>*</span></label>
+                  <input type="tel" placeholder="0241234567" value={form.phone} onChange={(e) => set("phone", e.target.value)} className={inp} /></div>
+                <div><label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>WhatsApp <span style={{ color: "#ef4444" }}>*</span></label>
+                  <input type="tel" placeholder="0241234567" value={form.whatsapp} onChange={(e) => set("whatsapp", e.target.value)} className={inp} /></div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Email Address <span className="text-red-400">*</span></label>
-                <input type="email" placeholder="kwame@gmail.com" value={form.email} onChange={(e) => set("email", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
+              <div><label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Business Name <span style={{ color: "#94a3b8", fontWeight: 500 }}>(optional)</span></label>
+                <input type="text" placeholder="e.g. Kwame's Data Hub" value={form.business_name} onChange={(e) => set("business_name", e.target.value)} className={inp} /></div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Phone Number <span className="text-red-400">*</span></label>
-                <input type="tel" placeholder="0241234567" value={form.phone} onChange={(e) => set("phone", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">WhatsApp Number <span className="text-red-400">*</span></label>
-                <input type="tel" placeholder="0241234567" value={form.whatsapp} onChange={(e) => set("whatsapp", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <p className="text-xs text-gray-400 mt-1">This becomes your customers&apos; helpline when they buy through your link.</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Business / Brand Name <span className="text-gray-400">(optional)</span></label>
-                <input type="text" placeholder="e.g. Kwame's Data Hub" value={form.business_name} onChange={(e) => set("business_name", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-
-              {/* Password */}
-              <div className="pt-2 border-t border-gray-100">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Create Your Account Password</p>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Password <span className="text-red-400">*</span></label>
-                    <div className="relative">
-                      <input
-                        type={showPw ? "text" : "password"}
-                        placeholder="Minimum 6 characters"
-                        value={form.password}
-                        onChange={(e) => set("password", e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
-                      />
-                      <button type="button" onClick={() => setShowPw((s) => !s)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                        <EyeIcon open={showPw} />
-                      </button>
-                    </div>
+              <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 12 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 10 }}>Create Password</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ position: "relative" }}>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Password <span style={{ color: "#ef4444" }}>*</span></label>
+                    <input type={showPw ? "text" : "password"} placeholder="Min 6 characters" value={form.password} onChange={(e) => set("password", e.target.value)} className={inp} style={{ paddingRight: 36 }} />
+                    <button type="button" onClick={() => setShowPw(s => !s)} style={{ position: "absolute", right: 10, bottom: 9, background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}><EyeIcon open={showPw} /></button>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Confirm Password <span className="text-red-400">*</span></label>
-                    <div className="relative">
-                      <input
-                        type={showConfirm ? "text" : "password"}
-                        placeholder="Repeat your password"
-                        value={form.confirmPassword}
-                        onChange={(e) => set("confirmPassword", e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
-                      />
-                      <button type="button" onClick={() => setShowConfirm((s) => !s)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                        <EyeIcon open={showConfirm} />
-                      </button>
-                    </div>
+                  <div style={{ position: "relative" }}>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Confirm Password <span style={{ color: "#ef4444" }}>*</span></label>
+                    <input type={showConfirm ? "text" : "password"} placeholder="Repeat password" value={form.confirmPassword} onChange={(e) => set("confirmPassword", e.target.value)} className={inp} style={{ paddingRight: 36 }} />
+                    <button type="button" onClick={() => setShowConfirm(s => !s)} style={{ position: "absolute", right: 10, bottom: 9, background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}><EyeIcon open={showConfirm} /></button>
                   </div>
                 </div>
-                <p className="text-xs text-gray-400 mt-2">You will use this password to log into your agent dashboard.</p>
               </div>
 
-              <button type="submit" disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl transition-colors text-sm">
-                {loading ? "Opening payment…" : "Pay GH₵40 & Activate Account"}
+              <button type="submit" disabled={loading} style={{ background: loading ? "#94a3b8" : "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 12, padding: "13px", fontSize: 14, fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", marginTop: 4 }}>
+                {loading ? "Opening payment…" : "Pay GH₵40 & Activate →"}
               </button>
             </form>
-          </div>
 
+            {/* Mobile-only login link */}
+            <p className="mobile-login-link" style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, marginTop: 18, display: "none" }}>
+              Already an agent? <a href="/agent/dashboard" style={{ color: "#3b82f6", fontWeight: 700 }}>Sign in →</a>
+            </p>
+          </div>
         </div>
-      </section>
+
+        {/* Overlay panel — starts on LEFT, slides right on .active */}
+        <div className="overlay-panel-reg" style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#7c3aed 0%,#1d4ed8 60%,#0369a1 100%)", display: "flex", alignItems: "center", justifyContent: "flex-start", padding: "40px 48px" }}>
+          <div style={{ maxWidth: 280, textAlign: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>💰</div>
+            <h2 style={{ fontSize: 24, fontWeight: 900, color: "white", margin: "0 0 12px", lineHeight: 1.2 }}>Already an Agent?</h2>
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.8)", margin: "0 0 28px", lineHeight: 1.6 }}>
+              Welcome back! Sign in to access your dashboard, check your wallet, and manage your sales.
+            </p>
+            <button onClick={goLogin} style={{ background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.4)", color: "white", borderRadius: 14, padding: "12px 28px", fontSize: 14, fontWeight: 800, cursor: "pointer", backdropFilter: "blur(8px)" }}>
+              Sign In →
+            </button>
+            <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, marginTop: 20 }}>GH₵40 one-time fee · Set your own prices</p>
+          </div>
+        </div>
+
+      </div>
+
+      <style>{`
+        .overlay-panel-reg {
+          clip-path: polygon(0 0, 86% 0, 100% 100%, 0 100%);
+          transition: transform 900ms cubic-bezier(.77,0,.18,1), clip-path 900ms cubic-bezier(.77,0,.18,1);
+        }
+        .auth-container.active .overlay-panel-reg {
+          transform: translateX(100%);
+          clip-path: polygon(14% 0, 100% 0, 100% 100%, 0 100%);
+        }
+        .form-panel--register {
+          transition: opacity 450ms ease, transform 450ms ease, filter 450ms ease;
+        }
+        .auth-container.active .form-panel--register {
+          opacity: 0;
+          transform: translateX(80px);
+          filter: blur(6px);
+        }
+        @media (max-width: 600px) {
+          .overlay-panel-reg { display: none !important; }
+          .mobile-login-link { display: block !important; }
+          .auth-container { min-height: auto !important; border-radius: 20px !important; }
+          .form-panel--register { position: relative !important; padding: 28px 20px !important; justify-content: flex-start !important; }
+        }
+      `}</style>
     </div>
   );
 }
