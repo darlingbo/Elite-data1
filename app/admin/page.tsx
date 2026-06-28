@@ -39,7 +39,7 @@ interface Order {
 interface Agent {
   id: string; name: string; email: string; phone: string; whatsapp?: string; business_name: string;
   referral_code: string; status: string; agent_type?: string; commission_balance: number; wallet_balance?: number;
-  total_sales: number; total_revenue: number; created_at: string;
+  total_sales: number; total_revenue: number; created_at: string; registration_ref?: string | null;
 }
 interface StatsData {
   orders: { all: Order[]; total: number; completed: number; processing: number; pending: number; failed: number };
@@ -1218,6 +1218,8 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
   const [switchModal, setSwitchModal] = useState<{ id: string; name: string; currentType: string } | null>(null);
   const [switching, setSwitching] = useState(false);
   const [switchMsg, setSwitchMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [planModal, setPlanModal] = useState<{ id: string; name: string; currentPlan: "free" | "pro" } | null>(null);
+  const [planChanging, setPlanChanging] = useState(false);
 
   useEffect(() => { setAgentTab(defaultTab); }, [defaultTab]);
 
@@ -1232,6 +1234,19 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
       else setSwitchMsg({ text: d.error ?? "Failed", ok: false });
     } catch { setSwitchMsg({ text: "Network error", ok: false }); }
     finally { setSwitching(false); setSwitchModal(null); setTimeout(() => setSwitchMsg(null), 5000); }
+  }
+
+  async function handlePlanChange() {
+    if (!planModal) return;
+    setPlanChanging(true);
+    const newPlan = planModal.currentPlan === "free" ? "pro" : "free";
+    try {
+      const res = await fetch("/api/admin/agents/set-plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: planModal.id, plan: newPlan }) });
+      const d = await res.json();
+      if (d.success) { setSwitchMsg({ text: `✓ ${planModal.name} is now a ${newPlan === "pro" ? "Pro" : "Free"} Agent`, ok: true }); onRefresh(); }
+      else setSwitchMsg({ text: d.error ?? "Failed", ok: false });
+    } catch { setSwitchMsg({ text: "Network error", ok: false }); }
+    finally { setPlanChanging(false); setPlanModal(null); setTimeout(() => setSwitchMsg(null), 5000); }
   }
 
   async function handleAction() {
@@ -1271,6 +1286,7 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
                 <th className="px-4 py-3 text-left font-semibold">WhatsApp</th>
                 <th className="px-4 py-3 text-left font-semibold">Business</th>
                 {agentTab === "approved" && <>
+                  <th className="px-4 py-3 text-left font-semibold">Plan</th>
                   <th className="px-4 py-3 text-left font-semibold">Type</th>
                   <th className="px-4 py-3 text-left font-semibold">Sales</th>
                   <th className="px-4 py-3 text-left font-semibold">Balance</th>
@@ -1288,16 +1304,26 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
                   <td className="px-4 py-3.5 font-mono text-xs text-slate-400">{a.phone}</td>
                   <td className="px-4 py-3.5 text-xs">{a.whatsapp ? <a href={`https://wa.me/${a.whatsapp.replace(/^0/, "233")}`} target="_blank" rel="noreferrer" className="text-green-400 hover:text-green-300 font-mono">{a.whatsapp}</a> : <span className="text-slate-600">—</span>}</td>
                   <td className="px-4 py-3.5 text-slate-500 text-xs">{a.business_name || "—"}</td>
-                  {agentTab === "approved" && <>
-                    <td className="px-4 py-3.5">
-                      <button onClick={() => setSwitchModal({ id: a.id, name: a.name, currentType: a.agent_type ?? "commission" })} title="Click to switch" className="hover:opacity-70 transition-opacity">
-                        {a.agent_type === "custom_price" ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>Price Mode ⇄</span> : <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", border: "1px solid rgba(16,185,129,0.25)" }}>Commission ⇄</span>}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3.5 font-bold text-white">{a.total_sales}</td>
-                    <td className="px-4 py-3.5 font-black" style={{ color: "#4ade80" }}>GH₵{(a.commission_balance ?? 0).toFixed(2)}</td>
-                    <td className="px-4 py-3.5 font-mono text-xs font-bold" style={{ color: "#60a5fa" }}>{a.referral_code}</td>
-                  </>}
+                  {agentTab === "approved" && (() => {
+                    const isFree = !a.registration_ref || a.registration_ref === "FREE";
+                    return <>
+                      <td className="px-4 py-3.5">
+                        <button onClick={() => setPlanModal({ id: a.id, name: a.name, currentPlan: isFree ? "free" : "pro" })} title="Click to change plan" className="hover:opacity-80 transition-opacity">
+                          {isFree
+                            ? <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "rgba(100,116,139,0.15)", color: "#94a3b8", border: "1px solid rgba(100,116,139,0.3)" }}>Free ⇄</span>
+                            : <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.35)" }}>⭐ Pro ⇄</span>}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <button onClick={() => setSwitchModal({ id: a.id, name: a.name, currentType: a.agent_type ?? "commission" })} title="Click to switch" className="hover:opacity-70 transition-opacity">
+                          {a.agent_type === "custom_price" ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>Price Mode ⇄</span> : <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", border: "1px solid rgba(16,185,129,0.25)" }}>Commission ⇄</span>}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3.5 font-bold text-white">{a.total_sales}</td>
+                      <td className="px-4 py-3.5 font-black" style={{ color: "#4ade80" }}>GH₵{(a.commission_balance ?? 0).toFixed(2)}</td>
+                      <td className="px-4 py-3.5 font-mono text-xs font-bold" style={{ color: "#60a5fa" }}>{a.referral_code}</td>
+                    </>;
+                  })()}
                   {agentTab === "pending" && <td className="px-4 py-3.5 text-slate-500 text-xs">{new Date(a.created_at).toLocaleDateString("en-GH")}</td>}
                   <td className="px-4 py-3.5">
                     {agentTab === "pending" && (
@@ -1335,6 +1361,55 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
       )}
       {pricesAgent && <AgentPriceModal agentId={pricesAgent.id} agentName={pricesAgent.name} onClose={() => setPricesAgent(null)} />}
       {switchMsg && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl text-sm font-bold shadow-xl border" style={switchMsg.ok ? { background: "rgba(16,185,129,0.15)", color: "#4ade80", borderColor: "rgba(16,185,129,0.3)" } : { background: "rgba(248,113,113,0.15)", color: "#f87171", borderColor: "rgba(248,113,113,0.3)" }}>{switchMsg.text}</div>}
+
+      {/* ── Plan change modal ── */}
+      {planModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="rounded-2xl shadow-2xl w-full max-w-sm p-6 border" style={{ background: CARD, borderColor: BORDER }}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center text-xl" style={{ background: planModal.currentPlan === "free" ? "rgba(245,158,11,0.15)" : "rgba(100,116,139,0.15)" }}>
+                {planModal.currentPlan === "free" ? "⭐" : "🔓"}
+              </div>
+              <div>
+                <h3 className="font-black text-white text-base">Change Agent Plan</h3>
+                <p className="text-slate-400 text-xs">{planModal.name}</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl p-4 mb-5 border" style={{ background: "#060f1c", borderColor: BORDER }}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-center flex-1">
+                  <p className="text-xs text-slate-500 mb-1">Current</p>
+                  <span className="text-sm font-bold px-3 py-1 rounded-full" style={planModal.currentPlan === "free" ? { background: "rgba(100,116,139,0.15)", color: "#94a3b8", border: "1px solid rgba(100,116,139,0.3)" } : { background: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.35)" }}>
+                    {planModal.currentPlan === "free" ? "Free Agent" : "⭐ Pro Agent"}
+                  </span>
+                </div>
+                <div className="text-slate-600 text-lg px-3">→</div>
+                <div className="text-center flex-1">
+                  <p className="text-xs text-slate-500 mb-1">New</p>
+                  <span className="text-sm font-bold px-3 py-1 rounded-full" style={planModal.currentPlan === "free" ? { background: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.35)" } : { background: "rgba(100,116,139,0.15)", color: "#94a3b8", border: "1px solid rgba(100,116,139,0.3)" }}>
+                    {planModal.currentPlan === "free" ? "⭐ Pro Agent" : "Free Agent"}
+                  </span>
+                </div>
+              </div>
+              <p className="text-slate-500 text-xs text-center">
+                {planModal.currentPlan === "free"
+                  ? "Pro agents get wholesale buy prices set by you (admin) instead of the automatic 4% discount."
+                  : "Free agents get a 4% discount off the customer price as their buy price."}
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setPlanModal(null)} className="flex-1 border text-slate-400 font-semibold py-2.5 rounded-xl text-sm hover:text-white transition-colors" style={{ borderColor: BORDER }}>Cancel</button>
+              <button onClick={handlePlanChange} disabled={planChanging}
+                className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60 transition-all"
+                style={{ background: planModal.currentPlan === "free" ? "linear-gradient(90deg,#d97706,#f59e0b)" : "linear-gradient(90deg,#475569,#64748b)" }}>
+                {planChanging ? "Saving…" : planModal.currentPlan === "free" ? "Upgrade to Pro ⭐" : "Move to Free"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {switchModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="rounded-2xl shadow-2xl w-full max-w-sm p-6 border" style={{ background: CARD, borderColor: BORDER }}>
