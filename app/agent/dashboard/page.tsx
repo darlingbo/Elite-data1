@@ -277,8 +277,8 @@ function LoginForm({ onLogin }: { onLogin: (d: AgentData) => void }) {
       {/* ── Split-panel auth container ── */}
       <div className={`auth-container${leaving ? " active" : ""}`} style={{ position: "relative", width: "100%", maxWidth: 860, minHeight: 560, borderRadius: 24, overflow: "hidden", boxShadow: "0 30px 80px rgba(0,0,0,0.55)" }}>
 
-        {/* Form panel — login */}
-        <div className="form-panel--login" style={{ position: "absolute", inset: 0, background: "white", display: "flex", alignItems: "center", padding: "40px 36px" }}>
+        {/* Form panel — login (left 50%) */}
+        <div className="form-panel--login" style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: "50%", background: "white", display: "flex", alignItems: "center", padding: "40px 36px" }}>
           <div style={{ width: "100%", maxWidth: 360 }}>
             <div style={{ marginBottom: 28 }}>
               <div style={{ width: 48, height: 48, borderRadius: 14, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 900, color: "white", marginBottom: 14 }}>E</div>
@@ -334,8 +334,8 @@ function LoginForm({ onLogin }: { onLogin: (d: AgentData) => void }) {
           </div>
         </div>
 
-        {/* Overlay panel — starts on right, slides left on .active */}
-        <div className="overlay-panel" style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#1d4ed8 0%,#7c3aed 60%,#4f46e5 100%)", display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "40px 48px" }}>
+        {/* Overlay panel — right half, clips with diagonal, slides left on .active */}
+        <div className="overlay-panel" style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#1d4ed8 0%,#7c3aed 60%,#4f46e5 100%)", display: "flex", alignItems: "center", paddingLeft: "54%", paddingRight: 40 }}>
           <div style={{ maxWidth: 280, textAlign: "center" }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>🚀</div>
             <h2 style={{ fontSize: 24, fontWeight: 900, color: "white", margin: "0 0 12px", lineHeight: 1.2 }}>New Here?</h2>
@@ -353,26 +353,26 @@ function LoginForm({ onLogin }: { onLogin: (d: AgentData) => void }) {
 
       <style>{`
         .overlay-panel {
-          clip-path: polygon(14% 0, 100% 0, 100% 100%, 0 100%);
+          clip-path: polygon(47% 0, 100% 0, 100% 100%, 42% 100%);
           transition: transform 900ms cubic-bezier(.77,0,.18,1), clip-path 900ms cubic-bezier(.77,0,.18,1);
         }
         .auth-container.active .overlay-panel {
           transform: translateX(-100%);
-          clip-path: polygon(0 0, 86% 0, 100% 100%, 0 100%);
+          clip-path: polygon(0 0, 58% 0, 53% 100%, 0 100%);
         }
         .form-panel--login {
           transition: opacity 450ms ease, transform 450ms ease, filter 450ms ease;
         }
         .auth-container.active .form-panel--login {
           opacity: 0;
-          transform: translateX(-80px);
+          transform: translateX(-60px);
           filter: blur(6px);
         }
         @media (max-width: 600px) {
           .overlay-panel { display: none !important; }
           .mobile-reg-link { display: block !important; }
           .auth-container { min-height: auto !important; border-radius: 20px !important; }
-          .form-panel--login { position: relative !important; padding: 32px 24px !important; }
+          .form-panel--login { position: relative !important; width: 100% !important; padding: 32px 24px !important; }
         }
       `}</style>
     </div>
