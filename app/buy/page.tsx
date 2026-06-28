@@ -104,7 +104,7 @@ function BuyContent() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 28 }}>
           {[
             { label: "Track Order",      sub: "Check delivery status",    icon: "📦", href: "/track",    color: "#22c55e" },
-            { label: "Result Checker",   sub: "BECE & WASSCE vouchers",   icon: "📗", action: () => setVoucherOpen(true), color: "#a855f7" },
+            { label: "Result Checker",   sub: "BECE & WASSCE vouchers",   icon: "📗", href: "/vouchers", color: "#a855f7" },
             { label: "Business Top-up",  sub: "2–50 numbers at once",     icon: "🏢", href: "/business", color: "#f59e0b" },
             { label: "Become an Agent",  sub: "Earn on every sale",       icon: "🤝", href: "/agent",    color: "#3b82f6" },
           ].map(item => (
