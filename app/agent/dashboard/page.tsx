@@ -1388,167 +1388,266 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
 }
 
 // ─── Referrals / Store Page ───────────────────────────────────────────────────
-function ReferralsPage({ data }: { data: AgentData }) {
-  const [copied, setCopied] = useState(false);
-  const [reward, setReward] = useState<{
-    todaySales: number; threshold: number; rewardEarned: boolean;
-    claimed: boolean; rewardBundle: { label: string; price: number } | null;
-    history: { claim_date: string; bundle_label: string; credit_amount: number }[];
-  } | null>(null);
-  const [claiming, setClaiming] = useState(false);
-  const [claimMsg, setClaimMsg] = useState<{ text: string; ok: boolean } | null>(null);
-  const [sqlNeeded, setSqlNeeded] = useState("");
+// ── Shared claim modal (phone + network) ──────────────────────────────────────
+function ClaimModal({ rewardType, dataGB, label, agentId, onClose, onSuccess }: {
+  rewardType: string; dataGB: number; label: string; agentId: string;
+  onClose: () => void; onSuccess: () => void;
+}) {
+  const [phone,   setPhone]   = useState("");
+  const [network, setNetwork] = useState("mtn");
+  const [loading, setLoading] = useState(false);
+  const [err,     setErr]     = useState("");
+  const [sqlBox,  setSqlBox]  = useState("");
 
-  const storeUrl = typeof window !== "undefined" ? `${window.location.origin}/shop/${data.referral_code}` : `/shop/${data.referral_code}`;
-  function copyLink() { navigator.clipboard.writeText(storeUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); }
-
-  useEffect(() => {
-    fetch(`/api/agents/daily-reward?agentId=${data.id}`)
-      .then(r => r.json())
-      .then(d => setReward(d))
-      .catch(() => null);
-  }, [data.id]);
-
-  async function claimReward() {
-    setClaiming(true); setClaimMsg(null); setSqlNeeded("");
-    const res  = await fetch("/api/agents/daily-reward", {
+  async function submit() {
+    setErr(""); setSqlBox(""); setLoading(true);
+    const res = await fetch("/api/agents/daily-reward", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agentId: data.id }),
+      body: JSON.stringify({ agentId, rewardType, phone, network }),
     });
-    const d = await res.json();
-    setClaiming(false);
-    if (d.success) {
-      setClaimMsg({ text: `🎉 Reward claimed! GH₵${d.credited} (${d.bundle}) added to your wallet.`, ok: true });
-      setReward(r => r ? { ...r, claimed: true } : r);
-    } else if (d.sqlNeeded) {
-      setSqlNeeded(d.sql);
-      setClaimMsg({ text: d.error, ok: false });
-    } else {
-      setClaimMsg({ text: d.error || "Claim failed.", ok: false });
-    }
+    const d = await res.json(); setLoading(false);
+    if (d.success) { onSuccess(); onClose(); }
+    else if (d.sqlNeeded) { setSqlBox(d.sql ?? ""); setErr(d.error); }
+    else { setErr(d.error || "Claim failed. Try again."); }
   }
 
-  const pct = reward ? Math.min(100, (reward.todaySales / reward.threshold) * 100) : 0;
-  const remaining = reward ? Math.max(0, reward.threshold - reward.todaySales) : 10;
+  const NETWORKS = [
+    { id: "mtn", label: "MTN", color: "#f59e0b" },
+    { id: "telecel", label: "Telecel", color: "#ef4444" },
+    { id: "airteltigo", label: "AirtelTigo", color: "#8b5cf6" },
+  ];
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }}>
+      <div style={{ background: "#0d1b2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 24, padding: 28, width: "100%", maxWidth: 400, position: "relative" }}>
+        <button onClick={onClose} style={{ position: "absolute", top: 16, right: 16, background: "none", border: "none", color: "#64748b", fontSize: 20, cursor: "pointer" }}>✕</button>
+
+        <div style={{ textAlign: "center", marginBottom: 22 }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>🎁</div>
+          <p style={{ color: "#f8fafc", fontWeight: 900, fontSize: 17, margin: "0 0 4px" }}>Claim {label}</p>
+          <p style={{ color: "#4ade80", fontWeight: 800, fontSize: 14, margin: 0 }}>{dataGB}GB FREE data → sent to your number!</p>
+        </div>
+
+        {err && (
+          <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
+            <p style={{ color: "#f87171", fontWeight: 700, fontSize: 13, margin: 0 }}>{err}</p>
+          </div>
+        )}
+        {sqlBox && (
+          <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, padding: 12, marginBottom: 14 }}>
+            <p style={{ color: "#fbbf24", fontSize: 11, fontWeight: 700, margin: "0 0 6px" }}>Run this SQL in Supabase → SQL Editor first:</p>
+            <pre style={{ color: "#4ade80", fontSize: 10, background: "#060f1c", borderRadius: 6, padding: 8, overflowX: "auto", margin: 0, whiteSpace: "pre-wrap" }}>{sqlBox}</pre>
+          </div>
+        )}
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Your Phone Number</label>
+          <input
+            type="tel" placeholder="e.g. 0241234567" value={phone}
+            onChange={e => { setPhone(e.target.value); setErr(""); }}
+            style={{ width: "100%", background: "#060f1c", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, padding: "13px 14px", color: "#f8fafc", fontSize: 15, outline: "none", boxSizing: "border-box" }}
+          />
+          <p style={{ color: "#64748b", fontSize: 11, margin: "6px 0 0" }}>The {dataGB}GB data will be sent to this number instantly.</p>
+        </div>
+
+        <div style={{ marginBottom: 22 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Network</label>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+            {NETWORKS.map(n => (
+              <button key={n.id} onClick={() => setNetwork(n.id)}
+                style={{ background: network === n.id ? `${n.color}22` : "rgba(255,255,255,0.04)", border: `2px solid ${network === n.id ? n.color : "rgba(255,255,255,0.1)"}`, borderRadius: 10, padding: "10px 4px", color: network === n.id ? n.color : "#64748b", fontWeight: 800, fontSize: 12, cursor: "pointer", transition: "all 0.2s" }}>
+                {n.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={submit} disabled={loading || !phone}
+          style={{ width: "100%", background: loading || !phone ? "#475569" : "linear-gradient(90deg,#16a34a,#22c55e)", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 15, fontWeight: 900, cursor: loading || !phone ? "not-allowed" : "pointer", boxShadow: "0 6px 24px rgba(74,222,128,0.3)" }}>
+          {loading ? "Sending data…" : `Send ${dataGB}GB to My Number →`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Reward card ───────────────────────────────────────────────────────────────
+function RewardCard({ icon, label, description, sales, threshold, dataGB, earned, claimed, accent, onClaim }: {
+  icon: string; label: string; description: string;
+  sales: number; threshold: number; dataGB: number;
+  earned: boolean; claimed: boolean; accent: string; onClaim: () => void;
+}) {
+  const pct      = Math.min(100, (sales / threshold) * 100);
+  const remaining = Math.max(0, threshold - sales);
+  return (
+    <div style={{ background: M.card, borderRadius: 20, border: `2px solid ${earned && !claimed ? accent : M.border}`, padding: 22, position: "relative", overflow: "hidden", transition: "border-color 0.3s", boxShadow: earned && !claimed ? `0 0 24px ${accent}30` : "none" }}>
+      {earned && !claimed && <div style={{ position: "absolute", inset: 0, background: `radial-gradient(ellipse at 60% 0%, ${accent}18 0%, transparent 70%)`, pointerEvents: "none" }} />}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: earned ? `${accent}22` : "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>{icon}</div>
+          <div>
+            <p style={{ color: M.text, fontWeight: 800, fontSize: 14, margin: 0 }}>{label}</p>
+            <p style={{ color: M.muted, fontSize: 12, margin: "2px 0 0" }}>{description}</p>
+          </div>
+        </div>
+        <div style={{ background: `${accent}22`, borderRadius: 10, padding: "5px 10px", flexShrink: 0 }}>
+          <p style={{ color: accent, fontWeight: 900, fontSize: 13, margin: 0 }}>{dataGB}GB</p>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        <div style={{ flex: 1, height: 8, background: "rgba(255,255,255,0.06)", borderRadius: 99, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${pct}%`, borderRadius: 99, background: claimed ? "#475569" : earned ? `linear-gradient(90deg,${accent},${accent}cc)` : "linear-gradient(90deg,#3b82f6,#7c3aed)", transition: "width 0.7s cubic-bezier(.4,0,.2,1)" }} />
+        </div>
+        <p style={{ color: M.muted, fontSize: 11, fontWeight: 700, margin: 0, whiteSpace: "nowrap" }}>{sales}/{threshold}</p>
+      </div>
+
+      <p style={{ color: M.muted, fontSize: 12, margin: "0 0 14px" }}>
+        {claimed ? "✅ Claimed — keep going for next reward!"
+          : earned ? `🔥 You've hit ${threshold}! Claim your ${dataGB}GB now.`
+          : `${remaining} more sale${remaining !== 1 ? "s" : ""} to unlock`}
+      </p>
+
+      {earned && !claimed && (
+        <button onClick={onClaim} style={{ width: "100%", background: `linear-gradient(90deg,${accent},${accent}cc)`, color: "white", border: "none", borderRadius: 12, padding: "13px", fontSize: 14, fontWeight: 900, cursor: "pointer", boxShadow: `0 4px 20px ${accent}40` }}>
+          🎁 Claim {dataGB}GB Free Data →
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Rewards Page ──────────────────────────────────────────────────────────────
+function ReferralsPage({ data }: { data: AgentData }) {
+  type RewardData = {
+    daily:     { sales: number; threshold: number; earned: boolean; claimed: boolean; dataGB: number };
+    weekly:    { sales: number; threshold: number; earned: boolean; claimed: boolean; dataGB: number };
+    milestone: { sales: number; threshold: number; earned: boolean; claimed: boolean; dataGB: number; nextAt: number };
+    history:   { reward_type: string; period: string; phone: string; network: string; data_gb: number; created_at: string }[];
+  };
+
+  const [rewardData,  setRewardData]  = useState<RewardData | null>(null);
+  const [claimModal,  setClaimModal]  = useState<{ type: string; dataGB: number; label: string } | null>(null);
+  const [successMsg,  setSuccessMsg]  = useState("");
+
+  function load() {
+    fetch(`/api/agents/daily-reward?agentId=${data.id}`)
+      .then(r => r.json()).then(d => setRewardData(d)).catch(() => null);
+  }
+  useEffect(() => { load(); }, [data.id]);
+
+  function onSuccess(label: string, dataGB: number, type: string) {
+    setSuccessMsg(`🎉 ${dataGB}GB sent! Your ${label} reward is on the way.`);
+    setTimeout(() => setSuccessMsg(""), 6000);
+    // Mark claimed in local state
+    setRewardData(prev => {
+      if (!prev) return prev;
+      return { ...prev, [type]: { ...prev[type as keyof RewardData] as object, claimed: true } } as RewardData;
+    });
+  }
+
+  const rd = rewardData;
+  const REWARD_DEFS = [
+    { type: "daily",     icon: "🔥", label: "Daily Hustle",    accent: "#f59e0b", description: "Sell 10+ bundles today" },
+    { type: "weekly",    icon: "⭐", label: "Weekly Star",     accent: "#3b82f6", description: "Sell 40+ bundles this week" },
+    { type: "milestone", icon: "🏆", label: "Century Mark",    accent: "#a855f7", description: "Every 100 total completed sales" },
+  ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 560 }}>
+      {/* Header */}
       <div>
-        <h2 style={{ color: M.text, fontSize: 18, fontWeight: 900, margin: 0 }}>🎁 Daily Rewards</h2>
-        <p style={{ color: M.muted, fontSize: 13, margin: "4px 0 0" }}>Sell 10+ bundles in a day — earn a free data bundle (3GB+) as a reward!</p>
+        <h2 style={{ color: M.text, fontSize: 18, fontWeight: 900, margin: 0 }}>🎁 Rewards</h2>
+        <p style={{ color: M.muted, fontSize: 13, margin: "4px 0 0" }}>Earn free data bundles sent straight to your number — the more you sell, the more you earn.</p>
       </div>
 
-      {/* ── Daily progress card ── */}
-      <div style={{ background: M.card, borderRadius: 20, border: `1px solid ${M.border}`, padding: 24, position: "relative", overflow: "hidden" }}>
-        {/* Glow when earned */}
-        {reward?.rewardEarned && !reward.claimed && (
-          <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 0%, rgba(74,222,128,0.12) 0%, transparent 70%)", pointerEvents: "none" }} />
-        )}
-
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-          <div>
-            <p style={{ color: M.muted, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.7, margin: "0 0 4px" }}>Today&apos;s Progress</p>
-            <p style={{ color: M.text, fontSize: 28, fontWeight: 900, margin: 0 }}>
-              {reward?.todaySales ?? "—"} <span style={{ color: M.muted, fontSize: 16, fontWeight: 600 }}>/ 10 sales</span>
-            </p>
-          </div>
-          <div style={{ width: 56, height: 56, borderRadius: "50%", background: reward?.rewardEarned ? "linear-gradient(135deg,#16a34a,#4ade80)" : "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, boxShadow: reward?.rewardEarned ? "0 0 20px rgba(74,222,128,0.4)" : "none", transition: "all 0.4s" }}>
-            {reward?.rewardEarned ? "🎁" : "📦"}
-          </div>
-        </div>
-
-        {/* Progress bar */}
-        <div style={{ height: 10, background: "rgba(255,255,255,0.06)", borderRadius: 99, overflow: "hidden", marginBottom: 10 }}>
-          <div style={{ height: "100%", width: `${pct}%`, borderRadius: 99, background: reward?.rewardEarned ? "linear-gradient(90deg,#16a34a,#4ade80)" : "linear-gradient(90deg,#3b82f6,#7c3aed)", transition: "width 0.7s cubic-bezier(.4,0,.2,1)" }} />
-        </div>
-        <p style={{ color: M.muted, fontSize: 12, margin: "0 0 18px" }}>
-          {reward?.rewardEarned
-            ? reward.claimed ? "✅ Reward claimed today — keep selling! Resets at midnight." : "🔥 You've hit 10 sales! Claim your free bundle below."
-            : `${remaining} more sale${remaining !== 1 ? "s" : ""} to earn today's free bundle`}
-        </p>
-
-        {/* Claim button */}
-        {reward?.rewardEarned && !reward.claimed && (
-          <button
-            onClick={claimReward}
-            disabled={claiming}
-            style={{ width: "100%", background: claiming ? "#475569" : "linear-gradient(90deg,#16a34a,#22c55e)", color: "white", border: "none", borderRadius: 14, padding: "15px", fontSize: 15, fontWeight: 900, cursor: claiming ? "not-allowed" : "pointer", boxShadow: "0 6px 24px rgba(74,222,128,0.35)", letterSpacing: 0.3 }}
-          >
-            {claiming ? "Claiming…" : `🎁 Claim Free ${reward.rewardBundle?.label ?? "3GB+"} Bundle → GH₵${reward.rewardBundle?.price?.toFixed(2) ?? "0.00"} wallet credit`}
-          </button>
-        )}
-
-        {reward?.rewardEarned && reward.claimed && (
-          <div style={{ background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.25)", borderRadius: 12, padding: "12px 16px", textAlign: "center" }}>
-            <p style={{ color: "#4ade80", fontWeight: 800, fontSize: 14, margin: 0 }}>✅ Reward earned and claimed today!</p>
-            <p style={{ color: M.muted, fontSize: 12, margin: "4px 0 0" }}>Resets at midnight — keep selling tomorrow for another reward.</p>
-          </div>
-        )}
-
-        {claimMsg && (
-          <div style={{ marginTop: 12, background: claimMsg.ok ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${claimMsg.ok ? "rgba(74,222,128,0.3)" : "rgba(248,113,113,0.3)"}`, borderRadius: 10, padding: "10px 14px" }}>
-            <p style={{ color: claimMsg.ok ? "#4ade80" : M.red, fontWeight: 700, fontSize: 13, margin: 0 }}>{claimMsg.text}</p>
-          </div>
-        )}
-
-        {sqlNeeded && (
-          <div style={{ marginTop: 10, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, padding: 14 }}>
-            <p style={{ color: "#fbbf24", fontSize: 11, fontWeight: 700, margin: "0 0 6px" }}>Run this SQL in Supabase → SQL Editor:</p>
-            <pre style={{ color: "#4ade80", fontSize: 11, background: "#0e1928", borderRadius: 8, padding: 10, overflowX: "auto", margin: 0, whiteSpace: "pre-wrap" }}>{sqlNeeded}</pre>
-          </div>
-        )}
-      </div>
-
-      {/* ── How it works ── */}
-      <div style={{ background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: 16, padding: 18 }}>
-        <p style={{ color: M.blue, fontWeight: 800, fontSize: 13, margin: "0 0 10px" }}>💡 How the daily reward works</p>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {[
-            { n: "1", text: "Sell 10 or more data bundles in a single day" },
-            { n: "2", text: 'Come to this page and click "Claim" before midnight' },
-            { n: "3", text: "A free bundle (3GB+) is credited to your wallet instantly" },
-            { n: "4", text: "Use the credit to buy your next bundle for a customer — or keep it!" },
-          ].map(s => (
-            <div key={s.n} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-              <div style={{ width: 22, height: 22, borderRadius: "50%", background: M.blue, color: "white", fontSize: 11, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{s.n}</div>
-              <p style={{ color: M.muted, fontSize: 13, margin: 0, lineHeight: 1.5 }}>{s.text}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Reward history ── */}
-      {reward?.history && reward.history.length > 0 && (
-        <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, overflow: "hidden" }}>
-          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${M.border}` }}>
-            <p style={{ color: M.text, fontWeight: 800, fontSize: 14, margin: 0 }}>Recent Rewards</p>
-          </div>
-          {reward.history.map((h, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", borderBottom: i < reward.history.length - 1 ? `1px solid ${M.border}` : "none" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 18 }}>🎁</span>
-                <div>
-                  <p style={{ color: M.text, fontWeight: 700, fontSize: 13, margin: 0 }}>{h.bundle_label} bundle</p>
-                  <p style={{ color: M.muted, fontSize: 11, margin: 0 }}>{h.claim_date}</p>
-                </div>
-              </div>
-              <p style={{ color: "#4ade80", fontWeight: 800, fontSize: 14, margin: 0 }}>+GH₵{Number(h.credit_amount).toFixed(2)}</p>
-            </div>
-          ))}
+      {/* Success banner */}
+      {successMsg && (
+        <div style={{ background: "rgba(74,222,128,0.12)", border: "1px solid rgba(74,222,128,0.3)", borderRadius: 14, padding: "14px 18px" }}>
+          <p style={{ color: "#4ade80", fontWeight: 800, fontSize: 14, margin: 0 }}>{successMsg}</p>
         </div>
       )}
 
-      {/* ── Store link ── */}
-      <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: 20 }}>
-        <p style={{ color: M.text, fontWeight: 800, fontSize: 14, margin: "0 0 12px" }}>📎 My Store Link</p>
-        <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, border: `1px solid ${M.border}`, marginBottom: 10 }}>
-          <p style={{ color: M.muted, fontSize: 12, margin: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "monospace" }}>{storeUrl}</p>
-          <button onClick={copyLink} style={{ background: copied ? "#16a34a" : M.blue, color: "white", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
-            {copied ? "✓ Copied!" : "Copy"}
-          </button>
+      {/* Reward cards */}
+      {rd ? REWARD_DEFS.map(def => {
+        const tier = rd[def.type as keyof Pick<RewardData, "daily" | "weekly" | "milestone">];
+        return (
+          <RewardCard key={def.type}
+            icon={def.icon} label={def.label} description={def.description} accent={def.accent}
+            sales={tier.sales} threshold={tier.threshold} dataGB={tier.dataGB}
+            earned={tier.earned} claimed={tier.claimed}
+            onClaim={() => setClaimModal({ type: def.type, dataGB: tier.dataGB, label: def.label })}
+          />
+        );
+      }) : (
+        [1, 2, 3].map(i => (
+          <div key={i} style={{ background: M.card, borderRadius: 20, border: `1px solid ${M.border}`, padding: 22, height: 140, opacity: 0.5 }} />
+        ))
+      )}
+
+      {/* Milestone next target */}
+      {rd?.milestone && (
+        <div style={{ background: "rgba(168,85,247,0.07)", border: "1px solid rgba(168,85,247,0.2)", borderRadius: 14, padding: "12px 18px" }}>
+          <p style={{ color: "#a855f7", fontWeight: 700, fontSize: 13, margin: 0 }}>
+            🏆 Next Century Mark: {rd.milestone.sales} / {rd.milestone.nextAt} total sales
+          </p>
         </div>
-        <button onClick={() => window.open(storeUrl, "_blank")} style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: `1px solid ${M.border}`, color: M.muted, borderRadius: 10, padding: "11px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Open My Store ↗</button>
+      )}
+
+      {/* How to earn more section */}
+      <div style={{ background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: 16, padding: 20 }}>
+        <p style={{ color: M.blue, fontWeight: 800, fontSize: 14, margin: "0 0 14px" }}>💡 How to earn more rewards</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {[
+            { icon: "🔥", color: "#f59e0b", title: "Daily Hustle — 1GB free",     body: "Sell 10 or more bundles in a single day. Claim before midnight. Resets daily — can earn every day!" },
+            { icon: "⭐", color: "#3b82f6", title: "Weekly Star — 3GB free",      body: "Hit 40 total sales from Monday to Sunday. The more active you are each week, the bigger the reward." },
+            { icon: "🏆", color: "#a855f7", title: "Century Mark — 2GB free",     body: "Every 100 completed orders earns you a 2GB bundle. Keeps unlocking every 100 sales (200, 300, 400…)." },
+            { icon: "📱", color: "#4ade80", title: "Your number, your data",       body: "All rewards are sent directly to any Ghana number you choose — MTN, Telecel or AirtelTigo." },
+          ].map((s, i) => (
+            <div key={i} style={{ display: "flex", gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: `${s.color}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>{s.icon}</div>
+              <div>
+                <p style={{ color: M.text, fontWeight: 700, fontSize: 13, margin: "0 0 2px" }}>{s.title}</p>
+                <p style={{ color: M.muted, fontSize: 12, margin: 0, lineHeight: 1.6 }}>{s.body}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
+
+      {/* Reward history */}
+      {rd?.history && rd.history.length > 0 && (
+        <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${M.border}` }}>
+            <p style={{ color: M.text, fontWeight: 800, fontSize: 14, margin: 0 }}>Reward History</p>
+          </div>
+          {rd.history.map((h, i) => {
+            const def = REWARD_DEFS.find(r => r.type === h.reward_type);
+            return (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: i < rd.history.length - 1 ? `1px solid ${M.border}` : "none" }}>
+                <span style={{ fontSize: 20 }}>{def?.icon ?? "🎁"}</span>
+                <div style={{ flex: 1 }}>
+                  <p style={{ color: M.text, fontWeight: 700, fontSize: 13, margin: 0 }}>{def?.label ?? h.reward_type} — {h.data_gb}GB</p>
+                  <p style={{ color: M.muted, fontSize: 11, margin: 0 }}>{h.phone} · {h.network?.toUpperCase()} · {new Date(h.created_at).toLocaleDateString()}</p>
+                </div>
+                <div style={{ background: "rgba(74,222,128,0.1)", borderRadius: 8, padding: "4px 10px" }}>
+                  <p style={{ color: "#4ade80", fontWeight: 800, fontSize: 12, margin: 0 }}>{h.data_gb}GB</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Claim modal */}
+      {claimModal && (
+        <ClaimModal
+          rewardType={claimModal.type} dataGB={claimModal.dataGB} label={claimModal.label}
+          agentId={data.id}
+          onClose={() => setClaimModal(null)}
+          onSuccess={() => { onSuccess(claimModal.label, claimModal.dataGB, claimModal.type); }}
+        />
+      )}
     </div>
   );
 }
