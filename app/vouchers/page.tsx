@@ -13,13 +13,18 @@ const D = { bg: "#0d1117", card: "#161b22", border: "#21262d", text: "#e6edf3", 
 function usePaystackReady() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    if (typeof window === "undefined") return;
     if (window.PaystackPop) { setReady(true); return; }
-    const s = document.createElement("script");
-    s.src = "https://js.paystack.co/v1/inline.js";
-    s.async = true;
-    s.onload = () => setReady(true);
-    document.body.appendChild(s);
+    const existing = document.querySelector('script[src*="paystack"]');
+    if (!existing) {
+      const s = document.createElement("script");
+      s.src = "https://js.paystack.co/v1/inline.js";
+      s.async = true;
+      s.onload = () => setReady(true);
+      document.body.appendChild(s);
+    } else {
+      const id = setInterval(() => { if (window.PaystackPop) { setReady(true); clearInterval(id); } }, 100);
+      return () => clearInterval(id);
+    }
   }, []);
   return ready;
 }
