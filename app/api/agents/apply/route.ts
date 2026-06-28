@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { supabase } from "@/lib/supabase";
 import { sendAdminAlert } from "@/lib/telegram";
 
-const PRO_FEE_GHC = 50;
+const PRO_FEE_GHC = 40;
 
 async function generateUniqueReferralCode(name: string): Promise<string> {
   const prefix = name.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, "X");
