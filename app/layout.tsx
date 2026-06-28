@@ -3,7 +3,6 @@ import { headers } from "next/headers";
 import PublicNav from "@/components/PublicNav";
 import Footer from "@/components/Footer";
 import WhatsAppButton from "@/components/WhatsAppButton";
-import ChatWidget from "@/components/ChatWidget";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -47,9 +46,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <main className="flex-1">{children}</main>
         {!isStandalone && <Footer />}
         {!isStandalone && <WhatsAppButton />}
-        {!isStandalone && <ChatWidget />}
-        {/* Aura AI chat widget */}
-        <script src="https://my-ai-backend-itf0.onrender.com/widget.js?biz=elitedata" async />
       </body>
     </html>
   );
