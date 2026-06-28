@@ -7,3 +7,17 @@
 body {
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ── Light mode overrides ─────────────────────────────────── */
+:root[data-theme="light"] body {
+  background: #f8fafc;
+  color: #0f172a;
+}
+:root[data-theme="light"] .bg-gray-50  { background: #f1f5f9 !important; }
+:root[data-theme="light"] .bg-gray-900 { background: #1e293b !important; }
+:root[data-theme="light"] .text-gray-900 { color: #0f172a !important; }
+:root[data-theme="light"] .text-gray-300 { color: #475569 !important; }
+:root[data-theme="light"] .text-gray-400 { color: #64748b !important; }
+:root[data-theme="light"] .text-gray-500 { color: #64748b !important; }
+:root[data-theme="light"] .bg-gray-800  { background: #334155 !important; }
+:root[data-theme="light"] .border-gray-800 { border-color: #e2e8f0 !important; }

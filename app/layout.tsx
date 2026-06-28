@@ -4,6 +4,7 @@ import PublicNav from "@/components/PublicNav";
 import Footer from "@/components/Footer";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import WelcomePopup from "@/components/WelcomePopup";
+import ThemeToggle from "@/components/ThemeToggle";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -48,6 +49,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {!isStandalone && <Footer />}
         {!isStandalone && <WhatsAppButton />}
         {!isStandalone && <WelcomePopup />}
+        <div style={{ position: "fixed", top: 14, right: 16, zIndex: 99999 }}>
+          <ThemeToggle />
+        </div>
       </body>
     </html>
   );
