@@ -49,9 +49,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {!isStandalone && <Footer />}
         {!isStandalone && <WhatsAppButton />}
         {!isStandalone && <WelcomePopup />}
-        <div style={{ position: "fixed", top: 14, right: 16, zIndex: 99999 }}>
-          <ThemeToggle />
-        </div>
+        {/* On standalone pages (admin/agent) the nav is absent so we float the toggle */}
+        {isStandalone && (
+          <div style={{ position: "fixed", top: 14, right: 16, zIndex: 99999 }}>
+            <ThemeToggle />
+          </div>
+        )}
       </body>
     </html>
   );

@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -142,6 +143,11 @@ export default function PublicNav() {
         >
           Buy Data ⚡
         </Link>
+
+        {/* Theme toggle — in the nav bar so it never covers other elements */}
+        <div className="shrink-0">
+          <ThemeToggle />
+        </div>
 
         {/* Mobile hamburger — part of navbar, not floating */}
         <button

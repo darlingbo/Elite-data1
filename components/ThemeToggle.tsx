@@ -1,6 +1,68 @@
 "use client";
 import { useEffect, useState } from "react";
 
+/* Light-mode CSS injected as a <style> tag so !important can override inline styles */
+const LIGHT_CSS = `
+  html[data-theme="light"] body { background:#f0f4f8 !important; color:#0f172a !important; }
+
+  /* nav bar */
+  html[data-theme="light"] nav.sticky {
+    background: rgba(255,255,255,0.97) !important;
+    border-color: rgba(0,0,0,0.1) !important;
+  }
+  html[data-theme="light"] nav.sticky a,
+  html[data-theme="light"] nav.sticky span,
+  html[data-theme="light"] nav.sticky button { color: #1e3a8a !important; }
+  html[data-theme="light"] nav.sticky a:hover { background: rgba(30,58,138,0.08) !important; }
+
+  /* drawer */
+  html[data-theme="light"] aside { background: #1e3a8a !important; }
+
+  /* page shells that use the main dark bg */
+  html[data-theme="light"] [style*="background: rgb(8, 15, 30)"],
+  html[data-theme="light"] [style*="background:#080f1e"],
+  html[data-theme="light"] [style*="background: #080f1e"] { background:#f0f4f8 !important; }
+
+  html[data-theme="light"] [style*="background: rgb(13, 27, 46)"],
+  html[data-theme="light"] [style*="background:#0d1b2e"],
+  html[data-theme="light"] [style*="background: #0d1b2e"] { background:#ffffff !important; }
+
+  html[data-theme="light"] [style*="background: rgb(14, 3, 34)"],
+  html[data-theme="light"] [style*="background:#0e0322"],
+  html[data-theme="light"] [style*="background: #0e0322"] { background:#f8fafc !important; }
+
+  /* card borders */
+  html[data-theme="light"] [style*="border-color: rgb(30, 58, 95)"],
+  html[data-theme="light"] [style*="borderColor:#1e3a5f"],
+  html[data-theme="light"] [style*="border: 1px solid rgb(30, 58, 95)"] { border-color:#e2e8f0 !important; }
+
+  /* white text on dark → dark text */
+  html[data-theme="light"] [style*="color: rgb(248, 250, 252)"],
+  html[data-theme="light"] [style*="color:#f8fafc"],
+  html[data-theme="light"] [style*="color: #f8fafc"] { color:#0f172a !important; }
+  html[data-theme="light"] [style*="color: rgb(148, 163, 184)"],
+  html[data-theme="light"] [style*="color:#94a3b8"],
+  html[data-theme="light"] [style*="color: #94a3b8"] { color:#475569 !important; }
+  html[data-theme="light"] [style*="color: rgb(100, 116, 139)"],
+  html[data-theme="light"] [style*="color:#64748b"],
+  html[data-theme="light"] [style*="color: #64748b"] { color:#334155 !important; }
+
+  /* gradients used for page backgrounds */
+  html[data-theme="light"] [style*="linear-gradient(135deg, rgb(6, 12, 28)"],
+  html[data-theme="light"] [style*="linear-gradient(135deg,#060c1c"],
+  html[data-theme="light"] [style*="background: linear-gradient(135deg, rgb(6"] { background:linear-gradient(135deg,#e0e7ff,#f0f4f8) !important; }
+
+  /* min-height shells */
+  html[data-theme="light"] [style*="min-height: 100vh"][style*="background"] { background:#f0f4f8 !important; }
+
+  /* Tailwind utility overrides for public pages */
+  html[data-theme="light"] .bg-gray-900  { background:#f8fafc !important; }
+  html[data-theme="light"] .bg-slate-900 { background:#f1f5f9 !important; }
+  html[data-theme="light"] .bg-blue-950  { background:#dbeafe !important; }
+  html[data-theme="light"] .text-white   { color:#0f172a !important; }
+  html[data-theme="light"] .text-gray-300, html[data-theme="light"] .text-gray-400 { color:#475569 !important; }
+`;
+
 export default function ThemeToggle() {
   const [dark, setDark] = useState(true);
 
@@ -8,14 +70,29 @@ export default function ThemeToggle() {
     const saved = localStorage.getItem("elite-theme");
     const isDark = saved ? saved === "dark" : true;
     setDark(isDark);
-    document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+    applyTheme(isDark);
   }, []);
+
+  function applyTheme(isDark: boolean) {
+    document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+    let tag = document.getElementById("elite-light-css") as HTMLStyleElement | null;
+    if (!isDark) {
+      if (!tag) {
+        tag = document.createElement("style");
+        tag.id = "elite-light-css";
+        document.head.appendChild(tag);
+      }
+      tag.textContent = LIGHT_CSS;
+    } else {
+      tag?.remove();
+    }
+  }
 
   function toggle() {
     const next = !dark;
     setDark(next);
     localStorage.setItem("elite-theme", next ? "dark" : "light");
-    document.documentElement.setAttribute("data-theme", next ? "dark" : "light");
+    applyTheme(next);
   }
 
   return (
@@ -53,7 +130,6 @@ export default function ThemeToggle() {
         .bloom-switch__star--1 { top:22%; left:58%; transform:scale(0.4); }
         .bloom-switch__star--2 { top:55%; left:70%; width:3px; height:3px; transform:scale(0.4); }
         .bloom-switch__star--3 { top:38%; left:82%; width:2px; height:2px; transform:scale(0.4); }
-
         .bloom-switch input:checked ~ .bloom-switch__track {
           background:linear-gradient(120deg,#150633,#0e0322);
           border-color:rgba(165,123,255,0.55);
@@ -72,7 +148,6 @@ export default function ThemeToggle() {
         <input type="checkbox" checked={dark} onChange={toggle} />
         <span className="bloom-switch__track">
           <span className="bloom-switch__thumb">
-            {/* Sun */}
             <svg className="bloom-switch__sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="5" />
               <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
@@ -80,7 +155,6 @@ export default function ThemeToggle() {
               <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
               <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
             </svg>
-            {/* Moon */}
             <svg className="bloom-switch__moon" viewBox="0 0 24 24" fill="currentColor">
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
             </svg>
