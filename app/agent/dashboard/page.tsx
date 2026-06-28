@@ -871,9 +871,66 @@ function WalletPage({ data, onAddFunds, onWithdraw }: { data: AgentData; onAddFu
   const commissionBal = data.commission_balance ?? 0;
   const withdrawable = isPriceModeAgent ? commissionBal + paystackBal : commissionBal;
 
+  const whole = Math.floor(data.wallet_balance ?? 0);
+  const frac  = ((data.wallet_balance ?? 0) % 1).toFixed(2).slice(1);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <h2 style={{ color: M.text, fontSize: 18, fontWeight: 900, margin: 0 }}>Wallet</h2>
+
+      {/* ─── Hero Wallet Card ─── */}
+      <div style={{
+        borderRadius: 22, padding: "22px 22px 20px",
+        border: "1px solid rgba(74,222,128,0.28)",
+        background: "radial-gradient(120% 90% at 18% 0%, #0d2518 0%, #0d1b2e 55%, #080f1e 100%)",
+        boxShadow: "0 0 0 1px rgba(74,222,128,0.1), 0 18px 50px -14px rgba(74,222,128,0.22)",
+        position: "relative", overflow: "hidden",
+      }}>
+        {/* sheen */}
+        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(60% 40% at 80% 100%, rgba(255,255,255,0.03), transparent 70%)", pointerEvents: "none" }} />
+
+        {/* head */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18, position: "relative" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(248,250,252,0.55)" }}>
+            <div style={{ width: 7, height: 7, borderRadius: 999, background: "#4ade80", boxShadow: "0 0 0 3px rgba(74,222,128,0.22)" }} />
+            Working Capital
+          </div>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 24, padding: "0 10px 0 8px", borderRadius: 999, background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.22)", color: "#4ade80", fontSize: 11, fontWeight: 700, fontFamily: "monospace" }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#4ade80", animation: "pulse 2s infinite" }} />
+            LIVE
+          </div>
+        </div>
+
+        {/* big value */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 2, lineHeight: 0.95, letterSpacing: "-0.035em", position: "relative" }}>
+          <span style={{ fontSize: "1.75rem", marginRight: 2, opacity: 0.65, color: "#f8fafc", fontWeight: 600 }}>GH₵</span>
+          <span style={{ fontSize: "3.25rem", fontWeight: 700, color: "#4ade80" }}>{whole}</span>
+          <span style={{ fontSize: "1.5rem", fontWeight: 600, opacity: 0.5, color: "#4ade80" }}>{frac}</span>
+        </div>
+
+        <p style={{ margin: "12px 0 22px", fontSize: 12, color: "rgba(248,250,252,0.5)", letterSpacing: "0.02em", position: "relative" }}>
+          Active working capital · use this to buy data bundles
+        </p>
+
+        {/* foot */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "relative" }}>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={onAddFunds} style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 38, padding: "0 18px", borderRadius: 999, background: "#4ade80", color: "#080f1e", border: 0, fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "opacity .15s" }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = "0.88")} onMouseLeave={e => (e.currentTarget.style.opacity = "1")}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Funds
+            </button>
+            <button onClick={onWithdraw} style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 38, padding: "0 18px", borderRadius: 999, background: "rgba(74,222,128,0.1)", color: "#4ade80", border: "1px solid rgba(74,222,128,0.25)", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "opacity .15s" }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = "0.75")} onMouseLeave={e => (e.currentTarget.style.opacity = "1")}>
+              Withdraw
+            </button>
+          </div>
+          <div style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: "0.04em", color: "rgba(248,250,252,0.35)", textAlign: "right", lineHeight: 1.5 }}>
+            {data.name.split(" ")[0].toUpperCase()}<br />
+            {data.referral_code}
+          </div>
+        </div>
+      </div>
 
       {isPriceModeAgent ? (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="wallet-grid">
