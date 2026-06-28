@@ -1041,38 +1041,120 @@ function PricesPage({ data }: { data: AgentData }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div><h2 style={{ color: M.text, fontSize: 18, fontWeight: 900, margin: 0 }}>My Selling Prices</h2><p style={{ color: M.muted, fontSize: 13, margin: "4px 0 0" }}>Set your markup above admin base price. The difference is your profit.</p></div>
-        {agentPlan && <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 20, background: agentPlan === "free" ? "rgba(16,185,129,0.1)" : "rgba(139,92,246,0.1)", color: agentPlan === "free" ? "#16a34a" : "#7c3aed", border: `1px solid ${agentPlan === "free" ? "rgba(16,185,129,0.3)" : "rgba(139,92,246,0.3)"}` }}>{agentPlan === "free" ? "Free Plan" : "Pro Plan"}</span>}
-      </div>
-      {msg && <div style={{ padding: "12px 16px", borderRadius: 12, background: msg.ok ? "#dcfce7" : "#fee2e2", border: `1px solid ${msg.ok ? "#bbf7d0" : "#fecaca"}`, color: msg.ok ? "#16a34a" : M.red, fontSize: 14, fontWeight: 700 }}>{msg.text}</div>}
-      <div style={{ display: "flex", gap: 8 }}>
-        {nets.map(n => <button key={n.id} onClick={() => setActiveNet(n.id)} style={{ padding: "8px 20px", borderRadius: 10, border: `2px solid ${activeNet === n.id ? netColor[n.id] : M.border}`, background: activeNet === n.id ? `${netColor[n.id]}15` : "white", color: activeNet === n.id ? netColor[n.id] : M.muted, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{n.label}</button>)}
-      </div>
-      <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 130px 150px", gap: 0, padding: "10px 20px", borderBottom: `1px solid ${M.border}`, background: "rgba(255,255,255,0.05)" }}>
-          {["Bundle", "Admin Price", "My Price", "Profit"].map(h => <p key={h} style={{ color: M.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6, margin: 0 }}>{h}</p>)}
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <h2 style={{ color: M.text, fontSize: 18, fontWeight: 900, margin: "0 0 4px" }}>My Selling Prices</h2>
+          <p style={{ color: M.muted, fontSize: 13, margin: 0 }}>You control what your customers pay. Set any price above your buy price — that gap is your profit.</p>
         </div>
+        {agentPlan && (
+          <span style={{ fontSize: 11, fontWeight: 800, padding: "4px 12px", borderRadius: 20, whiteSpace: "nowrap", flexShrink: 0,
+            background: agentPlan === "free" ? "rgba(59,130,246,0.12)" : "rgba(139,92,246,0.12)",
+            color: agentPlan === "free" ? "#3b82f6" : "#7c3aed",
+            border: `1px solid ${agentPlan === "free" ? "rgba(59,130,246,0.3)" : "rgba(139,92,246,0.3)"}` }}>
+            {agentPlan === "free" ? "Free Agent" : "Pro Agent ⭐"}
+          </span>
+        )}
+      </div>
+
+      {/* How it works banner */}
+      <div style={{ background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: 12, padding: "12px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
+        <span style={{ fontSize: 18, flexShrink: 0 }}>💡</span>
+        <div>
+          <p style={{ color: M.text, fontSize: 13, fontWeight: 700, margin: "0 0 2px" }}>How your pricing works</p>
+          <p style={{ color: M.muted, fontSize: 12, margin: 0, lineHeight: 1.5 }}>
+            <b style={{ color: M.blue }}>Your Buy Price</b> is what you pay per bundle. Set your <b style={{ color: "#16a34a" }}>My Selling Price</b> to anything higher — the difference goes straight to you as profit. No limits.
+          </p>
+        </div>
+      </div>
+
+      {msg && <div style={{ padding: "12px 16px", borderRadius: 12, background: msg.ok ? "#dcfce7" : "#fee2e2", border: `1px solid ${msg.ok ? "#bbf7d0" : "#fecaca"}`, color: msg.ok ? "#16a34a" : M.red, fontSize: 14, fontWeight: 700 }}>{msg.text}</div>}
+
+      {/* Network tabs */}
+      <div style={{ display: "flex", gap: 8 }}>
+        {nets.map(n => (
+          <button key={n.id} onClick={() => setActiveNet(n.id)} style={{ padding: "8px 20px", borderRadius: 10, border: `2px solid ${activeNet === n.id ? netColor[n.id] : M.border}`, background: activeNet === n.id ? `${netColor[n.id]}15` : "transparent", color: activeNet === n.id ? netColor[n.id] : M.muted, fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.15s" }}>{n.label}</button>
+        ))}
+      </div>
+
+      {/* Price table */}
+      <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, overflow: "hidden" }}>
+        {/* Table header */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 150px 150px", gap: 0, padding: "10px 20px", borderBottom: `1px solid ${M.border}`, background: "rgba(255,255,255,0.04)" }}>
+          {[
+            { label: "Bundle", color: M.muted },
+            { label: "Your Buy Price", color: M.blue },
+            { label: "My Selling Price", color: "#16a34a" },
+            { label: "Your Profit", color: M.amber },
+          ].map(h => (
+            <p key={h.label} style={{ color: h.color, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6, margin: 0 }}>{h.label}</p>
+          ))}
+        </div>
+
+        {/* Rows */}
         {filtered.map((b, i) => {
-          const base = tierPrices[b.id] ?? b.costPrice; const myPrice = agentPrices[b.id];
-          const profit = myPrice ? (myPrice - base) : null; const isEditing = editing?.bundleId === b.id;
+          const base     = tierPrices[b.id] ?? b.costPrice;
+          const myPrice  = agentPrices[b.id];
+          const profit   = myPrice != null ? myPrice - base : null;
+          const isEditing = editing?.bundleId === b.id;
           return (
-            <div key={b.id} style={{ display: "grid", gridTemplateColumns: "1fr 130px 130px 150px", gap: 0, padding: "14px 20px", borderTop: i > 0 ? `1px solid ${M.border}` : "none", alignItems: "center" }}>
-              <div><p style={{ color: M.text, fontWeight: 700, fontSize: 14, margin: "0 0 2px" }}>{b.size}</p><p style={{ color: M.muted, fontSize: 11, margin: 0 }}>{b.validity}</p></div>
-              <p style={{ color: M.muted, fontWeight: 600, fontSize: 14, margin: 0 }}>GH₵{base.toFixed(2)}</p>
+            <div key={b.id} style={{ display: "grid", gridTemplateColumns: "1fr 130px 150px 150px", gap: 0, padding: "14px 20px", borderTop: i > 0 ? `1px solid ${M.border}` : "none", alignItems: "center" }}>
+              {/* Bundle name */}
               <div>
-                {isEditing ? <input type="number" step="0.5" autoFocus value={editing.val} onChange={e => setEditing(p => p ? { ...p, val: e.target.value } : p)} style={{ background: "rgba(255,255,255,0.05)", border: `2px solid ${M.blue}`, borderRadius: 8, padding: "7px 10px", color: M.text, fontSize: 14, width: 100, outline: "none" }} onKeyDown={e => { if (e.key === "Enter") savePrice(b.id, parseFloat(editing.val)); if (e.key === "Escape") setEditing(null); }} />
-                  : <button onClick={() => setEditing({ bundleId: b.id, val: String(myPrice ?? (base + 1).toFixed(2)) })} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><span style={{ fontSize: 15, fontWeight: 800, color: myPrice ? "#16a34a" : M.muted }}>{myPrice ? `GH₵${myPrice.toFixed(2)}` : "Tap to set"}</span></button>}
+                <p style={{ color: M.text, fontWeight: 700, fontSize: 14, margin: "0 0 2px" }}>{b.size}</p>
+                <p style={{ color: M.muted, fontSize: 11, margin: 0 }}>{b.validity}</p>
               </div>
+
+              {/* Buy price (read-only, what agent pays) */}
+              <div>
+                <p style={{ color: M.blue, fontWeight: 700, fontSize: 14, margin: 0 }}>GH₵{base.toFixed(2)}</p>
+                <p style={{ color: M.muted, fontSize: 10, margin: "2px 0 0" }}>your cost</p>
+              </div>
+
+              {/* Selling price (agent sets this) */}
+              <div>
+                {isEditing ? (
+                  <input
+                    type="number" step="0.5" autoFocus value={editing.val}
+                    onChange={e => setEditing(p => p ? { ...p, val: e.target.value } : p)}
+                    style={{ background: "rgba(255,255,255,0.05)", border: `2px solid ${M.blue}`, borderRadius: 8, padding: "7px 10px", color: M.text, fontSize: 14, width: 110, outline: "none" }}
+                    onKeyDown={e => { if (e.key === "Enter") savePrice(b.id, parseFloat(editing.val)); if (e.key === "Escape") setEditing(null); }}
+                  />
+                ) : (
+                  <button onClick={() => setEditing({ bundleId: b.id, val: String(myPrice ?? (base + 1).toFixed(2)) })} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left" }}>
+                    <p style={{ fontSize: 15, fontWeight: 800, color: myPrice ? "#16a34a" : M.muted, margin: 0 }}>{myPrice ? `GH₵${myPrice.toFixed(2)}` : "Tap to set →"}</p>
+                    {!myPrice && <p style={{ fontSize: 10, color: M.muted, margin: "2px 0 0" }}>not set yet</p>}
+                  </button>
+                )}
+              </div>
+
+              {/* Profit + actions */}
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {profit !== null && <span style={{ fontSize: 12, color: "#16a34a", background: "#dcfce7", padding: "3px 8px", borderRadius: 20, fontWeight: 700 }}>+GH₵{profit.toFixed(2)}</span>}
-                {isEditing ? <div style={{ display: "flex", gap: 6 }}><button onClick={() => savePrice(b.id, parseFloat(editing.val))} disabled={saving} style={{ background: M.blue, color: "white", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button><button onClick={() => setEditing(null)} style={{ background: "#f1f5f9", color: M.muted, border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>✕</button></div>
-                  : <button onClick={() => setEditing({ bundleId: b.id, val: String(myPrice ?? (base + 1).toFixed(2)) })} style={{ background: "#f1f5f9", border: `1px solid ${M.border}`, borderRadius: 8, padding: "5px 10px", fontSize: 12, color: M.muted, cursor: "pointer", fontWeight: 600 }}>Edit</button>}
+                {profit !== null && profit > 0 && (
+                  <span style={{ fontSize: 12, color: "#16a34a", background: "#dcfce7", padding: "3px 8px", borderRadius: 20, fontWeight: 700 }}>+GH₵{profit.toFixed(2)}</span>
+                )}
+                {profit !== null && profit <= 0 && (
+                  <span style={{ fontSize: 12, color: M.red, background: "#fee2e2", padding: "3px 8px", borderRadius: 20, fontWeight: 700 }}>Below cost!</span>
+                )}
+                {isEditing ? (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => savePrice(b.id, parseFloat(editing.val))} disabled={saving} style={{ background: M.blue, color: "white", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button>
+                    <button onClick={() => setEditing(null)} style={{ background: "#f1f5f9", color: M.muted, border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>✕</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setEditing({ bundleId: b.id, val: String(myPrice ?? (base + 1).toFixed(2)) })} style={{ background: "#f1f5f9", border: `1px solid ${M.border}`, borderRadius: 8, padding: "5px 10px", fontSize: 12, color: M.muted, cursor: "pointer", fontWeight: 600 }}>Edit</button>
+                )}
               </div>
             </div>
           );
         })}
-        {filtered.length === 0 && <div style={{ padding: 40, textAlign: "center", color: M.muted }}>No bundles found for {activeNet}</div>}
+        {filtered.length === 0 && <div style={{ padding: 40, textAlign: "center", color: M.muted }}>No bundles for {activeNet}.</div>}
+      </div>
+
+      {/* Quick tip */}
+      <div style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: 12, padding: "12px 16px" }}>
+        <p style={{ color: "#16a34a", fontSize: 12, fontWeight: 700, margin: "0 0 2px" }}>💰 Tip: set competitive prices</p>
+        <p style={{ color: M.muted, fontSize: 12, margin: 0 }}>Your customers only see <b style={{ color: M.text }}>My Selling Price</b> — they never see your buy price. The higher you sell vs. what you pay, the more you earn per sale.</p>
       </div>
     </div>
   );

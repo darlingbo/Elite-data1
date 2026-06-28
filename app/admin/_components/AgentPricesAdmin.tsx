@@ -320,11 +320,11 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#1e3050] text-xs text-slate-500 uppercase tracking-wider" style={{ background: "#0e1928" }}>
-                {["Network", "Bundle", "Customer Price", "Your Cost", "Your Profit", "Free Agent Price", "Pro Agent Price", "Pro Agent Profit", "Status", "Actions"].map((h) => (
+                {["Network", "Bundle", "Customer Price", "Your Cost", "Your Profit", "Free Agent Buy Price", "Pro Agent Buy Price", "Status", "Actions"].map((h) => (
                   <th key={h} className="px-4 py-3 text-left font-semibold whitespace-nowrap">
-                    {h === "Free Agent Price"
+                    {h === "Free Agent Buy Price"
                       ? <span className="text-blue-400">{h} <span className="text-blue-600 text-[9px] font-normal">(auto −4%)</span></span>
-                      : h === "Pro Agent Price"
+                      : h === "Pro Agent Buy Price"
                       ? <span className="text-purple-400">{h} ✎</span>
                       : h}
                   </th>
@@ -337,8 +337,6 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
                 const tierPrice      = tierPrices[b.id];
                 const adminProfit    = b.price - b.costPrice;
                 const freeAgentPrice = parseFloat((b.price * 0.96).toFixed(2));
-                // Pro agent profit = difference between customer price and what agent pays
-                const proAgentProfit = tierPrice != null ? b.price - tierPrice : null;
                 return (
                   <tr key={b.id} className={`border-b border-[#1e3050]/50 last:border-0 transition-colors ${b.active ? "hover:bg-[#1e3050]/30" : "opacity-50 hover:opacity-70"}`}>
                     <td className="px-4 py-3.5">
@@ -354,25 +352,17 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
                         GH₵{adminProfit.toFixed(2)}
                       </span>
                     </td>
-                    {/* Free Agent Price — auto-calculated, read-only */}
+                    {/* Free Agent Buy Price — auto-calculated, read-only */}
                     <td className="px-4 py-3.5">
                       <span className="font-bold text-xs text-blue-300 font-mono">GH₵{freeAgentPrice.toFixed(2)}</span>
                     </td>
-                    {/* Pro Agent Price — admin-set tier price */}
+                    {/* Pro Agent Buy Price — admin-set tier price */}
                     <td className="px-4 py-3.5">
                       {tierPrice != null ? (
                         <span className="font-bold text-xs text-purple-300 font-mono">GH₵{tierPrice.toFixed(2)}</span>
                       ) : (
                         <span className="text-slate-600 text-xs italic">Not set</span>
                       )}
-                    </td>
-                    {/* Pro agent's potential margin if they sell at customer price */}
-                    <td className="px-4 py-3.5">
-                      {proAgentProfit !== null ? (
-                        <span className="font-black text-xs" style={{ color: proAgentProfit > 0 ? "#a78bfa" : "#f87171" }}>
-                          GH₵{proAgentProfit.toFixed(2)}
-                        </span>
-                      ) : <span className="text-slate-600 text-xs">—</span>}
                     </td>
                     <td className="px-4 py-3.5">
                       <button onClick={() => handleToggleActive(b)} disabled={togglingId === b.id}
