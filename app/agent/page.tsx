@@ -27,9 +27,6 @@ export default function AgentPage() {
   const [bundlesPerDay, setBundlesPerDay] = useState(10);
   const [agentPlan, setAgentPlan]       = useState<"free" | "pro" | null>(null);
 
-  // ── Animation ─────────────────────────────────────────────────────────────
-  const [leaving, setLeaving] = useState(false);
-
   // ── Form ──────────────────────────────────────────────────────────────────
   const [form, setFormState] = useState({
     name: "", email: "", phone: "", whatsapp: "", business_name: "", password: "", confirmPassword: "",
@@ -341,108 +338,120 @@ export default function AgentPage() {
 
   // ── Registration Form ─────────────────────────────────────────────────────
   const isPro = agentPlan === "pro";
-  function goLogin() { setLeaving(true); setTimeout(() => { window.location.href = "/agent/dashboard"; }, 820); }
   const inp = "w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#060c1c 0%,#0d1b2e 60%,#1e1b4b 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}>
-      <div className={`auth-container${leaving ? " active" : ""}`} style={{ position: "relative", width: "100%", maxWidth: 900, minHeight: 640, borderRadius: 24, overflow: "hidden", boxShadow: "0 30px 80px rgba(0,0,0,0.55)" }}>
+      <div style={{ width: "100%", maxWidth: 920, borderRadius: 24, overflow: "hidden", boxShadow: "0 30px 80px rgba(0,0,0,0.55)", display: "grid", gridTemplateColumns: "1fr 1.6fr", minHeight: 560 }}>
 
-        <div className="form-panel--register" style={{ position: "absolute", inset: 0, background: "white", display: "flex", alignItems: "flex-start", justifyContent: "flex-end", padding: "36px 36px 36px 0" }}>
-          <div style={{ width: "100%", maxWidth: 420, overflowY: "auto", maxHeight: "calc(100vh - 80px)" }}>
-
-            {/* Plan badge + back to wizard */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-              <button onClick={() => setWizardStep("plan")} style={{ background: "none", border: "none", color: "#2563eb", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 0 }}>← Change plan</button>
-              <div style={{ background: isPro ? "linear-gradient(90deg,#1e3a8a,#2563eb)" : "#f1f5f9", borderRadius: 999, padding: "5px 14px" }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: isPro ? "#fbbf24" : "#64748b" }}>{isPro ? "⭐ Pro Agent · GH₵" + PRO_FEE : "Free Agent"}</span>
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 22 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: isPro ? "linear-gradient(135deg,#1e3a8a,#2563eb)" : "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 900, color: "white", marginBottom: 12 }}>E</div>
-              <h1 style={{ fontSize: 20, fontWeight: 900, color: "#0f172a", margin: "0 0 3px" }}>{isPro ? "Create Pro Account" : "Apply as Free Agent"}</h1>
-              <p style={{ fontSize: 12, color: "#64748b", margin: 0 }}>{isPro ? `Pay GH₵${PRO_FEE} once — activated instantly` : "Fill in your details — we review within 24 hours"}</p>
-            </div>
-
-            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {error && <div style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 13, padding: "10px 12px", borderRadius: 10 }}>{error}</div>}
-
-              <div><label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Full Name <span style={{ color: "#ef4444" }}>*</span></label>
-                <input type="text" placeholder="e.g. Kwame Mensah" value={form.name} onChange={e => setField("name", e.target.value)} className={inp} /></div>
-
-              <div><label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Email <span style={{ color: "#ef4444" }}>*</span></label>
-                <input type="email" placeholder="kwame@gmail.com" value={form.email} onChange={e => setField("email", e.target.value)} className={inp} /></div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div><label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Phone <span style={{ color: "#ef4444" }}>*</span></label>
-                  <input type="tel" placeholder="0241234567" value={form.phone} onChange={e => setField("phone", e.target.value)} className={inp} /></div>
-                <div><label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>WhatsApp <span style={{ color: "#ef4444" }}>*</span></label>
-                  <input type="tel" placeholder="0241234567" value={form.whatsapp} onChange={e => setField("whatsapp", e.target.value)} className={inp} /></div>
-              </div>
-
-              <div><label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Business Name <span style={{ color: "#94a3b8", fontWeight: 500 }}>(optional)</span></label>
-                <input type="text" placeholder="e.g. Kwame's Data Hub" value={form.business_name} onChange={e => setField("business_name", e.target.value)} className={inp} /></div>
-
-              <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 12 }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 10 }}>Create Password</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div style={{ position: "relative" }}>
-                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Password <span style={{ color: "#ef4444" }}>*</span></label>
-                    <input type={showPw ? "text" : "password"} placeholder="Min 6 characters" value={form.password} onChange={e => setField("password", e.target.value)} className={inp} style={{ paddingRight: 36 }} />
-                    <button type="button" onClick={() => setShowPw(s => !s)} style={{ position: "absolute", right: 10, bottom: 9, background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}><EyeIcon open={showPw} /></button>
-                  </div>
-                  <div style={{ position: "relative" }}>
-                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Confirm Password <span style={{ color: "#ef4444" }}>*</span></label>
-                    <input type={showConfirm ? "text" : "password"} placeholder="Repeat password" value={form.confirmPassword} onChange={e => setField("confirmPassword", e.target.value)} className={inp} style={{ paddingRight: 36 }} />
-                    <button type="button" onClick={() => setShowConfirm(s => !s)} style={{ position: "absolute", right: 10, bottom: 9, background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}><EyeIcon open={showConfirm} /></button>
-                  </div>
-                </div>
-              </div>
-
-              <button type="submit" disabled={loading} style={{
-                background: loading ? "#94a3b8" : isPro ? "linear-gradient(90deg,#1e3a8a,#2563eb)" : "linear-gradient(90deg,#3b82f6,#7c3aed)",
-                color: "white", border: "none", borderRadius: 12, padding: "13px", fontSize: 14, fontWeight: 800,
-                cursor: loading ? "not-allowed" : "pointer", marginTop: 4,
-              }}>
-                {loading ? (isPro ? "Opening payment…" : "Submitting…") : isPro ? `Pay GH₵${PRO_FEE} & Get Instant Access →` : "Submit Free Application →"}
-              </button>
-
-              {!isPro && (
-                <p style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", margin: 0 }}>
-                  Want instant access?{" "}
-                  <button type="button" onClick={() => { setAgentPlan("pro"); }} style={{ background: "none", border: "none", color: "#2563eb", fontWeight: 700, cursor: "pointer", fontSize: 11, padding: 0 }}>Upgrade to Pro →</button>
-                </p>
-              )}
-            </form>
-
-            <p className="mobile-login-link" style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, marginTop: 18, display: "none" }}>
-              Already an agent? <a href="/agent/dashboard" style={{ color: "#3b82f6", fontWeight: 700 }}>Sign in →</a>
-            </p>
-          </div>
+        {/* ── Left panel ── */}
+        <div style={{ background: "linear-gradient(160deg,#7c3aed 0%,#1d4ed8 55%,#0369a1 100%)", padding: "48px 36px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
+          <div style={{ fontSize: 52, marginBottom: 18 }}>💰</div>
+          <h2 style={{ fontSize: 22, fontWeight: 900, color: "white", margin: "0 0 12px", lineHeight: 1.25 }}>Already an Agent?</h2>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", margin: "0 0 28px", lineHeight: 1.65 }}>
+            Sign in to your dashboard, check your wallet, and manage your sales.
+          </p>
+          <a href="/agent/dashboard" style={{ background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.35)", color: "white", textDecoration: "none", borderRadius: 14, padding: "12px 28px", fontSize: 14, fontWeight: 800, display: "inline-block" }}>
+            Sign In →
+          </a>
+          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, marginTop: 20 }}>Free or GH₵{PRO_FEE} Pro · Set your own prices</p>
         </div>
 
-        <div className="overlay-panel-reg" style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#7c3aed 0%,#1d4ed8 60%,#0369a1 100%)", display: "flex", alignItems: "center", paddingLeft: 48, paddingRight: "52%" }}>
-          <div style={{ maxWidth: 280, textAlign: "center" }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>💰</div>
-            <h2 style={{ fontSize: 24, fontWeight: 900, color: "white", margin: "0 0 12px", lineHeight: 1.2 }}>Already an Agent?</h2>
-            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.8)", margin: "0 0 28px", lineHeight: 1.6 }}>Welcome back! Sign in to access your dashboard, check your wallet, and manage your sales.</p>
-            <button onClick={goLogin} style={{ background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.4)", color: "white", borderRadius: 14, padding: "12px 28px", fontSize: 14, fontWeight: 800, cursor: "pointer", backdropFilter: "blur(8px)" }}>Sign In →</button>
-            <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, marginTop: 20 }}>Free or GH₵{PRO_FEE} Pro · Set your own prices</p>
+        {/* ── Right panel — form ── */}
+        <div style={{ background: "white", padding: "36px 40px", overflowY: "auto", maxHeight: "90vh" }}>
+
+          {/* Plan badge + back */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+            <button onClick={() => setWizardStep("plan")} style={{ background: "none", border: "none", color: "#2563eb", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 0 }}>← Change plan</button>
+            <div style={{ background: isPro ? "linear-gradient(90deg,#1e3a8a,#2563eb)" : "#f1f5f9", borderRadius: 999, padding: "5px 14px" }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: isPro ? "#fbbf24" : "#64748b" }}>
+                {isPro ? `⭐ Pro Agent · GH₵${PRO_FEE}` : "Free Agent"}
+              </span>
+            </div>
           </div>
+
+          {/* Heading */}
+          <div style={{ marginBottom: 22 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: isPro ? "linear-gradient(135deg,#1e3a8a,#2563eb)" : "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 900, color: "white", marginBottom: 12 }}>E</div>
+            <h1 style={{ fontSize: 20, fontWeight: 900, color: "#0f172a", margin: "0 0 4px" }}>
+              {isPro ? "Create Pro Account" : "Apply as Free Agent"}
+            </h1>
+            <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>
+              {isPro ? `Pay GH₵${PRO_FEE} once — activated instantly` : "Fill in your details — we review within 24 hours"}
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+            {error && <div style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 13, padding: "10px 12px", borderRadius: 10 }}>{error}</div>}
+
+            <div>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Full Name <span style={{ color: "#ef4444" }}>*</span></label>
+              <input type="text" placeholder="e.g. Kwame Mensah" value={form.name} onChange={e => setField("name", e.target.value)} className={inp} />
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Email <span style={{ color: "#ef4444" }}>*</span></label>
+              <input type="email" placeholder="kwame@gmail.com" value={form.email} onChange={e => setField("email", e.target.value)} className={inp} />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Phone <span style={{ color: "#ef4444" }}>*</span></label>
+                <input type="tel" placeholder="0241234567" value={form.phone} onChange={e => setField("phone", e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>WhatsApp <span style={{ color: "#ef4444" }}>*</span></label>
+                <input type="tel" placeholder="0241234567" value={form.whatsapp} onChange={e => setField("whatsapp", e.target.value)} className={inp} />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Business Name <span style={{ color: "#94a3b8", fontWeight: 500 }}>(optional)</span></label>
+              <input type="text" placeholder="e.g. Kwame's Data Hub" value={form.business_name} onChange={e => setField("business_name", e.target.value)} className={inp} />
+            </div>
+
+            <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 12 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 10 }}>Create Password</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ position: "relative" }}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Password <span style={{ color: "#ef4444" }}>*</span></label>
+                  <input type={showPw ? "text" : "password"} placeholder="Min 6 characters" value={form.password} onChange={e => setField("password", e.target.value)} className={inp} style={{ paddingRight: 36 }} />
+                  <button type="button" onClick={() => setShowPw(s => !s)} style={{ position: "absolute", right: 10, bottom: 9, background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}><EyeIcon open={showPw} /></button>
+                </div>
+                <div style={{ position: "relative" }}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Confirm Password <span style={{ color: "#ef4444" }}>*</span></label>
+                  <input type={showConfirm ? "text" : "password"} placeholder="Repeat password" value={form.confirmPassword} onChange={e => setField("confirmPassword", e.target.value)} className={inp} style={{ paddingRight: 36 }} />
+                  <button type="button" onClick={() => setShowConfirm(s => !s)} style={{ position: "absolute", right: 10, bottom: 9, background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}><EyeIcon open={showConfirm} /></button>
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" disabled={loading} style={{
+              background: loading ? "#94a3b8" : isPro ? "linear-gradient(90deg,#1e3a8a,#2563eb)" : "linear-gradient(90deg,#3b82f6,#7c3aed)",
+              color: "white", border: "none", borderRadius: 12, padding: "14px", fontSize: 14, fontWeight: 800,
+              cursor: loading ? "not-allowed" : "pointer", marginTop: 4,
+            }}>
+              {loading ? (isPro ? "Opening payment…" : "Submitting…") : isPro ? `Pay GH₵${PRO_FEE} & Get Instant Access →` : "Submit Free Application →"}
+            </button>
+
+            {!isPro && (
+              <p style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", margin: 0 }}>
+                Want instant access?{" "}
+                <button type="button" onClick={() => setAgentPlan("pro")} style={{ background: "none", border: "none", color: "#2563eb", fontWeight: 700, cursor: "pointer", fontSize: 11, padding: 0 }}>Upgrade to Pro →</button>
+              </p>
+            )}
+
+            <p style={{ textAlign: "center", color: "#94a3b8", fontSize: 12, marginTop: 4 }}>
+              Already an agent? <a href="/agent/dashboard" style={{ color: "#3b82f6", fontWeight: 700 }}>Sign in →</a>
+            </p>
+          </form>
         </div>
       </div>
 
       <style>{`
-        .overlay-panel-reg { clip-path:polygon(0 0,56% 0,62% 100%,0 100%); transition:transform 900ms cubic-bezier(.77,0,.18,1),clip-path 900ms cubic-bezier(.77,0,.18,1); }
-        .auth-container.active .overlay-panel-reg { transform:translateX(100%); clip-path:polygon(38% 0,100% 0,100% 100%,44% 100%); }
-        .form-panel--register { transition:opacity 450ms ease,transform 450ms ease,filter 450ms ease; }
-        .auth-container.active .form-panel--register { opacity:0; transform:translateX(60px); filter:blur(6px); }
-        @media (max-width:600px) {
-          .overlay-panel-reg { display:none !important; }
-          .mobile-login-link { display:block !important; }
-          .auth-container { min-height:auto !important; border-radius:20px !important; }
-          .form-panel--register { position:relative !important; padding:28px 20px !important; justify-content:flex-start !important; }
+        @media (max-width: 640px) {
+          div[style*="grid-template-columns: 1fr 1.6fr"] { grid-template-columns: 1fr !important; }
+          div[style*="grid-template-columns: 1fr 1.6fr"] > div:first-child { display: none !important; }
         }
       `}</style>
     </div>
