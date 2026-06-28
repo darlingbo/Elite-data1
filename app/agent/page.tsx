@@ -27,6 +27,9 @@ export default function AgentPage() {
   const [bundlesPerDay, setBundlesPerDay] = useState(10);
   const [agentPlan, setAgentPlan]       = useState<"free" | "pro" | null>(null);
 
+  // ── Animation ─────────────────────────────────────────────────────────────
+  const [leaving, setLeaving] = useState(false);
+
   // ── Form ──────────────────────────────────────────────────────────────────
   const [form, setFormState] = useState({
     name: "", email: "", phone: "", whatsapp: "", business_name: "", password: "", confirmPassword: "",
@@ -338,7 +341,6 @@ export default function AgentPage() {
 
   // ── Registration Form ─────────────────────────────────────────────────────
   const isPro = agentPlan === "pro";
-  const [leaving, setLeaving] = useState(false);
   function goLogin() { setLeaving(true); setTimeout(() => { window.location.href = "/agent/dashboard"; }, 820); }
   const inp = "w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
 
