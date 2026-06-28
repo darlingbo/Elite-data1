@@ -8,13 +8,14 @@ export default function AdminResetPassword() {
   const [showPw, setShowPw]           = useState(false);
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState("");
+  const [sql, setSql]                 = useState("");
   const [done, setDone]               = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    if (!resetToken.trim())       return setError("Enter your ADMIN_SESSION_TOKEN from Vercel.");
-    if (newPassword.length < 6)   return setError("Password must be at least 6 characters.");
+    setError(""); setSql("");
+    if (!resetToken.trim())      return setError("Enter your ADMIN_SESSION_TOKEN from Vercel.");
+    if (newPassword.length < 6)  return setError("Password must be at least 6 characters.");
     if (newPassword !== confirm)  return setError("Passwords do not match.");
 
     setLoading(true);
@@ -25,8 +26,14 @@ export default function AdminResetPassword() {
         body: JSON.stringify({ resetToken: resetToken.trim(), newPassword }),
       });
       const data = await res.json();
-      if (data.success) setDone(true);
-      else setError(data.error || "Reset failed.");
+      if (data.success) {
+        setDone(true);
+      } else if (data.sqlNeeded) {
+        setSql(data.sql ?? "");
+        setError(data.error);
+      } else {
+        setError(data.error || "Reset failed.");
+      }
     } catch { setError("Network error. Please try again."); }
     finally { setLoading(false); }
   }
@@ -48,27 +55,44 @@ export default function AdminResetPassword() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#080f1e", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <div style={{ maxWidth: 420, width: "100%" }}>
+      <div style={{ maxWidth: 440, width: "100%" }}>
         {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
           <div style={{ width: 56, height: 56, borderRadius: 18, background: "linear-gradient(135deg,#2563eb,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 22 }}>🔑</div>
           <h1 style={{ fontSize: 24, fontWeight: 900, color: "#f8fafc", margin: "0 0 6px" }}>Reset Admin Password</h1>
-          <p style={{ fontSize: 14, color: "#64748b", margin: 0 }}>Use your session token from Vercel to prove it&apos;s you</p>
+          <p style={{ fontSize: 14, color: "#64748b", margin: 0 }}>Prove it&apos;s you with your session token, then set a new password</p>
+        </div>
+
+        {/* Quick tip — can log in directly with session token */}
+        <div style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 14, padding: "13px 16px", marginBottom: 20 }}>
+          <p style={{ fontSize: 12, fontWeight: 800, color: "#4ade80", margin: "0 0 4px" }}>💡 Quick tip — skip the reset entirely</p>
+          <p style={{ fontSize: 12, color: "#94a3b8", margin: 0, lineHeight: 1.6 }}>
+            Your <code style={{ color: "#a78bfa", background: "rgba(167,139,250,0.12)", padding: "1px 5px", borderRadius: 4 }}>ADMIN_SESSION_TOKEN</code> now works as a direct login password at <a href="/admin" style={{ color: "#4ade80", fontWeight: 700 }}>/admin</a>. Just paste it in the password field and you&apos;re in — then change it from Settings.
+          </p>
         </div>
 
         {/* How-to box */}
-        <div style={{ background: "rgba(37,99,235,0.1)", border: "1px solid rgba(37,99,235,0.3)", borderRadius: 14, padding: "14px 16px", marginBottom: 24 }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: "#93c5fd", margin: "0 0 6px" }}>How to find your reset token:</p>
-          <ol style={{ fontSize: 12, color: "#94a3b8", margin: 0, paddingLeft: 18, lineHeight: 1.8 }}>
+        <div style={{ background: "rgba(37,99,235,0.09)", border: "1px solid rgba(37,99,235,0.25)", borderRadius: 14, padding: "13px 16px", marginBottom: 24 }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: "#93c5fd", margin: "0 0 6px" }}>How to find your ADMIN_SESSION_TOKEN:</p>
+          <ol style={{ fontSize: 12, color: "#94a3b8", margin: 0, paddingLeft: 18, lineHeight: 1.9 }}>
             <li>Go to <b style={{ color: "#f8fafc" }}>vercel.com</b> → your project</li>
             <li>Click <b style={{ color: "#f8fafc" }}>Settings → Environment Variables</b></li>
-            <li>Find <code style={{ color: "#a78bfa", background: "rgba(167,139,250,0.1)", padding: "1px 5px", borderRadius: 4 }}>ADMIN_SESSION_TOKEN</code> and copy the value</li>
+            <li>Find <code style={{ color: "#a78bfa", background: "rgba(167,139,250,0.1)", padding: "1px 5px", borderRadius: 4 }}>ADMIN_SESSION_TOKEN</code> and reveal/copy it</li>
           </ol>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {error && (
+          {error && !sql && (
             <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 13, padding: "10px 14px", borderRadius: 10, fontWeight: 600 }}>{error}</div>
+          )}
+
+          {/* SQL needed box */}
+          {sql && (
+            <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 12, padding: "14px 16px" }}>
+              <p style={{ color: "#fbbf24", fontSize: 12, fontWeight: 800, margin: "0 0 8px" }}>⚠️ One-time setup needed</p>
+              <p style={{ color: "#94a3b8", fontSize: 12, margin: "0 0 10px" }}>Run this SQL in your <b style={{ color: "#f8fafc" }}>Supabase → SQL Editor</b>, then click Reset again:</p>
+              <pre style={{ background: "#0e1928", color: "#4ade80", fontSize: 11, padding: "10px 12px", borderRadius: 8, overflowX: "auto", margin: 0, fontFamily: "monospace", whiteSpace: "pre-wrap" }}>{sql}</pre>
+            </div>
           )}
 
           <div>
@@ -79,7 +103,7 @@ export default function AdminResetPassword() {
               type="password"
               placeholder="Paste your session token here"
               value={resetToken}
-              onChange={e => { setResetToken(e.target.value); setError(""); }}
+              onChange={e => { setResetToken(e.target.value); setError(""); setSql(""); }}
               style={{ width: "100%", background: "#0d1b2e", border: "1px solid #1e3a5f", borderRadius: 10, padding: "11px 14px", color: "#f8fafc", fontSize: 14, outline: "none", boxSizing: "border-box" }}
             />
           </div>
