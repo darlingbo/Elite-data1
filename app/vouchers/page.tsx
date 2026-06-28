@@ -39,6 +39,7 @@ export default function VouchersPage() {
   const [mounted, setMounted]       = useState(false);
   const [qtyBump, setQtyBump]       = useState(false);
   const [phoneFocus, setPhoneFocus] = useState(false);
+  const [flipped, setFlipped]       = useState<VoucherID | null>(null);
   const paystackReady               = usePaystackReady();
 
   useEffect(() => { const t = setTimeout(() => setMounted(true), 60); return () => clearTimeout(t); }, []);
@@ -135,19 +136,27 @@ export default function VouchersPage() {
   return (
     <div style={{ minHeight: "100vh", background: D.bg, color: D.text, fontFamily: "system-ui,sans-serif", position: "relative", overflow: "hidden" }}>
       <style>{`
-        @keyframes floatIcon { 0%,100%{transform:translateY(0) rotate(-2deg)} 50%{transform:translateY(-8px) rotate(2deg)} }
-        @keyframes slideUp   { from{opacity:0;transform:translateY(28px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes glowPulse { 0%,100%{box-shadow:0 0 20px var(--glow-color,rgba(59,130,246,0.3))} 50%{box-shadow:0 0 40px var(--glow-color,rgba(59,130,246,0.6)), 0 0 80px var(--glow-color,rgba(59,130,246,0.2))} }
-        @keyframes qtyPop    { 0%{transform:scale(1)} 40%{transform:scale(1.4)} 100%{transform:scale(1)} }
-        @keyframes orb1      { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(60px,-40px) scale(1.2)} 66%{transform:translate(-40px,30px) scale(0.9)} }
-        @keyframes orb2      { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(-50px,50px) scale(0.8)} 66%{transform:translate(70px,-20px) scale(1.1)} }
-        @keyframes shimmer   { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
-        @keyframes cardCheck { from{transform:scale(0) rotate(-10deg);opacity:0} to{transform:scale(1) rotate(0);opacity:1} }
-        @keyframes spin      { to{transform:rotate(360deg)} }
+        @keyframes floatIcon   { 0%,100%{transform:translateY(0) rotate(-2deg)} 50%{transform:translateY(-8px) rotate(2deg)} }
+        @keyframes slideUp     { from{opacity:0;transform:translateY(28px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes glowPulse   { 0%,100%{box-shadow:0 0 20px var(--glow-color,rgba(59,130,246,0.3))} 50%{box-shadow:0 0 40px var(--glow-color,rgba(59,130,246,0.6)), 0 0 80px var(--glow-color,rgba(59,130,246,0.2))} }
+        @keyframes qtyPop      { 0%{transform:scale(1)} 40%{transform:scale(1.4)} 100%{transform:scale(1)} }
+        @keyframes orb1        { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(60px,-40px) scale(1.2)} 66%{transform:translate(-40px,30px) scale(0.9)} }
+        @keyframes orb2        { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(-50px,50px) scale(0.8)} 66%{transform:translate(70px,-20px) scale(1.1)} }
+        @keyframes cardCheck   { from{transform:scale(0) rotate(-10deg);opacity:0} to{transform:scale(1) rotate(0);opacity:1} }
+        @keyframes spin        { to{transform:rotate(360deg)} }
+        @keyframes rotation481 { 0%{transform:rotateZ(0deg)} 100%{transform:rotateZ(360deg)} }
+        @keyframes floating    { 0%,100%{transform:translateY(0)} 50%{transform:translateY(10px)} }
         .pay-btn:not(:disabled):hover { transform:translateY(-2px) !important; }
         .pay-btn:not(:disabled):active { transform:translateY(0px) scale(.98) !important; }
-        .voucher-card:hover  { transform:translateY(-2px); }
-        .qty-btn:hover       { background: rgba(255,255,255,0.1) !important; }
+        .qty-btn:hover { background: rgba(255,255,255,0.1) !important; }
+        .flip-card { perspective:1000px; cursor:pointer; }
+        .flip-inner { width:100%; height:100%; transform-style:preserve-3d; transition:transform 420ms cubic-bezier(.22,1,.36,1); }
+        .flip-card.is-flipped .flip-inner { transform:rotateY(180deg); }
+        .flip-face { position:absolute; width:100%; height:100%; backface-visibility:hidden; -webkit-backface-visibility:hidden; border-radius:18px; overflow:hidden; }
+        .flip-front { transform:rotateY(180deg); }
+        .flip-back { display:flex; align-items:center; justify-content:center; }
+        .flip-back::before { content:''; position:absolute; width:140px; height:160%; animation:rotation481 4s linear infinite; border-radius:50%; }
+        .flip-back-inner { position:absolute; width:99%; height:99%; border-radius:17px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; }
       `}</style>
 
       {/* Ambient orbs */}
@@ -176,27 +185,55 @@ export default function VouchersPage() {
               <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, color: "white" }}>1</div>
               <p style={{ fontSize: 12, fontWeight: 700, color: D.muted, margin: 0, textTransform: "uppercase", letterSpacing: 1 }}>Choose Exam Type</p>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {VOUCHERS.map((v, i) => {
-                const active = selectedId === v.id;
+            <p style={{ color: D.muted, fontSize: 11, margin: "0 0 14px" }}>Tap a card to flip it, then press Select</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              {VOUCHERS.map(v => {
+                const isFlipped = flipped === v.id;
+                const active    = selectedId === v.id;
                 return (
-                  <button key={v.id} className="voucher-card" onClick={() => setSelectedId(v.id)} style={{
-                    borderRadius: 18, padding: 18, border: `2px solid ${active ? v.color : D.border}`,
-                    background: active ? `${v.color}12` : "transparent",
-                    cursor: "pointer", textAlign: "left",
-                    transition: "all .25s cubic-bezier(.22,1,.36,1)",
-                    boxShadow: active ? `0 0 0 1px ${v.color}40, 0 8px 32px ${v.glow}` : "none",
-                    position: "relative",
-                    animationDelay: `${i * 0.1}s`,
-                  }}>
-                    {active && (
-                      <div style={{ position: "absolute", top: 10, right: 10, width: 20, height: 20, borderRadius: "50%", background: v.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, animation: "cardCheck .25s cubic-bezier(.22,1,.36,1)" }}>✓</div>
+                  <div key={v.id} className={`flip-card${isFlipped ? " is-flipped" : ""}`}
+                    style={{ height: 200, position: "relative" }}
+                    onClick={() => setFlipped(isFlipped ? null : v.id)}
+                  >
+                    <div className="flip-inner" style={{ position: "relative", height: "100%", boxShadow: active ? `0 0 0 2px ${v.color}, 0 8px 32px ${v.glow}` : "0 4px 16px rgba(0,0,0,0.4)", borderRadius: 18 }}>
+
+                      {/* BACK — glowing border, floating circles */}
+                      <div className="flip-face flip-back" style={{ background: D.card }}>
+                        <div style={{ position: "absolute", inset: 0, overflow: "hidden", borderRadius: 18 }}>
+                          <div className="circle" style={{ width: 80, height: 80, borderRadius: "50%", background: v.color, position: "absolute", left: 20, top: 30, filter: "blur(18px)", animation: "floating 2.6s infinite linear", opacity: 0.5 }} />
+                          <div id="bottom" style={{ width: 120, height: 120, borderRadius: "50%", background: v.dark, position: "absolute", left: 50, top: -10, filter: "blur(20px)", animation: "floating 2.6s -800ms infinite linear", opacity: 0.35 }} />
+                          <div id="right" style={{ width: 28, height: 28, borderRadius: "50%", background: v.color, position: "absolute", right: 20, top: 10, filter: "blur(8px)", animation: "floating 2.6s -1800ms infinite linear", opacity: 0.6 }} />
+                        </div>
+                        <style>{`.flip-back:nth-child(1)::before { background: linear-gradient(90deg,transparent,${v.color},${v.color},transparent); }`}</style>
+                        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <div style={{ width: "160px", height: "160%", position: "absolute", background: `linear-gradient(90deg,transparent,${v.color},${v.color},${v.color},transparent)`, animation: "rotation481 4s linear infinite", opacity: 0.7 }} />
+                        </div>
+                        <div className="flip-back-inner" style={{ background: D.card }}>
+                          <span style={{ fontSize: 38 }}>{v.emoji}</span>
+                          <p style={{ color: v.color, fontWeight: 900, fontSize: 18, margin: 0 }}>{v.label}</p>
+                          <p style={{ color: D.muted, fontSize: 10, margin: 0, textAlign: "center", padding: "0 12px", lineHeight: 1.4 }}>{v.full}</p>
+                          <p style={{ color: "#94a3b8", fontSize: 11, margin: 0 }}>Tap to see price →</p>
+                        </div>
+                      </div>
+
+                      {/* FRONT — price + select button */}
+                      <div className="flip-face flip-front" style={{ background: `linear-gradient(145deg,${v.dark},${v.color}90)`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, padding: 16 }}>
+                        <span style={{ fontSize: 36 }}>{v.emoji}</span>
+                        <p style={{ color: "white", fontWeight: 900, fontSize: 16, margin: 0 }}>{v.label} Voucher</p>
+                        <p style={{ color: "rgba(255,255,255,0.85)", fontWeight: 900, fontSize: 26, margin: 0 }}>GH₵{v.price.toFixed(2)}</p>
+                        <button
+                          onClick={e => { e.stopPropagation(); setSelectedId(v.id); setFlipped(null); }}
+                          style={{ background: active ? "white" : "rgba(255,255,255,0.2)", color: active ? v.dark : "white", border: active ? "none" : "1px solid rgba(255,255,255,0.4)", borderRadius: 12, padding: "8px 20px", fontSize: 13, fontWeight: 800, cursor: "pointer", transition: "all .2s" }}
+                        >
+                          {active ? "✓ Selected" : "Select"}
+                        </button>
+                      </div>
+
+                    </div>
+                    {active && !isFlipped && (
+                      <div style={{ position: "absolute", top: 8, right: 8, width: 22, height: 22, borderRadius: "50%", background: v.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "white", fontWeight: 900, zIndex: 2, animation: "cardCheck .25s cubic-bezier(.22,1,.36,1)" }}>✓</div>
                     )}
-                    <span style={{ fontSize: 32, display: "block", marginBottom: 10, transition: "transform .2s", transform: active ? "scale(1.15)" : "scale(1)" }}>{v.emoji}</span>
-                    <p style={{ fontSize: 16, fontWeight: 900, color: active ? v.color : D.text, margin: "0 0 4px", transition: "color .2s" }}>{v.label}</p>
-                    <p style={{ fontSize: 10, color: D.muted, margin: "0 0 12px", lineHeight: 1.4 }}>{v.full}</p>
-                    <p style={{ fontSize: 20, fontWeight: 900, color: v.color, margin: 0 }}>GH₵{v.price.toFixed(2)}</p>
-                  </button>
+                  </div>
                 );
               })}
             </div>
