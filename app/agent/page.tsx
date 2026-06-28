@@ -160,8 +160,8 @@ export default function AgentPage() {
       {/* ── Split-panel auth container ── */}
       <div className={`auth-container${leaving ? " active" : ""}`} style={{ position: "relative", width: "100%", maxWidth: 900, minHeight: 640, borderRadius: 24, overflow: "hidden", boxShadow: "0 30px 80px rgba(0,0,0,0.55)" }}>
 
-        {/* Form panel — register (right 50% on desktop, full on mobile) */}
-        <div className="form-panel--register" style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: "53%", background: "white", display: "flex", alignItems: "flex-start", padding: "36px 32px 36px 40px" }}>
+        {/* Form panel — register (full width, sits behind overlay) */}
+        <div className="form-panel--register" style={{ position: "absolute", inset: 0, background: "white", display: "flex", alignItems: "flex-start", justifyContent: "flex-end", padding: "36px 36px 36px 0" }}>
           <div style={{ width: "100%", maxWidth: 420, overflowY: "auto", maxHeight: "calc(100vh - 80px)" }}>
             <div style={{ marginBottom: 22 }}>
               <div style={{ width: 44, height: 44, borderRadius: 12, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 900, color: "white", marginBottom: 12 }}>E</div>
@@ -218,7 +218,7 @@ export default function AgentPage() {
 
         {/* Overlay panel — starts on LEFT, slides right on .active */}
         {/* Overlay — left half, clips with diagonal, slides right on .active */}
-        <div className="overlay-panel-reg" style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#7c3aed 0%,#1d4ed8 60%,#0369a1 100%)", display: "flex", alignItems: "center", paddingLeft: 32, paddingRight: "60%" }}>
+        <div className="overlay-panel-reg" style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#7c3aed 0%,#1d4ed8 60%,#0369a1 100%)", display: "flex", alignItems: "center", paddingLeft: 48, paddingRight: "52%" }}>
           <div style={{ maxWidth: 280, textAlign: "center" }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>💰</div>
             <h2 style={{ fontSize: 24, fontWeight: 900, color: "white", margin: "0 0 12px", lineHeight: 1.2 }}>Already an Agent?</h2>
@@ -236,12 +236,12 @@ export default function AgentPage() {
 
       <style>{`
         .overlay-panel-reg {
-          clip-path: polygon(0 0, 43% 0, 48% 100%, 0 100%);
+          clip-path: polygon(0 0, 56% 0, 62% 100%, 0 100%);
           transition: transform 900ms cubic-bezier(.77,0,.18,1), clip-path 900ms cubic-bezier(.77,0,.18,1);
         }
         .auth-container.active .overlay-panel-reg {
           transform: translateX(100%);
-          clip-path: polygon(52% 0, 100% 0, 100% 100%, 57% 100%);
+          clip-path: polygon(38% 0, 100% 0, 100% 100%, 44% 100%);
         }
         .form-panel--register {
           transition: opacity 450ms ease, transform 450ms ease, filter 450ms ease;
@@ -255,7 +255,7 @@ export default function AgentPage() {
           .overlay-panel-reg { display: none !important; }
           .mobile-login-link { display: block !important; }
           .auth-container { min-height: auto !important; border-radius: 20px !important; }
-          .form-panel--register { position: relative !important; width: 100% !important; padding: 28px 20px !important; }
+          .form-panel--register { position: relative !important; padding: 28px 20px !important; justify-content: flex-start !important; }
         }
       `}</style>
     </div>
