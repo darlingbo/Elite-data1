@@ -89,6 +89,11 @@ export default function Home() {
             <span className="flex items-center gap-1">💬 WhatsApp Support</span>
             <span className="flex items-center gap-1">🔄 100% Refund if Failed</span>
           </div>
+          <div className="mt-6">
+            <Link href="/vouchers" className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors backdrop-blur">
+              📋 Buy BECE &amp; WASSCE Result Checker Vouchers →
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -127,6 +132,25 @@ export default function Home() {
                 </span>
               </Link>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Result Checker Vouchers banner */}
+      <section className="py-10 px-4 bg-gray-50">
+        <div className="max-w-5xl mx-auto">
+          <div className="rounded-2xl bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-700 p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-lg">
+            <div className="flex items-center gap-5">
+              <div className="text-5xl shrink-0">📋</div>
+              <div>
+                <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-1">Ghana Education Service</p>
+                <h2 className="text-white font-black text-xl md:text-2xl leading-tight">BECE &amp; WASSCE Result Checker Vouchers</h2>
+                <p className="text-blue-200 text-sm mt-1">Buy your result checker PIN instantly · Delivered via SMS · GH₵18 each</p>
+              </div>
+            </div>
+            <Link href="/vouchers" className="shrink-0 bg-white hover:bg-gray-100 text-indigo-700 font-black px-8 py-3.5 rounded-xl transition-colors shadow-lg whitespace-nowrap text-sm">
+              Buy Voucher →
+            </Link>
           </div>
         </div>
       </section>
