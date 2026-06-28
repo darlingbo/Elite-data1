@@ -522,7 +522,7 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
   const quickActions = [
     { label: "Buy Data", icon: "📶", bg: "linear-gradient(135deg,#f59e0b,#d97706)", page: "buy_data" as Page },
     { label: "Wallet", icon: "💳", bg: "linear-gradient(135deg,#3b82f6,#2563eb)", page: "wallet" as Page },
-    { label: "Reseller", icon: "🏪", bg: "linear-gradient(135deg,#f59e0b,#b45309)", page: "affiliate" as Page },
+    { label: "My Prices", icon: "🏷️", bg: "linear-gradient(135deg,#f59e0b,#b45309)", page: "affiliate" as Page },
     { label: "Pro ✦", icon: "⭐", bg: "linear-gradient(135deg,#8b5cf6,#7c3aed)", page: "profile" as Page },
     { label: "Orders", icon: "📦", bg: "linear-gradient(135deg,#f97316,#ea580c)", page: "orders" as Page },
     { label: "Rewards", icon: "🎁", bg: "linear-gradient(135deg,#10b981,#059669)", page: "referrals" as Page },
@@ -2147,10 +2147,10 @@ function Sidebar({ page, setPage, data, onLogout, onWithdraw, open, onClose }: {
     { id: "dashboard", label: "Dashboard", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
     { id: "buy_data",  label: "Buy Data",  svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg> },
     { id: "wallet",    label: "Wallet",    svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg> },
-    { id: "prices",    label: isPriceMode ? "My Prices" : "My Shop", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/></svg> },
+    { id: "prices",    label: "My Store", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg> },
     { id: "orders",    label: "My Orders", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg> },
     { id: "customers", label: "Customers", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg> },
-    { id: "affiliate", label: "Affiliate",  svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg> },
+    { id: "affiliate", label: "Sale & Earn", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/></svg> },
     { id: "notifications", label: "Notifications", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg> },
     { id: "api",       label: "Developer API", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg> },
     { id: "support",   label: "Contact Support", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg> },
@@ -2303,9 +2303,9 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
           {page === "api"          && <ApiPage data={data} />}
           {page === "profile"      && <ProfilePage data={data} />}
           {page === "settings"     && <SettingsPage />}
-          {page === "prices"       && (data.agent_type === "custom_price" ? <PricesPage data={data} /> : <ReferralsPage data={data} />)}
+          {page === "prices"       && <AffiliatePage data={data} />}
           {(page === "place_order" || page === "buy_data") && <PlaceOrderPage data={data} onRefresh={onRefresh} />}
-          {page === "affiliate"    && <AffiliatePage data={data} />}
+          {page === "affiliate"    && <PricesPage data={data} />}
           {page === "notifications" && <NotificationsPage data={data} />}
           {page === "support"      && <SupportPage />}
         </main>
