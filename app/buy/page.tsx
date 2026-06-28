@@ -8,22 +8,13 @@ import AnnouncementBanner from "@/components/AnnouncementBanner";
 import AgentStorefront from "@/components/AgentStorefront";
 import SocialProofTicker from "@/components/SocialProofTicker";
 
-const D = {
-  bg: "#0d1117",
-  card: "#161b22",
-  cardHover: "#1c2230",
-  border: "#21262d",
-  text: "#e6edf3",
-  muted: "#8b949e",
-  blue: "#3b82f6",
-  blueLight: "#60a5fa",
-};
-
-const NETS: { id: Network; label: string; color: string; textDark: string; badge: string }[] = [
-  { id: "mtn",       label: "MTN",        color: "#f59e0b", textDark: "#78350f", badge: "#fbbf24" },
-  { id: "telecel",   label: "Telecel",    color: "#ef4444", textDark: "#ffffff", badge: "#f87171" },
-  { id: "airteltigo",label: "AirtelTigo", color: "#3b82f6", textDark: "#ffffff", badge: "#60a5fa" },
+const NETS: { id: Network; label: string; color: string; text: string }[] = [
+  { id: "mtn",        label: "MTN",        color: "#f59e0b", text: "#78350f" },
+  { id: "telecel",    label: "Telecel",    color: "#ef4444", text: "#ffffff" },
+  { id: "airteltigo", label: "AirtelTigo", color: "#3b82f6", text: "#ffffff" },
 ];
+
+const D = { bg: "#0d1117", card: "#161b22", border: "#21262d", text: "#e6edf3", muted: "#8b949e" };
 
 interface AgentInfo {
   success?: boolean;
@@ -38,13 +29,13 @@ function BuyContent() {
   const agentCode = params.get("agent") ?? undefined;
   const viaCode   = params.get("via")   ?? undefined;
 
-  const [agentInfo, setAgentInfo]       = useState<AgentInfo | null>(null);
+  const [agentInfo, setAgentInfo]           = useState<AgentInfo | null>(null);
   const [agentInfoReady, setAgentInfoReady] = useState(!agentCode);
-  const [bundles, setBundles]           = useState<Bundle[]>([]);
-  const [activeNet, setActiveNet]       = useState<Network>("mtn");
-  const [selected, setSelected]         = useState<Bundle | null>(null);
-  const [voucherOpen, setVoucherOpen]   = useState(false);
-  const [referralVia, setReferralVia]   = useState<string | undefined>();
+  const [bundles, setBundles]               = useState<Bundle[]>([]);
+  const [activeNet, setActiveNet]           = useState<Network>("mtn");
+  const [selected, setSelected]             = useState<Bundle | null>(null);
+  const [voucherOpen, setVoucherOpen]       = useState(false);
+  const [referralVia, setReferralVia]       = useState<string | undefined>();
 
   useEffect(() => {
     if (!agentCode) { setAgentInfoReady(true); return; }
@@ -83,16 +74,18 @@ function BuyContent() {
 
   const net = NETS.find(n => n.id === activeNet) ?? NETS[0];
   const filtered = bundles.filter(b => b.network === activeNet).sort((a, b) => (a.sizeGB ?? 0) - (b.sizeGB ?? 0));
-  const bestId = filtered.length > 0 ? filtered.reduce((bst, b) => (b.sizeGB / b.price) > (bst.sizeGB / bst.price) ? b : bst, filtered[0]).id : null;
+  const bestId = filtered.length > 0
+    ? filtered.reduce((bst, b) => (b.sizeGB / b.price) > (bst.sizeGB / bst.price) ? b : bst, filtered[0]).id
+    : null;
 
   return (
-    <div style={{ background: D.bg, minHeight: "100vh", color: D.text }}>
+    <div style={{ background: D.bg, minHeight: "100vh", color: D.text, fontFamily: "system-ui,sans-serif" }}>
       <SocialProofTicker />
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "0 16px 80px" }}>
+      <div style={{ maxWidth: 600, margin: "0 auto", padding: "0 16px 80px" }}>
 
         <AnnouncementBanner target="customers" />
 
-        {/* Delivery time notice */}
+        {/* Delivery notice */}
         <div style={{ marginTop: 16, background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 10 }}>
           <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>⚡</span>
           <div>
@@ -103,21 +96,21 @@ function BuyContent() {
 
         {/* Hero */}
         <div style={{ paddingTop: 20, paddingBottom: 20 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 900, color: D.text, margin: "0 0 4px" }}>Buy Data Bundles</h1>
+          <h1 style={{ fontSize: 26, fontWeight: 900, color: D.text, margin: "0 0 4px" }}>Buy Data Bundles</h1>
           <p style={{ fontSize: 13, color: D.muted, margin: 0 }}>Instant delivery · Secured by Paystack</p>
         </div>
 
         {/* Quick links */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 28 }}>
           {[
-            { label: "Track Order", sub: "Check delivery status", icon: "📦", href: "/track", color: "#22c55e" },
-            { label: "Result Checker", sub: "BECE & WASSCE vouchers", icon: "📗", action: () => setVoucherOpen(true), color: "#a855f7" },
-            { label: "Business Top-up", sub: "2–50 numbers at once", icon: "🏢", href: "/business", color: "#f59e0b" },
-            { label: "Become an Agent", sub: "Earn on every sale", icon: "🤝", href: "/agent", color: "#3b82f6" },
+            { label: "Track Order",      sub: "Check delivery status",    icon: "📦", href: "/track",    color: "#22c55e" },
+            { label: "Result Checker",   sub: "BECE & WASSCE vouchers",   icon: "📗", action: () => setVoucherOpen(true), color: "#a855f7" },
+            { label: "Business Top-up",  sub: "2–50 numbers at once",     icon: "🏢", href: "/business", color: "#f59e0b" },
+            { label: "Become an Agent",  sub: "Earn on every sale",       icon: "🤝", href: "/agent",    color: "#3b82f6" },
           ].map(item => (
             item.href ? (
               <a key={item.label} href={item.href} style={{ display: "flex", alignItems: "center", gap: 10, background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: "12px 14px", textDecoration: "none" }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: `${item.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{item.icon}</div>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: `${item.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{item.icon}</div>
                 <div>
                   <p style={{ fontSize: 13, fontWeight: 700, color: D.text, margin: 0 }}>{item.label}</p>
                   <p style={{ fontSize: 11, color: D.muted, margin: 0 }}>{item.sub}</p>
@@ -125,7 +118,7 @@ function BuyContent() {
               </a>
             ) : (
               <button key={item.label} onClick={item.action} style={{ display: "flex", alignItems: "center", gap: 10, background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: "12px 14px", cursor: "pointer", textAlign: "left", width: "100%" }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: `${item.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{item.icon}</div>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: `${item.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{item.icon}</div>
                 <div>
                   <p style={{ fontSize: 13, fontWeight: 700, color: D.text, margin: 0 }}>{item.label}</p>
                   <p style={{ fontSize: 11, color: D.muted, margin: 0 }}>{item.sub}</p>
@@ -135,36 +128,32 @@ function BuyContent() {
           ))}
         </div>
 
-        {/* Network tabs */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {/* Network selector — icon style */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
           {NETS.map(n => (
-            <button key={n.id} onClick={() => setActiveNet(n.id)} style={{
-              flex: 1, padding: "12px 8px", borderRadius: 12, border: `2px solid ${activeNet === n.id ? n.color : D.border}`,
-              background: activeNet === n.id ? `${n.color}18` : D.card,
-              color: activeNet === n.id ? n.color : D.muted,
-              fontWeight: 800, fontSize: 13, cursor: "pointer", transition: "all 0.15s",
-            }}>
-              {n.label}
+            <button key={n.id} onClick={() => setActiveNet(n.id)} style={{ flex: 1, padding: "14px 8px", borderRadius: 16, border: `2px solid ${activeNet === n.id ? n.color : D.border}`, background: activeNet === n.id ? `${n.color}15` : D.card, cursor: "pointer", transition: "all .2s" }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: activeNet === n.id ? n.color : `${n.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13, color: activeNet === n.id ? n.text : n.color, margin: "0 auto 6px" }}>
+                {n.label.slice(0, 3)}
+              </div>
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: activeNet === n.id ? n.color : D.muted }}>{n.label}</p>
             </button>
           ))}
         </div>
 
         {/* Active network header */}
-        <div style={{ background: `${net.color}15`, border: `1px solid ${net.color}40`, borderRadius: 12, padding: "10px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: net.color, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 12, color: net.textDark, flexShrink: 0 }}>
-            {net.label.slice(0, 3).toUpperCase()}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, padding: "10px 14px", background: `${net.color}10`, border: `1px solid ${net.color}30`, borderRadius: 12 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: net.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: net.text }}>
+            {net.label.slice(0, 3)}
           </div>
-          <div>
-            <p style={{ fontSize: 13, fontWeight: 700, color: net.color, margin: 0 }}>{net.label} Data Bundles</p>
-            <p style={{ fontSize: 11, color: D.muted, margin: 0 }}>Delivered instantly · No delays</p>
-          </div>
+          <p style={{ margin: 0, fontWeight: 800, color: net.color, fontSize: 14 }}>{net.label} Data Bundles</p>
+          <span style={{ marginLeft: "auto", fontSize: 11, color: D.muted }}>Delivered instantly</span>
         </div>
 
         {/* Bundle grid */}
         {bundles.length === 0 ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} style={{ background: D.card, borderRadius: 14, height: 140, border: `1px solid ${D.border}` }} className="animate-pulse" />
+              <div key={i} style={{ background: D.card, borderRadius: 18, height: 160, border: `1px solid ${D.border}` }} className="animate-pulse" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
@@ -173,25 +162,21 @@ function BuyContent() {
             <p style={{ fontSize: 14 }}>No bundles available for {net.label} right now.</p>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             {filtered.map(b => (
-              <button key={b.id} onClick={() => setSelected(b)} style={{
-                background: D.card, border: `2px solid ${b.id === bestId ? "#22c55e" : D.border}`,
-                borderRadius: 16, padding: 16, cursor: "pointer", textAlign: "left", position: "relative",
-                transition: "all 0.15s",
-              }}>
+              <button key={b.id} onClick={() => setSelected(b)} style={{ background: D.card, border: `2px solid ${b.id === bestId ? net.color : D.border}`, borderRadius: 18, padding: 18, cursor: "pointer", textAlign: "left", position: "relative", boxShadow: b.id === bestId ? `0 0 24px ${net.color}20` : "none", transition: "all .15s" }}>
                 {b.id === bestId && (
-                  <span style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", background: "#22c55e", color: "white", fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 20, whiteSpace: "nowrap" }}>
-                    Best Value
+                  <span style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", background: net.color, color: net.text, fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: 20, whiteSpace: "nowrap" }}>
+                    ⭐ Best Value
                   </span>
                 )}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 8, background: `${net.color}25`, color: net.color }}>{net.label}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: `${net.color}20`, color: net.color }}>{net.label}</span>
                   <span style={{ fontSize: 10, color: D.muted }}>{b.validity ?? ""}</span>
                 </div>
-                <p style={{ fontSize: 28, fontWeight: 900, color: D.text, margin: "0 0 6px", lineHeight: 1 }}>{b.size}</p>
-                <p style={{ fontSize: 20, fontWeight: 900, color: net.color, margin: "0 0 12px" }}>GH₵{b.price.toFixed(2)}</p>
-                <div style={{ width: "100%", background: net.color, color: net.textDark, border: "none", borderRadius: 10, padding: "9px 0", fontSize: 12, fontWeight: 800, textAlign: "center" }}>
+                <p style={{ margin: "0 0 2px", fontSize: 30, fontWeight: 900, color: D.text, lineHeight: 1 }}>{b.size}</p>
+                <p style={{ margin: "0 0 16px", fontSize: 22, fontWeight: 900, color: net.color }}>GH₵{b.price.toFixed(2)}</p>
+                <div style={{ background: net.color, color: net.text, borderRadius: 12, padding: "11px 0", fontSize: 13, fontWeight: 800, textAlign: "center" }}>
                   Buy Now ⚡
                 </div>
               </button>
@@ -207,7 +192,7 @@ function BuyContent() {
             { icon: "💬", text: "WhatsApp Support" },
             { icon: "✅", text: "All Networks" },
           ].map(t => (
-            <div key={t.text} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+            <div key={t.text} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 16 }}>{t.icon}</span>
               <span style={{ fontSize: 12, fontWeight: 600, color: D.muted }}>{t.text}</span>
             </div>
