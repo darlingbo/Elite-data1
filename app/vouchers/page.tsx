@@ -1,8 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
 
-declare global { interface Window { PaystackPop: { setup: (opts: object) => { openIframe: () => void } } } }
-
 const VOUCHERS = [
   { id: "BECE",   label: "BECE",   full: "Basic Education Certificate Examination",           price: 18, color: "#3b82f6", dark: "#1d4ed8", emoji: "📗" },
   { id: "WASSCE", label: "WASSCE", full: "West African Senior School Certificate Examination", price: 18, color: "#8b5cf6", dark: "#6d28d9", emoji: "📘" },

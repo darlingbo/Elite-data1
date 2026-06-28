@@ -3,7 +3,6 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Bundle, Network, networkConfig } from "@/lib/bundles";
 import CheckoutModal from "@/components/CheckoutModal";
-import VoucherModal from "@/components/VoucherModal";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import AgentStorefront from "@/components/AgentStorefront";
 import SocialProofTicker from "@/components/SocialProofTicker";
@@ -34,7 +33,6 @@ function BuyContent() {
   const [bundles, setBundles]               = useState<Bundle[]>([]);
   const [activeNet, setActiveNet]           = useState<Network>("mtn");
   const [selected, setSelected]             = useState<Bundle | null>(null);
-  const [voucherOpen, setVoucherOpen]       = useState(false);
   const [referralVia, setReferralVia]       = useState<string | undefined>();
 
   useEffect(() => {
@@ -108,23 +106,13 @@ function BuyContent() {
             { label: "Business Top-up",  sub: "2–50 numbers at once",     icon: "🏢", href: "/business", color: "#f59e0b" },
             { label: "Become an Agent",  sub: "Earn on every sale",       icon: "🤝", href: "/agent",    color: "#3b82f6" },
           ].map(item => (
-            item.href ? (
-              <a key={item.label} href={item.href} style={{ display: "flex", alignItems: "center", gap: 10, background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: "12px 14px", textDecoration: "none" }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: `${item.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{item.icon}</div>
-                <div>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: D.text, margin: 0 }}>{item.label}</p>
-                  <p style={{ fontSize: 11, color: D.muted, margin: 0 }}>{item.sub}</p>
-                </div>
-              </a>
-            ) : (
-              <button key={item.label} onClick={item.action} style={{ display: "flex", alignItems: "center", gap: 10, background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: "12px 14px", cursor: "pointer", textAlign: "left", width: "100%" }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: `${item.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{item.icon}</div>
-                <div>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: D.text, margin: 0 }}>{item.label}</p>
-                  <p style={{ fontSize: 11, color: D.muted, margin: 0 }}>{item.sub}</p>
-                </div>
-              </button>
-            )
+            <a key={item.label} href={item.href} style={{ display: "flex", alignItems: "center", gap: 10, background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: "12px 14px", textDecoration: "none" }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: `${item.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{item.icon}</div>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 700, color: D.text, margin: 0 }}>{item.label}</p>
+                <p style={{ fontSize: 11, color: D.muted, margin: 0 }}>{item.sub}</p>
+              </div>
+            </a>
           ))}
         </div>
 
@@ -208,9 +196,6 @@ function BuyContent() {
 
       {selected && (
         <CheckoutModal bundle={selected} agentCode={agentCode} referralVia={referralVia} onClose={() => setSelected(null)} />
-      )}
-      {voucherOpen && (
-        <VoucherModal agentCode={agentCode} onClose={() => setVoucherOpen(false)} />
       )}
     </div>
   );
