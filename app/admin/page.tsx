@@ -584,6 +584,57 @@ function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; animated
   return (
     <div className="space-y-4">
 
+      {/* ── My Earnings by Period ── */}
+      <div className="rounded-2xl border overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
+        <div className="px-4 pt-4 pb-3 border-b" style={{ borderColor: BORDER }}>
+          <p className="font-bold text-white text-sm mb-3">💰 My Earnings</p>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: 6, background: "#0a0f1a", border: "1px solid #1e3050", borderRadius: 999, boxShadow: "0 1px 1px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5)" }}>
+            {(["day", "week", "month", "year"] as const).map(p => (
+              <button key={p} onClick={() => setEarningPeriod(p)} style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                height: 32, padding: "0 16px", borderRadius: 999, fontSize: 13, fontWeight: 500,
+                border: "none", cursor: "pointer",
+                transition: "background 220ms cubic-bezier(.22,1,.36,1), color 220ms cubic-bezier(.22,1,.36,1), box-shadow 220ms cubic-bezier(.22,1,.36,1)",
+                background: earningPeriod === p ? "white" : "transparent",
+                color: earningPeriod === p ? "#0e1116" : "#64748b",
+                boxShadow: earningPeriod === p ? "0 1px 1px rgba(0,0,0,0.1), 0 4px 12px -6px rgba(0,0,0,0.4)" : "none",
+              }}>
+                {p.charAt(0).toUpperCase() + p.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+        {(() => {
+          const ep = profitPeriods[earningPeriod];
+          const labels: Record<string, string> = { day: "Today", week: "This Week", month: "This Month", year: "This Year" };
+          const colors: Record<string, string> = { day: "#f59e0b", week: "#3b82f6", month: "#8b5cf6", year: "#22c55e" };
+          const grads:  Record<string, string> = { day: "linear-gradient(135deg,#78350f,#d97706)", week: "linear-gradient(135deg,#1e3a8a,#3b82f6)", month: "linear-gradient(135deg,#4c1d95,#8b5cf6)", year: "linear-gradient(135deg,#14532d,#22c55e)" };
+          return (
+            <div className="p-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0" style={{ background: grads[earningPeriod] }}>
+                  {earningPeriod === "day" ? "☀️" : earningPeriod === "week" ? "📅" : earningPeriod === "month" ? "🗓️" : "🏆"}
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wider">{labels[earningPeriod]} · Admin Profit</p>
+                  <p className="text-3xl font-black" style={{ color: colors[earningPeriod] }}>GH₵{ep.profit.toFixed(2)}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl p-3" style={{ background: "#0a0f1a", border: "1px solid #1e3050" }}>
+                  <p className="text-[10px] text-slate-500 mb-1">Revenue</p>
+                  <p className="font-black text-white text-base">GH₵{ep.revenue.toFixed(2)}</p>
+                </div>
+                <div className="rounded-xl p-3" style={{ background: "#0a0f1a", border: "1px solid #1e3050" }}>
+                  <p className="text-[10px] text-slate-500 mb-1">Orders</p>
+                  <p className="font-black text-white text-base">{ep.orders}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
       {/* ── Today so far ── */}
       <div className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
         <p className="font-bold text-white mb-3 text-sm">📅 Today so far</p>
@@ -640,65 +691,6 @@ function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; animated
         <p className="text-2xl font-black text-white">GH₵{totalProfit.toFixed(2)}</p>
         <p className="text-xs text-slate-500 mt-1">Total Profit (all time)</p>
         <p className="text-[10px] text-blue-500 mt-1.5 font-semibold">vs last 7 days →</p>
-      </div>
-
-      {/* ── My Earnings by Period ── */}
-      <div className="rounded-2xl border overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
-        <div className="px-4 pt-4 pb-3 border-b" style={{ borderColor: BORDER }}>
-          <p className="font-bold text-white text-sm mb-3">💰 My Earnings</p>
-          {/* Pill tabs */}
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: 6, background: "#0a0f1a", border: "1px solid #1e3050", borderRadius: 999, boxShadow: "0 1px 1px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5)" }}>
-            {(["day", "week", "month", "year"] as const).map(p => (
-              <button key={p} onClick={() => setEarningPeriod(p)} style={{
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                height: 32, padding: "0 16px", borderRadius: 999, fontSize: 13, fontWeight: 500,
-                border: "none", cursor: "pointer",
-                transition: "background 220ms cubic-bezier(.22,1,.36,1), color 220ms cubic-bezier(.22,1,.36,1), box-shadow 220ms cubic-bezier(.22,1,.36,1)",
-                background: earningPeriod === p ? "white" : "transparent",
-                color: earningPeriod === p ? "#0e1116" : "#64748b",
-                boxShadow: earningPeriod === p ? "0 1px 1px rgba(0,0,0,0.1), 0 4px 12px -6px rgba(0,0,0,0.4)" : "none",
-              }}>
-                {p.charAt(0).toUpperCase() + p.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Earnings display */}
-        {(() => {
-          const p = profitPeriods[earningPeriod];
-          const labels: Record<string, string> = { day: "Today", week: "This Week", month: "This Month", year: "This Year" };
-          const colors: Record<string, string> = { day: "#f59e0b", week: "#3b82f6", month: "#8b5cf6", year: "#22c55e" };
-          const grads: Record<string, string> = {
-            day:   "linear-gradient(135deg,#78350f,#d97706)",
-            week:  "linear-gradient(135deg,#1e3a8a,#3b82f6)",
-            month: "linear-gradient(135deg,#4c1d95,#8b5cf6)",
-            year:  "linear-gradient(135deg,#14532d,#22c55e)",
-          };
-          return (
-            <div className="p-4">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0" style={{ background: grads[earningPeriod] }}>
-                  {earningPeriod === "day" ? "☀️" : earningPeriod === "week" ? "📅" : earningPeriod === "month" ? "🗓️" : "🏆"}
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider">{labels[earningPeriod]} · Admin Profit</p>
-                  <p className="text-3xl font-black" style={{ color: colors[earningPeriod] }}>GH₵{p.profit.toFixed(2)}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl p-3" style={{ background: "#0a0f1a", border: "1px solid #1e3050" }}>
-                  <p className="text-[10px] text-slate-500 mb-1">Revenue</p>
-                  <p className="font-black text-white text-base">GH₵{p.revenue.toFixed(2)}</p>
-                </div>
-                <div className="rounded-xl p-3" style={{ background: "#0a0f1a", border: "1px solid #1e3050" }}>
-                  <p className="text-[10px] text-slate-500 mb-1">Orders</p>
-                  <p className="font-black text-white text-base">{p.orders}</p>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
       </div>
 
       {/* ── Revenue Overview chart ── */}
