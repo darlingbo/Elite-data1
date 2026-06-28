@@ -218,7 +218,7 @@ export default function AgentPage() {
 
         {/* Overlay panel — starts on LEFT, slides right on .active */}
         {/* Overlay — left half, clips with diagonal, slides right on .active */}
-        <div className="overlay-panel-reg" style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#7c3aed 0%,#1d4ed8 60%,#0369a1 100%)", display: "flex", alignItems: "center", paddingLeft: 40, paddingRight: "54%" }}>
+        <div className="overlay-panel-reg" style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#7c3aed 0%,#1d4ed8 60%,#0369a1 100%)", display: "flex", alignItems: "center", paddingLeft: 32, paddingRight: "60%" }}>
           <div style={{ maxWidth: 280, textAlign: "center" }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>💰</div>
             <h2 style={{ fontSize: 24, fontWeight: 900, color: "white", margin: "0 0 12px", lineHeight: 1.2 }}>Already an Agent?</h2>
@@ -236,12 +236,12 @@ export default function AgentPage() {
 
       <style>{`
         .overlay-panel-reg {
-          clip-path: polygon(0 0, 53% 0, 58% 100%, 0 100%);
+          clip-path: polygon(0 0, 43% 0, 48% 100%, 0 100%);
           transition: transform 900ms cubic-bezier(.77,0,.18,1), clip-path 900ms cubic-bezier(.77,0,.18,1);
         }
         .auth-container.active .overlay-panel-reg {
           transform: translateX(100%);
-          clip-path: polygon(42% 0, 100% 0, 100% 100%, 47% 100%);
+          clip-path: polygon(52% 0, 100% 0, 100% 100%, 57% 100%);
         }
         .form-panel--register {
           transition: opacity 450ms ease, transform 450ms ease, filter 450ms ease;
