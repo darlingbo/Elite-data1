@@ -609,7 +609,7 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
           <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(124,58,237,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>⭐</div>
           <div style={{ flex: 1 }}>
             <p style={{ color: "#a78bfa", fontWeight: 800, fontSize: 13, margin: "0 0 2px" }}>Pro Agent — All features unlocked</p>
-            <p style={{ color: M.muted, fontSize: 12, margin: 0 }}>Wholesale prices · 5 sales/day rewards · Verified badge on your store</p>
+            <p style={{ color: M.muted, fontSize: 12, margin: 0 }}>Wholesale prices · 20 sales/day rewards · Verified badge on your store</p>
           </div>
           <a href="https://wa.me/233509794503?text=Hi%2C+I%27m+a+Pro+Agent+and+need+priority+support" target="_blank" rel="noreferrer"
             style={{ background: "#16a34a", color: "white", textDecoration: "none", borderRadius: 10, padding: "8px 14px", fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
@@ -2351,13 +2351,13 @@ function ProPage({ data, onNavigate }: { data: AgentData; onNavigate: (p: Page) 
   const isPro = !!(data.registration_ref && data.registration_ref !== "FREE");
 
   const proFeatures = [
-    { icon: "⚡", title: "Lower Reward Thresholds", free: "10 sales/day for 1GB", pro: "5 sales/day for 2GB — double the data, half the work" },
+    { icon: "⚡", title: "Lower Reward Thresholds", free: "30 sales/day for 1GB", pro: "20 sales/day for 2GB — double the data, less work" },
     { icon: "🏷️", title: "Wholesale Data Pricing", free: "4% discount off customer price", pro: "Admin wholesale prices — maximum profit margin" },
     { icon: "⭐", title: "Verified Seller Badge", free: "No badge", pro: "Gold 'Verified Pro Seller' badge on your storefront" },
     { icon: "📊", title: "Full Sales Analytics", free: "Basic order history only", pro: "30-day chart, network breakdown, top customers, daily average" },
     { icon: "💬", title: "Priority WhatsApp Support", free: "General queue (up to 60 min)", pro: "Priority line — response within 5 minutes" },
-    { icon: "💰", title: "Higher Weekly Reward", free: "40 sales/week for 3GB", pro: "20 sales/week for 5GB" },
-    { icon: "🏆", title: "Faster Milestone Rewards", free: "Every 100 sales for 2GB", pro: "Every 50 sales for 3GB" },
+    { icon: "💰", title: "Higher Weekly Reward", free: "120 sales/week for 3GB", pro: "70 sales/week for 5GB" },
+    { icon: "🏆", title: "Faster Milestone Rewards", free: "Every 300 sales for 2GB", pro: "Every 150 sales for 3GB" },
     { icon: "📁", title: "Export Customer Data", free: "View only", pro: "Download full order history as CSV" },
   ];
 

@@ -3,16 +3,16 @@ import { supabase } from "@/lib/supabase";
 
 // ── Reward tiers ──────────────────────────────────────────────────────────────
 export const REWARDS = {
-  daily:     { label: "Daily Hustle",   threshold: 10,  dataGB: 1, description: "Sell 10+ bundles in a day" },
-  weekly:    { label: "Weekly Star",    threshold: 40,  dataGB: 3, description: "Sell 40+ bundles in a week" },
-  milestone: { label: "Century Mark",  threshold: 100, dataGB: 2, description: "Every 100 total completed sales" },
+  daily:     { label: "Daily Hustle",   threshold: 30,  dataGB: 1, description: "Sell 30+ bundles in a day" },
+  weekly:    { label: "Weekly Star",    threshold: 120, dataGB: 3, description: "Sell 120+ bundles in a week" },
+  milestone: { label: "Century Mark",  threshold: 300, dataGB: 2, description: "Every 300 total completed sales" },
 };
 
-// Pro agents earn rewards faster — half the threshold, more data
+// Pro agents earn rewards faster with more data
 export const PRO_REWARDS = {
-  daily:     { label: "Daily Hustle",   threshold: 5,   dataGB: 2, description: "Sell 5+ bundles in a day (Pro)" },
-  weekly:    { label: "Weekly Star",    threshold: 20,  dataGB: 5, description: "Sell 20+ bundles in a week (Pro)" },
-  milestone: { label: "Century Mark",  threshold: 50,  dataGB: 3, description: "Every 50 total completed sales (Pro)" },
+  daily:     { label: "Daily Hustle",   threshold: 20,  dataGB: 2, description: "Sell 20+ bundles in a day (Pro)" },
+  weekly:    { label: "Weekly Star",    threshold: 70,  dataGB: 5, description: "Sell 70+ bundles in a week (Pro)" },
+  milestone: { label: "Century Mark",  threshold: 150, dataGB: 3, description: "Every 150 total completed sales (Pro)" },
 };
 
 const NETWORK_API_MAP: Record<string, string> = {
