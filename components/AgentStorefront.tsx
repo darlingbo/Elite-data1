@@ -39,11 +39,12 @@ interface Props {
   agentName: string;
   agentWhatsapp: string;
   agentCode: string;
+  isPro?: boolean;
 }
 
 const MAIN_WHATSAPP = "233509794503";
 
-export default function AgentStorefront({ shopName, agentWhatsapp, agentCode }: Props) {
+export default function AgentStorefront({ shopName, agentWhatsapp, agentCode, isPro }: Props) {
   // Use agent's own WhatsApp if available, otherwise fall back to main site number
   const supportNumber = agentWhatsapp && agentWhatsapp.length > 5 ? agentWhatsapp : MAIN_WHATSAPP;
   const palette = getShopPalette(shopName);
@@ -76,7 +77,14 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode }: 
               {initial}
             </div>
             <div>
-              <h1 className="text-white font-black text-xl leading-tight">{shopName}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-white font-black text-xl leading-tight">{shopName}</h1>
+                {isPro && (
+                  <span className="inline-flex items-center gap-1 bg-amber-400/20 border border-amber-300/40 text-amber-300 text-xs font-bold px-2 py-0.5 rounded-full">
+                    ⭐ Verified
+                  </span>
+                )}
+              </div>
               <p className="text-white/70 text-sm">Data Bundles · Fast Delivery</p>
             </div>
           </div>

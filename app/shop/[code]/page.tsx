@@ -8,6 +8,7 @@ interface AgentInfo {
   whatsapp: string;
   shop_name: string | null;
   agent_type: string | null;
+  is_pro: boolean;
 }
 
 export default function ShopPage() {
@@ -61,6 +62,7 @@ export default function ShopPage() {
       agentName={agent.name}
       agentWhatsapp={agent.whatsapp}
       agentCode={code}
+      isPro={agent.is_pro}
     />
   );
 }

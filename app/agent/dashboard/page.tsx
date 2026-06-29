@@ -27,7 +27,7 @@ interface AgentData {
 interface WalletTx {
   id: string; type: string; amount: number; description: string; created_at: string;
 }
-type Page = "dashboard" | "orders" | "customers" | "wallet" | "transactions" | "referrals" | "leaderboard" | "profile" | "settings" | "prices" | "place_order" | "api" | "buy_data" | "affiliate" | "notifications" | "support";
+type Page = "dashboard" | "orders" | "customers" | "wallet" | "transactions" | "referrals" | "leaderboard" | "profile" | "settings" | "prices" | "place_order" | "api" | "buy_data" | "affiliate" | "notifications" | "support" | "pro";
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const SB = { bg: "#0d1b2e", border: "#1e3a5f", text: "#f8fafc", muted: "#94a3b8" };
@@ -503,6 +503,7 @@ function WithdrawModal({ agentId, referralCode, profitBalance, onClose, onSucces
 // ─── Dashboard Page ───────────────────────────────────────────────────────────
 function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: AgentData; onAddFunds: () => void; onWithdraw: () => void; onNavigate: (p: Page) => void }) {
   const isPriceMode = data.agent_type === "custom_price";
+  const isPro = !!(data.registration_ref && data.registration_ref !== "FREE");
   const ms = useMemo(() => getMonthStats(data.orders), [data.orders]);
   const daily = useMemo(() => getDailySales(data.orders, 30), [data.orders]);
   const topCustomers = useMemo(() => getTopCustomers(data.orders), [data.orders]);
@@ -523,7 +524,7 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
     { label: "Buy Data", icon: "📶", bg: "linear-gradient(135deg,#f59e0b,#d97706)", page: "buy_data" as Page },
     { label: "Wallet", icon: "💳", bg: "linear-gradient(135deg,#3b82f6,#2563eb)", page: "wallet" as Page },
     { label: "Sale & Earn", icon: "🏪", bg: "linear-gradient(135deg,#f59e0b,#b45309)", page: "affiliate" as Page },
-    { label: "Pro ✦", icon: "⭐", bg: "linear-gradient(135deg,#8b5cf6,#7c3aed)", page: "profile" as Page },
+    { label: "Pro ✦", icon: "⭐", bg: "linear-gradient(135deg,#8b5cf6,#7c3aed)", page: "pro" as Page },
     { label: "Orders", icon: "📦", bg: "linear-gradient(135deg,#f97316,#ea580c)", page: "orders" as Page },
     { label: "Rewards", icon: "🎁", bg: "linear-gradient(135deg,#10b981,#059669)", page: "referrals" as Page },
   ];
@@ -592,6 +593,30 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
           </div>
         );
       })()}
+
+      {/* Pro banner: upgrade CTA for Free, priority support for Pro */}
+      {!isPro ? (
+        <div onClick={() => onNavigate("pro")} style={{ background: "linear-gradient(135deg,rgba(124,58,237,0.12),rgba(79,70,229,0.08))", border: "1px solid rgba(124,58,237,0.25)", borderRadius: 18, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}>
+          <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(124,58,237,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>⭐</div>
+          <div style={{ flex: 1 }}>
+            <p style={{ color: M.text, fontWeight: 800, fontSize: 13, margin: "0 0 2px" }}>Upgrade to Pro — GH₵40 one-time</p>
+            <p style={{ color: M.muted, fontSize: 12, margin: 0 }}>Half the reward threshold · Wholesale prices · Verified badge · Priority support</p>
+          </div>
+          <span style={{ color: "#a78bfa", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>View benefits →</span>
+        </div>
+      ) : (
+        <div style={{ background: "linear-gradient(135deg,rgba(124,58,237,0.08),rgba(245,158,11,0.06))", border: "1px solid rgba(124,58,237,0.2)", borderRadius: 18, padding: "14px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(124,58,237,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>⭐</div>
+          <div style={{ flex: 1 }}>
+            <p style={{ color: "#a78bfa", fontWeight: 800, fontSize: 13, margin: "0 0 2px" }}>Pro Agent — All features unlocked</p>
+            <p style={{ color: M.muted, fontSize: 12, margin: 0 }}>Wholesale prices · 5 sales/day rewards · Verified badge on your store</p>
+          </div>
+          <a href="https://wa.me/233509794503?text=Hi%2C+I%27m+a+Pro+Agent+and+need+priority+support" target="_blank" rel="noreferrer"
+            style={{ background: "#16a34a", color: "white", textDecoration: "none", borderRadius: 10, padding: "8px 14px", fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
+            💬 Priority Support
+          </a>
+        </div>
+      )}
 
       {/* 4 stat cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }} className="stat-grid">
@@ -695,7 +720,7 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
 }
 
 // ─── Orders Page ──────────────────────────────────────────────────────────────
-function OrdersPage({ orders, agentId, onPlaceOrder }: { orders: Order[]; agentId: string; onPlaceOrder: () => void }) {
+function OrdersPage({ orders, agentId, onPlaceOrder, isPro }: { orders: Order[]; agentId: string; onPlaceOrder: () => void; isPro?: boolean }) {
   const [tab, setTab] = useState<"regular" | "manual">("regular");
   const [search, setSearch] = useState(""); const [filter, setFilter] = useState("ALL");
   const [manualOrders, setManualOrders] = useState<ManualOrder[]>([]);
@@ -733,6 +758,14 @@ function OrdersPage({ orders, agentId, onPlaceOrder }: { orders: Order[]; agentI
           <p style={{ color: M.muted, fontSize: 13, margin: "2px 0 0" }}>{tab === "regular" ? `${orders.length} online orders` : `${manualOrders.length} manual orders`}</p>
         </div>
         <button onClick={onPlaceOrder} style={{ background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 10, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ Place Order</button>
+        {isPro && (
+          <button onClick={() => {
+            const rows = [["Order ID","Network","Bundle","Phone","Amount","Status","Date"],...orders.map(o=>[o.reference,o.network,o.bundle_size,o.phone,o.amount,o.status,new Date(o.created_at).toLocaleString("en-GH")])].map(r=>r.map(String).join(",")).join("\n");
+            const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([rows],{type:"text/csv"})); a.download = `orders-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+          }} style={{ background: "rgba(74,222,128,0.12)", border: "1px solid rgba(74,222,128,0.25)", color: M.green, borderRadius: 10, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+            ⭐ Export CSV
+          </button>
+        )}
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search orders…" style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 10, padding: "9px 14px", color: M.text, fontSize: 13, width: 200, outline: "none" }} />
         <div style={{ display: "flex", gap: 6 }}>
           {["ALL", "COMPLETED", "PENDING", "PROCESSING", "FAILED"].map(s => (
@@ -2313,6 +2346,119 @@ function SupportPage() {
   );
 }
 
+// ─── Pro Features Page ────────────────────────────────────────────────────────
+function ProPage({ data, onNavigate }: { data: AgentData; onNavigate: (p: Page) => void }) {
+  const isPro = !!(data.registration_ref && data.registration_ref !== "FREE");
+
+  const proFeatures = [
+    { icon: "⚡", title: "Lower Reward Thresholds", free: "10 sales/day for 1GB", pro: "5 sales/day for 2GB — double the data, half the work" },
+    { icon: "🏷️", title: "Wholesale Data Pricing", free: "4% discount off customer price", pro: "Admin wholesale prices — maximum profit margin" },
+    { icon: "⭐", title: "Verified Seller Badge", free: "No badge", pro: "Gold 'Verified Pro Seller' badge on your storefront" },
+    { icon: "📊", title: "Full Sales Analytics", free: "Basic order history only", pro: "30-day chart, network breakdown, top customers, daily average" },
+    { icon: "💬", title: "Priority WhatsApp Support", free: "General queue (up to 60 min)", pro: "Priority line — response within 5 minutes" },
+    { icon: "💰", title: "Higher Weekly Reward", free: "40 sales/week for 3GB", pro: "20 sales/week for 5GB" },
+    { icon: "🏆", title: "Faster Milestone Rewards", free: "Every 100 sales for 2GB", pro: "Every 50 sales for 3GB" },
+    { icon: "📁", title: "Export Customer Data", free: "View only", pro: "Download full order history as CSV" },
+  ];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 680 }}>
+      {/* Header */}
+      <div style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)", borderRadius: 20, padding: "32px 28px", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -20, right: -20, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.06)" }} />
+        <div style={{ position: "absolute", bottom: -30, right: 30, width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }} />
+        <div style={{ position: "relative" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <span style={{ fontSize: 36 }}>⭐</span>
+            <div>
+              <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, margin: 0 }}>Pro Agent Status</p>
+              <p style={{ color: "white", fontSize: 24, fontWeight: 900, margin: 0 }}>{isPro ? "You're a Pro Agent" : "Upgrade to Pro"}</p>
+            </div>
+          </div>
+          <p style={{ color: "rgba(255,255,255,0.8)", fontSize: 14, margin: "0 0 20px", lineHeight: 1.6 }}>
+            {isPro
+              ? "You have access to all Pro features below. Keep selling to unlock more rewards!"
+              : "Pro agents earn more rewards, get wholesale prices, a verified badge, and priority support. One-time fee of GH₵40."}
+          </p>
+          {isPro ? (
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.15)", borderRadius: 10, padding: "8px 16px" }}>
+              <span style={{ color: "#fbbf24", fontSize: 16 }}>✓</span>
+              <span style={{ color: "white", fontWeight: 700, fontSize: 14 }}>Pro Plan Active</span>
+            </div>
+          ) : (
+            <a href="/agent#register" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#fbbf24", color: "#1e1b4b", textDecoration: "none", borderRadius: 12, padding: "12px 24px", fontSize: 15, fontWeight: 800 }}>
+              ⭐ Upgrade to Pro — GH₵40
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Features comparison */}
+      <div style={{ background: M.card, borderRadius: 18, border: `1px solid ${M.border}`, overflow: "hidden" }}>
+        <div style={{ padding: "20px 24px", borderBottom: `1px solid ${M.border}` }}>
+          <p style={{ color: M.text, fontWeight: 800, fontSize: 16, margin: 0 }}>Feature Comparison</p>
+        </div>
+        {/* Table header */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0, background: "rgba(124,58,237,0.08)", padding: "12px 24px", borderBottom: `1px solid ${M.border}` }}>
+          <span style={{ color: M.muted, fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>Feature</span>
+          <span style={{ color: "#60a5fa", fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>Free</span>
+          <span style={{ color: "#a78bfa", fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>⭐ Pro</span>
+        </div>
+        {proFeatures.map((f, i) => (
+          <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0, padding: "16px 24px", borderBottom: i < proFeatures.length - 1 ? `1px solid ${M.border}` : "none", alignItems: "start" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 18 }}>{f.icon}</span>
+              <span style={{ color: M.text, fontSize: 13, fontWeight: 700 }}>{f.title}</span>
+            </div>
+            <p style={{ color: M.muted, fontSize: 12, margin: 0, lineHeight: 1.5, paddingRight: 12 }}>{f.free}</p>
+            <p style={{ color: "#a78bfa", fontSize: 12, fontWeight: 600, margin: 0, lineHeight: 1.5 }}>{f.pro}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Pro-only quick links */}
+      {isPro && (
+        <div style={{ background: M.card, borderRadius: 18, border: `1px solid ${M.border}`, padding: "24px" }}>
+          <p style={{ color: M.text, fontWeight: 800, fontSize: 15, margin: "0 0 16px" }}>Your Pro Benefits — Quick Access</p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {[
+              { icon: "📊", label: "Sales Analytics", page: "dashboard" as Page },
+              { icon: "🎁", label: "Pro Rewards", page: "referrals" as Page },
+              { icon: "💬", label: "Priority Support", href: "https://wa.me/233509794503?text=Hi%2C+I%27m+a+Pro+Agent+and+need+priority+support" },
+              { icon: "🏪", label: "My Store & Prices", page: "affiliate" as Page },
+            ].map((item, i) => (
+              item.href ? (
+                <a key={i} href={item.href} target="_blank" rel="noreferrer"
+                  style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.2)", borderRadius: 12, padding: "14px 18px", textDecoration: "none" }}>
+                  <span style={{ fontSize: 20 }}>{item.icon}</span>
+                  <span style={{ color: M.text, fontWeight: 700, fontSize: 14 }}>{item.label}</span>
+                </a>
+              ) : (
+                <button key={i} onClick={() => onNavigate(item.page!)}
+                  style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.2)", borderRadius: 12, padding: "14px 18px", cursor: "pointer" }}>
+                  <span style={{ fontSize: 20 }}>{item.icon}</span>
+                  <span style={{ color: M.text, fontWeight: 700, fontSize: 14 }}>{item.label}</span>
+                </button>
+              )
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Free agent upgrade CTA */}
+      {!isPro && (
+        <div style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 18, padding: "24px" }}>
+          <p style={{ color: M.amber, fontWeight: 800, fontSize: 15, margin: "0 0 8px" }}>💡 Why upgrade now?</p>
+          <p style={{ color: M.muted, fontSize: 13, margin: "0 0 16px", lineHeight: 1.6 }}>Pro agents earn 2x more reward data, get the lowest wholesale prices, and a verified badge that builds trust with customers. GH₵40 one-time — no monthly fees.</p>
+          <a href="/agent#register" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "linear-gradient(135deg,#f59e0b,#d97706)", color: "black", textDecoration: "none", borderRadius: 12, padding: "12px 24px", fontSize: 14, fontWeight: 800 }}>
+            Upgrade to Pro — GH₵40
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({ page, setPage, data, onLogout, onWithdraw, open, onClose }: { page: Page; setPage: (p: Page) => void; data: AgentData; onLogout: () => void; onWithdraw: () => void; open: boolean; onClose: () => void }) {
   const isPriceMode = data.agent_type === "custom_price";
@@ -2471,7 +2617,7 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
 
         <main style={{ flex: 1, padding: "28px 28px", overflowY: "auto", maxWidth: 1300, width: "100%", margin: "0 auto" }} className="main-content">
           {page === "dashboard"    && <DashboardPage data={data} onAddFunds={() => setShowAddFunds(true)} onWithdraw={() => setShowWithdraw(true)} onNavigate={setPage} />}
-          {page === "orders"       && <OrdersPage orders={data.orders} agentId={data.id} onPlaceOrder={() => setPage("buy_data")} />}
+          {page === "orders"       && <OrdersPage orders={data.orders} agentId={data.id} onPlaceOrder={() => setPage("buy_data")} isPro={!!(data.registration_ref && data.registration_ref !== "FREE")} />}
           {page === "customers"    && <CustomersPage orders={data.orders} />}
           {page === "wallet"       && <WalletPage data={data} onAddFunds={() => setShowAddFunds(true)} onWithdraw={() => setShowWithdraw(true)} />}
           {page === "transactions" && <TransactionsPage data={data} onAddFunds={() => setShowAddFunds(true)} onWithdraw={() => setShowWithdraw(true)} />}
@@ -2485,6 +2631,7 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
           {page === "affiliate"    && <AffiliatePage data={data} />}
           {page === "notifications" && <NotificationsPage data={data} />}
           {page === "support"      && <SupportPage />}
+          {page === "pro"          && <ProPage data={data} onNavigate={setPage} />}
         </main>
 
         {/* Bottom navigation — expanding pill style */}

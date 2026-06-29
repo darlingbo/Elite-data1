@@ -3,9 +3,16 @@ import { supabase } from "@/lib/supabase";
 
 // ── Reward tiers ──────────────────────────────────────────────────────────────
 export const REWARDS = {
-  daily: { label: "Daily Hustle",    threshold: 10,  dataGB: 1, description: "Sell 10+ bundles in a day" },
-  weekly: { label: "Weekly Star",    threshold: 40,  dataGB: 3, description: "Sell 40+ bundles in a week" },
-  milestone: { label: "Century Mark", threshold: 100, dataGB: 2, description: "Every 100 total completed sales" },
+  daily:     { label: "Daily Hustle",   threshold: 10,  dataGB: 1, description: "Sell 10+ bundles in a day" },
+  weekly:    { label: "Weekly Star",    threshold: 40,  dataGB: 3, description: "Sell 40+ bundles in a week" },
+  milestone: { label: "Century Mark",  threshold: 100, dataGB: 2, description: "Every 100 total completed sales" },
+};
+
+// Pro agents earn rewards faster — half the threshold, more data
+export const PRO_REWARDS = {
+  daily:     { label: "Daily Hustle",   threshold: 5,   dataGB: 2, description: "Sell 5+ bundles in a day (Pro)" },
+  weekly:    { label: "Weekly Star",    threshold: 20,  dataGB: 5, description: "Sell 20+ bundles in a week (Pro)" },
+  milestone: { label: "Century Mark",  threshold: 50,  dataGB: 3, description: "Every 50 total completed sales (Pro)" },
 };
 
 const NETWORK_API_MAP: Record<string, string> = {
@@ -78,25 +85,32 @@ async function sendDataBundle(network: string, phone: string, sizeGB: number, re
   }
 }
 
+async function getAgentIsPro(agentId: string): Promise<boolean> {
+  const { data } = await supabase.from("agents").select("registration_ref").eq("id", agentId).maybeSingle();
+  return !!(data?.registration_ref && data.registration_ref !== "FREE");
+}
+
 // ── GET — return all reward statuses ─────────────────────────────────────────
 export async function GET(request: NextRequest) {
   const agentId = request.nextUrl.searchParams.get("agentId");
   if (!agentId) return Response.json({ error: "agentId required" }, { status: 400 });
 
-  const [todaySales, weekSales, totalSales] = await Promise.all([
+  const [todaySales, weekSales, totalSales, isPro] = await Promise.all([
     countTodaySales(agentId),
     countWeekSales(agentId),
     countTotalSales(agentId),
+    getAgentIsPro(agentId),
   ]);
 
+  const R = isPro ? PRO_REWARDS : REWARDS;
   const today    = todayStr();
   const weekStart = weekStartStr();
-  const milestonePeriod = String(Math.floor(totalSales / REWARDS.milestone.threshold));
+  const milestonePeriod = String(Math.floor(totalSales / R.milestone.threshold));
 
   const [dailyClaimed, weeklyClaimed, milestoneClaimed] = await Promise.all([
     hasClaimed(agentId, "daily", today),
     hasClaimed(agentId, "weekly", weekStart),
-    totalSales >= REWARDS.milestone.threshold ? hasClaimed(agentId, "milestone", milestonePeriod) : Promise.resolve(false),
+    totalSales >= R.milestone.threshold ? hasClaimed(agentId, "milestone", milestonePeriod) : Promise.resolve(false),
   ]);
 
   // Recent 10 claims
@@ -109,9 +123,10 @@ export async function GET(request: NextRequest) {
   } catch { /* table may not exist yet */ }
 
   return Response.json({
-    daily:     { sales: todaySales,  threshold: REWARDS.daily.threshold,     earned: todaySales >= REWARDS.daily.threshold,       claimed: dailyClaimed,     dataGB: REWARDS.daily.dataGB,     period: today },
-    weekly:    { sales: weekSales,   threshold: REWARDS.weekly.threshold,    earned: weekSales >= REWARDS.weekly.threshold,        claimed: weeklyClaimed,    dataGB: REWARDS.weekly.dataGB,    period: weekStart },
-    milestone: { sales: totalSales,  threshold: REWARDS.milestone.threshold, earned: totalSales >= REWARDS.milestone.threshold,    claimed: milestoneClaimed, dataGB: REWARDS.milestone.dataGB, period: milestonePeriod, nextAt: (Math.floor(totalSales / REWARDS.milestone.threshold) + 1) * REWARDS.milestone.threshold },
+    isPro,
+    daily:     { sales: todaySales,  threshold: R.daily.threshold,     earned: todaySales >= R.daily.threshold,     claimed: dailyClaimed,     dataGB: R.daily.dataGB,     period: today },
+    weekly:    { sales: weekSales,   threshold: R.weekly.threshold,    earned: weekSales >= R.weekly.threshold,     claimed: weeklyClaimed,    dataGB: R.weekly.dataGB,    period: weekStart },
+    milestone: { sales: totalSales,  threshold: R.milestone.threshold, earned: totalSales >= R.milestone.threshold, claimed: milestoneClaimed, dataGB: R.milestone.dataGB, period: milestonePeriod, nextAt: (Math.floor(totalSales / R.milestone.threshold) + 1) * R.milestone.threshold },
     history,
   });
 }
@@ -136,10 +151,11 @@ export async function POST(request: NextRequest) {
   }
 
   // Re-check eligibility
-  const [todaySales, weekSales, totalSales] = await Promise.all([
-    countTodaySales(agentId), countWeekSales(agentId), countTotalSales(agentId),
+  const [todaySales, weekSales, totalSales, isPro] = await Promise.all([
+    countTodaySales(agentId), countWeekSales(agentId), countTotalSales(agentId), getAgentIsPro(agentId),
   ]);
 
+  const R = isPro ? PRO_REWARDS : REWARDS;
   const today     = todayStr();
   const weekStart = weekStartStr();
 
@@ -148,15 +164,15 @@ export async function POST(request: NextRequest) {
   let tierLabel = "";
 
   if (rewardType === "daily") {
-    if (todaySales < REWARDS.daily.threshold) return Response.json({ error: `Need ${REWARDS.daily.threshold} sales today. You have ${todaySales}.` }, { status: 400 });
-    period = today; dataGB = REWARDS.daily.dataGB; tierLabel = REWARDS.daily.label;
+    if (todaySales < R.daily.threshold) return Response.json({ error: `Need ${R.daily.threshold} sales today. You have ${todaySales}.` }, { status: 400 });
+    period = today; dataGB = R.daily.dataGB; tierLabel = R.daily.label;
   } else if (rewardType === "weekly") {
-    if (weekSales < REWARDS.weekly.threshold) return Response.json({ error: `Need ${REWARDS.weekly.threshold} sales this week. You have ${weekSales}.` }, { status: 400 });
-    period = weekStart; dataGB = REWARDS.weekly.dataGB; tierLabel = REWARDS.weekly.label;
+    if (weekSales < R.weekly.threshold) return Response.json({ error: `Need ${R.weekly.threshold} sales this week. You have ${weekSales}.` }, { status: 400 });
+    period = weekStart; dataGB = R.weekly.dataGB; tierLabel = R.weekly.label;
   } else if (rewardType === "milestone") {
-    if (totalSales < REWARDS.milestone.threshold) return Response.json({ error: `Need ${REWARDS.milestone.threshold} total sales. You have ${totalSales}.` }, { status: 400 });
-    period = String(Math.floor(totalSales / REWARDS.milestone.threshold));
-    dataGB = REWARDS.milestone.dataGB; tierLabel = REWARDS.milestone.label;
+    if (totalSales < R.milestone.threshold) return Response.json({ error: `Need ${R.milestone.threshold} total sales. You have ${totalSales}.` }, { status: 400 });
+    period = String(Math.floor(totalSales / R.milestone.threshold));
+    dataGB = R.milestone.dataGB; tierLabel = R.milestone.label;
   } else {
     return Response.json({ error: "Unknown reward type." }, { status: 400 });
   }

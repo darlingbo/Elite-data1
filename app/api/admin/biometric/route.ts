@@ -22,6 +22,15 @@ function getRpId() {
 function getOrigin() {
   return process.env.SITE_URL ?? "https://elitedata1.com";
 }
+// Use the live request origin so biometric works from any valid URL (production or Vercel preview)
+function getRequestOrigin(request: NextRequest): string {
+  return request.headers.get("origin") ?? getOrigin();
+}
+function getRequestRpId(request: NextRequest): string {
+  const o = request.headers.get("origin");
+  if (o) { try { return new URL(o).hostname; } catch {} }
+  return getRpId();
+}
 const ADMIN_USER_ID = new TextEncoder().encode("elite-admin");
 const CHALLENGE_TTL = 5 * 60 * 1000;
 
@@ -96,7 +105,7 @@ export async function GET(request: NextRequest) {
     const existingCreds = await getCredentials();
     const options = await generateRegistrationOptions({
       rpName: RP_NAME,
-      rpID: getRpId(),
+      rpID: getRequestRpId(request),
       userID: ADMIN_USER_ID,
       userName: "admin",
       userDisplayName: "Elite Data Admin",
@@ -119,7 +128,7 @@ export async function GET(request: NextRequest) {
     const creds = await getCredentials();
     if (!creds.length) return Response.json({ error: "No credentials registered" }, { status: 404 });
     const options = await generateAuthenticationOptions({
-      rpID: getRpId(),
+      rpID: getRequestRpId(request),
       userVerification: "required",
       allowCredentials: creds.map(c => ({ id: c.credentialId, transports: c.transports })),
     });
@@ -155,8 +164,8 @@ export async function POST(request: NextRequest) {
       verification = await verifyRegistrationResponse({
         response: body,
         expectedChallenge,
-        expectedOrigin: getOrigin(),
-        expectedRPID: getRpId(),
+        expectedOrigin: getRequestOrigin(request),
+        expectedRPID: getRequestRpId(request),
         requireUserVerification: true,
       });
     } catch (e) {
@@ -202,8 +211,8 @@ export async function POST(request: NextRequest) {
       verification = await verifyAuthenticationResponse({
         response: body,
         expectedChallenge,
-        expectedOrigin: getOrigin(),
-        expectedRPID: getRpId(),
+        expectedOrigin: getRequestOrigin(request),
+        expectedRPID: getRequestRpId(request),
         requireUserVerification: true,
         credential: {
           id: matchedCred.credentialId,
