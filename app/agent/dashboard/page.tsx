@@ -522,7 +522,7 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
   const quickActions = [
     { label: "Buy Data", icon: "📶", bg: "linear-gradient(135deg,#f59e0b,#d97706)", page: "buy_data" as Page },
     { label: "Wallet", icon: "💳", bg: "linear-gradient(135deg,#3b82f6,#2563eb)", page: "wallet" as Page },
-    { label: "My Prices", icon: "🏷️", bg: "linear-gradient(135deg,#f59e0b,#b45309)", page: "affiliate" as Page },
+    { label: "Sale & Earn", icon: "🏪", bg: "linear-gradient(135deg,#f59e0b,#b45309)", page: "affiliate" as Page },
     { label: "Pro ✦", icon: "⭐", bg: "linear-gradient(135deg,#8b5cf6,#7c3aed)", page: "profile" as Page },
     { label: "Orders", icon: "📦", bg: "linear-gradient(135deg,#f97316,#ea580c)", page: "orders" as Page },
     { label: "Rewards", icon: "🎁", bg: "linear-gradient(135deg,#10b981,#059669)", page: "referrals" as Page },
@@ -1930,13 +1930,16 @@ function ApiPage({ data }: { data: AgentData }) {
 
 // ─── Affiliate Page (Referrals + Leaderboard combined) ───────────────────────
 function AffiliatePage({ data }: { data: AgentData }) {
-  const [tab, setTab] = useState<"how" | "store" | "sales">("how");
+  const [tab, setTab] = useState<"how" | "store" | "sales">("store");
   const [storeName, setStoreName] = useState(data.business_name ?? "");
   const [whatsapp, setWhatsapp] = useState(data.phone ?? "");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawMsg, setWithdrawMsg] = useState("");
+  const [editStoreName, setEditStoreName] = useState(!data.business_name);
+  const [editWhatsapp, setEditWhatsapp] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   const totalEarned = (data.commission_balance ?? 0) + (data.paystack_wallet_balance ?? 0);
   const siteUrl = typeof window !== "undefined" ? window.location.origin : "https://elitedata1.com";
@@ -2053,23 +2056,77 @@ function AffiliatePage({ data }: { data: AgentData }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Store name */}
           <div style={{ background: M.card, borderRadius: 14, border: `1px solid ${M.border}`, padding: "18px" }}>
-            <p style={{ color: GOLD, fontWeight: 700, fontSize: 13, margin: "0 0 8px" }}>✏️ Custom Store Name</p>
-            <p style={{ color: M.muted, fontSize: 12, margin: "0 0 10px" }}>This name appears on your public store page as the store title.</p>
-            <input value={storeName} onChange={e => setStoreName(e.target.value)} placeholder="Your store name..." style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.06)", border: `1px solid ${M.border}`, color: M.text, fontSize: 14, boxSizing: "border-box" as const }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 16 }}>✏️</span>
+              <p style={{ color: GOLD, fontWeight: 700, fontSize: 13, margin: 0 }}>Custom Store Name</p>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <p style={{ color: M.text, fontWeight: 700, fontSize: 15, margin: 0 }}>{storeName || <span style={{ color: M.muted, fontStyle: "italic" }}>Not set</span>}</p>
+              <button onClick={() => setEditStoreName(v => !v)} style={{ background: "none", border: "none", color: M.muted, fontSize: 13, cursor: "pointer" }}>✏️ Edit</button>
+            </div>
+            {editStoreName && (
+              <>
+                <p style={{ color: M.muted, fontSize: 12, margin: "0 0 8px" }}>This name appears on your public store page.</p>
+                <input value={storeName} onChange={e => setStoreName(e.target.value)} placeholder="Your store name..." style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.06)", border: `1px solid ${M.border}`, color: M.text, fontSize: 14, boxSizing: "border-box" as const }} />
+              </>
+            )}
           </div>
+
           {/* WhatsApp */}
           <div style={{ background: M.card, borderRadius: 14, border: `1px solid ${M.border}`, padding: "18px" }}>
-            <p style={{ color: M.green, fontWeight: 700, fontSize: 13, margin: "0 0 8px" }}>📞 WhatsApp Contact Number (optional)</p>
-            <p style={{ color: M.muted, fontSize: 12, margin: "0 0 10px" }}>Customers will see a "Chat on WhatsApp" button linked to this number on your store page.</p>
-            <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="024XXXXXXX" style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.06)", border: `1px solid ${M.border}`, color: M.text, fontSize: 14, boxSizing: "border-box" as const }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 16 }}>📞</span>
+              <p style={{ color: M.green, fontWeight: 700, fontSize: 13, margin: 0 }}>WhatsApp Contact Number <span style={{ color: M.muted, fontWeight: 500 }}>(optional)</span></p>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <p style={{ color: whatsapp ? M.text : M.muted, fontStyle: whatsapp ? "normal" : "italic", fontSize: 13, margin: 0 }}>{whatsapp || "Not set — no WhatsApp button shown on store"}</p>
+              <button onClick={() => setEditWhatsapp(v => !v)} style={{ background: "none", border: "none", color: M.muted, fontSize: 13, cursor: "pointer" }}>✏️ {whatsapp ? "Edit" : "Add"}</button>
+            </div>
+            {editWhatsapp && (
+              <>
+                <p style={{ color: M.muted, fontSize: 12, margin: "0 0 8px" }}>Customers will see a &quot;Chat on WhatsApp&quot; button on your store page.</p>
+                <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="024XXXXXXX" style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.06)", border: `1px solid ${M.border}`, color: M.text, fontSize: 14, boxSizing: "border-box" as const }} />
+              </>
+            )}
           </div>
+
+          {/* Store Logo */}
+          <div style={{ background: M.card, borderRadius: 14, border: `1px solid ${M.border}`, padding: "18px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+              <span style={{ fontSize: 16 }}>🖼️</span>
+              <p style={{ color: M.blue, fontWeight: 700, fontSize: 13, margin: 0 }}>Store Logo <span style={{ color: M.muted, fontWeight: 500 }}>(optional)</span></p>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ width: 64, height: 64, borderRadius: "50%", border: `2px dashed ${M.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden", background: "rgba(255,255,255,0.04)" }}>
+                {logoPreview
+                  ? <img src={logoPreview} alt="logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : <span style={{ fontSize: 24 }}>📡</span>}
+              </div>
+              <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "13px", borderRadius: 12, background: "linear-gradient(90deg,#1e3a5f,#1e3a8f)", border: "none", color: M.blue, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                <span>⬆️</span> Upload Logo
+                <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = ev => setLogoPreview(ev.target?.result as string);
+                  reader.readAsDataURL(file);
+                }} />
+              </label>
+            </div>
+            <p style={{ color: M.muted, fontSize: 11, margin: "10px 0 0" }}>Tap to pick a photo from your gallery. Shown as your store&apos;s logo to customers.</p>
+          </div>
+
           {saveMsg && <p style={{ color: M.green, fontWeight: 700, fontSize: 13, margin: 0 }}>{saveMsg}</p>}
           <button onClick={saveProfile} disabled={saving} style={{ padding: "14px", borderRadius: 12, background: GOLD, color: "#000", border: "none", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
             {saving ? "Saving..." : "Save Changes"}
           </button>
+
           {/* Store link */}
           <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 14, padding: "18px" }}>
-            <p style={{ color: GOLD, fontWeight: 700, fontSize: 13, margin: "0 0 6px" }}>🔗 Your Store Link</p>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 16 }}>🔗</span>
+              <p style={{ color: GOLD, fontWeight: 700, fontSize: 13, margin: 0 }}>Your Store Link</p>
+            </div>
             <p style={{ color: M.muted, fontSize: 12, margin: "0 0 12px" }}>Share this link on WhatsApp, social media, or anywhere. Customers click and pay directly.</p>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <div style={{ flex: 1, background: "rgba(0,0,0,0.4)", borderRadius: 10, padding: "10px 12px", overflow: "hidden" }}>
@@ -2082,15 +2139,12 @@ function AffiliatePage({ data }: { data: AgentData }) {
               <button onClick={() => { const msg = `Check out my data store: ${storeLink}`; window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank"); }} style={{ flex: 1, padding: "10px", borderRadius: 10, background: "#25D366", border: "none", color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Share on WhatsApp</button>
             </div>
           </div>
-          {/* Steps reminder */}
-          <div style={{ display: "flex", gap: 8 }}>
-            {["1. Set your prices below", "2. Toggle products ON to add to store", "3. Share your link & earn automatically"].map((s, i) => (
-              <div key={i} style={{ flex: 1, background: M.card, border: `1px solid ${M.border}`, borderRadius: 10, padding: "10px 8px", textAlign: "center" as const }}>
-                <p style={{ color: M.muted, fontSize: 11, margin: 0 }}>{s}</p>
-              </div>
-            ))}
+
+          {/* Price table */}
+          <div style={{ borderTop: `1px solid ${M.border}`, paddingTop: 16 }}>
+            <p style={{ color: M.text, fontWeight: 800, fontSize: 15, margin: "0 0 12px" }}>💰 My Selling Prices</p>
+            <PricesPage data={data} />
           </div>
-          <ReferralsPage data={data} />
         </div>
       )}
 
@@ -2246,7 +2300,7 @@ function Sidebar({ page, setPage, data, onLogout, onWithdraw, open, onClose }: {
     { id: "dashboard", label: "Dashboard", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
     { id: "buy_data",  label: "Buy Data",  svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg> },
     { id: "wallet",    label: "Wallet",    svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg> },
-    { id: "prices",    label: "My Store", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg> },
+    { id: "prices",    label: "My Prices", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/></svg> },
     { id: "orders",    label: "My Orders", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg> },
     { id: "customers", label: "Customers", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg> },
     { id: "affiliate", label: "Sale & Earn", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/></svg> },
@@ -2402,9 +2456,9 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
           {page === "api"          && <ApiPage data={data} />}
           {page === "profile"      && <ProfilePage data={data} />}
           {page === "settings"     && <SettingsPage />}
-          {page === "prices"       && <AffiliatePage data={data} />}
+          {page === "prices"       && <PricesPage data={data} />}
           {(page === "place_order" || page === "buy_data") && <PlaceOrderPage data={data} onRefresh={onRefresh} />}
-          {page === "affiliate"    && <PricesPage data={data} />}
+          {page === "affiliate"    && <AffiliatePage data={data} />}
           {page === "notifications" && <NotificationsPage data={data} />}
           {page === "support"      && <SupportPage />}
         </main>
