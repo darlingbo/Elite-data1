@@ -569,6 +569,30 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
         ))}
       </div>
 
+      {/* Store link banner */}
+      {(() => {
+        const origin = typeof window !== "undefined" ? window.location.origin : "https://elitedata1.com";
+        const link = `${origin}/shop/${data.referral_code}`;
+        const [copied, setCopied] = useState(false);
+        return (
+          <div style={{ background: "linear-gradient(135deg,rgba(245,158,11,0.12),rgba(139,92,246,0.08))", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 18, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(245,158,11,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>🔗</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ color: M.text, fontWeight: 800, fontSize: 13, margin: "0 0 2px" }}>Your Store Link</p>
+              <p style={{ color: "#f59e0b", fontSize: 12, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "monospace" }}>{link}</p>
+            </div>
+            <button onClick={() => { navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+              style={{ background: copied ? "#16a34a" : "#f59e0b", color: copied ? "white" : "#000", border: "none", borderRadius: 10, padding: "9px 16px", fontSize: 13, fontWeight: 800, cursor: "pointer", flexShrink: 0, transition: "background 0.2s" }}>
+              {copied ? "✓ Copied!" : "Copy"}
+            </button>
+            <button onClick={() => { const msg = `Buy cheap data bundles here: ${link}`; window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank"); }}
+              style={{ background: "#25D366", color: "white", border: "none", borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>
+              Share
+            </button>
+          </div>
+        );
+      })()}
+
       {/* 4 stat cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }} className="stat-grid">
         {statCards.map((c, i) => (
