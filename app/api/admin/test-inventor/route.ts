@@ -5,37 +5,33 @@ async function isAdmin() {
   return c.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
 }
 
+async function probe(url: string, key: string, method = "GET", body?: object) {
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const text = await res.text();
+    let json: unknown;
+    try { json = JSON.parse(text); } catch { json = text; }
+    return { status: res.status, body: json };
+  } catch (e) { return { error: String(e) }; }
+}
+
 export async function GET() {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const base = process.env.INVENTOR_API_BASE_URL;
+  const base = process.env.INVENTOR_API_BASE_URL?.replace(/\/$/, "");
   const key = process.env.INVENTOR_API_KEY;
+  if (!base || !key) return Response.json({ error: "Inventor env vars missing" });
 
-  if (!base || !key) return Response.json({ error: "Inventor env vars missing", base: !!base, key: !!key });
+  const [plans, bundles, data, profile] = await Promise.all([
+    probe(`${base}/api/developer/get-plans`, key),
+    probe(`${base}/api/developer/bundles`, key),
+    probe(`${base}/api/developer/data-plans`, key),
+    probe(`${base}/api/developer/profile`, key),
+  ]);
 
-  // 1. Try to get available plans/networks
-  const results: Record<string, unknown> = {};
-
-  try {
-    const plansRes = await fetch(`${base}/api/developer/get-plans`, {
-      headers: { Authorization: `Bearer ${key}` },
-    });
-    results.plans = { status: plansRes.status, body: await plansRes.json().catch(() => plansRes.text()) };
-  } catch (e) { results.plans = { error: String(e) }; }
-
-  try {
-    const networksRes = await fetch(`${base}/api/developer/networks`, {
-      headers: { Authorization: `Bearer ${key}` },
-    });
-    results.networks = { status: networksRes.status, body: await networksRes.json().catch(() => networksRes.text()) };
-  } catch (e) { results.networks = { error: String(e) }; }
-
-  try {
-    const rootRes = await fetch(`${base}/api/developer`, {
-      headers: { Authorization: `Bearer ${key}` },
-    });
-    results.root = { status: rootRes.status, body: await rootRes.json().catch(() => rootRes.text()) };
-  } catch (e) { results.root = { error: String(e) }; }
-
-  return Response.json({ base, results });
+  return Response.json({ base, plans, bundles, data, profile });
 }
