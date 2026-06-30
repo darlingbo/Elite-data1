@@ -1748,7 +1748,7 @@ function BiometricSettings({ showToast }: { showToast: (msg: string, ok?: boolea
 
 // ─── Settings View ────────────────────────────────────────────────────────────
 function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
-  const [net, setNet] = useState<{ mtn: boolean; telecel: boolean; at: boolean; autoHours: boolean; autoStart: string; autoEnd: string } | null>(null);
+  const [net, setNet] = useState<{ mtn: boolean; telecel: boolean; at: boolean; mashup: boolean; autoHours: boolean; autoStart: string; autoEnd: string } | null>(null);
   const [netError, setNetError] = useState("");
   const [netSaving, setNetSaving] = useState<string | null>(null);
   const [toast, setToast] = useState("");
@@ -1769,7 +1769,7 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
       .catch(() => setNetError("Network error loading settings."));
   }, []);
 
-  async function toggleNet(key: "mtn" | "telecel" | "at", value: boolean) {
+  async function toggleNet(key: "mtn" | "telecel" | "at" | "mashup", value: boolean) {
     if (!net) return;
     setNet(prev => prev ? { ...prev, [key]: value } : prev);
     setNetSaving(key);
@@ -1844,9 +1844,10 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
         {!net && !netError && <div className="flex items-center gap-2 text-sm text-slate-500"><div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /> Loading…</div>}
         <div className="space-y-4">
           {net && [
-            { key: "mtn" as const, label: "MTN",        dot: "#f59e0b" },
+            { key: "mtn" as const, label: "MTN",          dot: "#f59e0b" },
             { key: "telecel" as const, label: "Telecel", dot: "#ef4444" },
             { key: "at" as const, label: "AirtelTigo",  dot: "#3b82f6" },
+            { key: "mashup" as const, label: "Mashup",  dot: "#8b5cf6" },
           ].map(n => (
             <div key={n.key} className="flex items-center justify-between">
               <div className="flex items-center gap-3">
