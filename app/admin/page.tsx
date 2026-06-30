@@ -909,6 +909,31 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
     finally { setCompleting(null); setTimeout(() => setRetryMsg(null), 4000); }
   }
 
+  function handleExport() {
+    const rows = [
+      ["Reference", "Status", "Customer", "Phone", "Network", "Bundle", "Amount (GH₵)", "Agent", "Refunded", "Date"],
+      ...filtered.map(o => [
+        o.reference,
+        o.status,
+        o.customer_name ?? "",
+        o.phone ?? "",
+        (o.network ?? "").toUpperCase(),
+        o.bundle_size ?? "",
+        Number(o.amount).toFixed(2),
+        o.agent_name ?? "Direct",
+        o.refunded ? "Yes" : "No",
+        new Date(o.created_at).toLocaleString("en-GH"),
+      ]),
+    ];
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const label = statusFilter === "ALL" ? "all" : statusFilter.toLowerCase();
+    a.href = url; a.download = `orders-${label}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  }
+
   async function handleRefund(reference: string, amount: number) {
     if (!confirm(`Refund GH₵${amount.toFixed(2)} to customer via Paystack?`)) return;
     setRefunding(reference);
@@ -1038,6 +1063,7 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
           <button onClick={onRefresh} className="text-sm font-medium text-slate-400 hover:text-white border px-3 py-2 rounded-xl transition-colors" style={{ background: CARD, borderColor: BORDER }}>↻ Refresh</button>
           <button onClick={handleSync} disabled={syncing} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl transition-colors" style={{ background: "rgba(59,130,246,0.1)", borderColor: "#3b82f660", color: "#60a5fa" }}>{syncing ? "Syncing…" : "⚡ Sync"}</button>
           <button onClick={handleRecalculate} disabled={recalculating} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl" style={{ background: "rgba(34,197,94,0.1)", borderColor: "#22c55e60", color: "#4ade80" }}>{recalculating ? "Fixing…" : "💰 Fix Commissions"}</button>
+          <button onClick={handleExport} className="text-sm font-medium border px-3 py-2 rounded-xl" style={{ background: "rgba(34,197,94,0.1)", borderColor: "#22c55e60", color: "#4ade80" }} title={`Export ${filtered.length} orders as CSV`}>⬇️ Export {statusFilter === "ALL" ? "" : statusFilter} ({filtered.length})</button>
           <button onClick={handleDeleteFailed} disabled={deletingFailed} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl" style={{ background: "rgba(239,68,68,0.1)", borderColor: "#ef444460", color: "#f87171" }}>{deletingFailed ? "Deleting…" : "🗑️ Delete Failed"}</button>
           <button onClick={() => setAiOpen(v => !v)} className="text-sm font-bold border px-3 py-2 rounded-xl transition-all" style={{ background: aiOpen ? "rgba(139,92,246,0.2)" : "rgba(139,92,246,0.1)", borderColor: "rgba(139,92,246,0.5)", color: "#a78bfa" }}>🤖 Ask AI</button>
           {syncMsg && <span className="text-xs font-semibold text-green-400">{syncMsg}</span>}
