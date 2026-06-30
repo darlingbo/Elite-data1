@@ -29,15 +29,20 @@ export async function PATCH(req: NextRequest) {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
   async function upsert(k: string, v: string) {
-    await supabase.from("system_settings").upsert({ key: k, value: v }, { onConflict: "key" });
+    const { error } = await supabase.from("system_settings").upsert({ key: k, value: v }, { onConflict: "key" });
+    if (error) throw new Error(`Failed to save ${k}: ${error.message}`);
   }
-  const tasks: Promise<void>[] = [];
-  if ("mtn" in body) tasks.push(upsert("network_mtn_active", body.mtn ? "1" : "0"));
-  if ("telecel" in body) tasks.push(upsert("network_telecel_active", body.telecel ? "1" : "0"));
-  if ("at" in body) tasks.push(upsert("network_at_active", body.at ? "1" : "0"));
-  if ("autoHours" in body) tasks.push(upsert("store_auto_hours", body.autoHours ? "1" : "0"));
-  if ("autoStart" in body) tasks.push(upsert("store_auto_start", body.autoStart));
-  if ("autoEnd" in body) tasks.push(upsert("store_auto_end", body.autoEnd));
-  await Promise.all(tasks);
-  return Response.json({ success: true });
+  try {
+    const tasks: Promise<void>[] = [];
+    if ("mtn" in body) tasks.push(upsert("network_mtn_active", body.mtn ? "1" : "0"));
+    if ("telecel" in body) tasks.push(upsert("network_telecel_active", body.telecel ? "1" : "0"));
+    if ("at" in body) tasks.push(upsert("network_at_active", body.at ? "1" : "0"));
+    if ("autoHours" in body) tasks.push(upsert("store_auto_hours", body.autoHours ? "1" : "0"));
+    if ("autoStart" in body) tasks.push(upsert("store_auto_start", body.autoStart));
+    if ("autoEnd" in body) tasks.push(upsert("store_auto_end", body.autoEnd));
+    await Promise.all(tasks);
+    return Response.json({ success: true });
+  } catch (e) {
+    return Response.json({ success: false, error: (e as Error).message }, { status: 500 });
+  }
 }

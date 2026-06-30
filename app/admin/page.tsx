@@ -1776,7 +1776,7 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
     const r = await fetch("/api/admin/network-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [key]: value }) }).then(r => r.json());
     setNetSaving(null);
     if (r.success) showToast(`✓ ${key.toUpperCase()} ${value ? "enabled" : "disabled"}`);
-    else { showToast("❌ Save failed — check Supabase SQL below", false); setNet(prev => prev ? { ...prev, [key]: !value } : prev); }
+    else { showToast(`❌ ${r.error ?? "Save failed"}`, false); setNet(prev => prev ? { ...prev, [key]: !value } : prev); }
   }
 
   async function toggleAutoHours(value: boolean) {
