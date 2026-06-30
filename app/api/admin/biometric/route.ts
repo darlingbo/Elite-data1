@@ -71,11 +71,9 @@ function requireAdminSession(request: NextRequest): boolean {
   return session === token;
 }
 
-function getExpectedOrigins(request: NextRequest): string[] {
-  const origins = new Set(VALID_ORIGINS);
-  const reqOrigin = request.headers.get("origin");
-  if (reqOrigin) origins.add(reqOrigin);
-  return [...origins];
+// Never reflect the request Origin — only trust hardcoded domains
+function getExpectedOrigins(): string[] {
+  return VALID_ORIGINS;
 }
 
 // ── GET ───────────────────────────────────────────────────────────────────────
@@ -146,7 +144,7 @@ export async function POST(request: NextRequest) {
       verification = await verifyRegistrationResponse({
         response: body,
         expectedChallenge,
-        expectedOrigin: getExpectedOrigins(request),
+        expectedOrigin: getExpectedOrigins(),
         expectedRPID: RP_ID,
         requireUserVerification: false,
       });
@@ -186,7 +184,7 @@ export async function POST(request: NextRequest) {
       verification = await verifyAuthenticationResponse({
         response: body,
         expectedChallenge,
-        expectedOrigin: getExpectedOrigins(request),
+        expectedOrigin: getExpectedOrigins(),
         expectedRPID: RP_ID,
         requireUserVerification: false,
         credential: {

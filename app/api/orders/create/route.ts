@@ -393,10 +393,10 @@ export async function POST(request: NextRequest) {
   const txnStatus = (psData.data as Record<string, unknown>)?.status;
   const txnAmount = Number((psData.data as Record<string, unknown>)?.amount ?? 0);
 
-  // Floor: customer must pay at least cost price (prevents £0 fraud).
-  // We do NOT enforce exact match — Paystack already charged what the client showed,
-  // and custom-agent prices and referral credits cause legitimate "mismatches".
-  const minKobo = Math.round(pricing.costPrice * 100);
+  // Floor: customer must pay at least 80% of the selling price.
+  // 80% allows for referral credits and promo discounts (max ~20% off),
+  // but blocks anyone paying only the cost price to steal admin profit.
+  const minKobo = Math.round(pricing.price * 0.80 * 100);
   const paid =
     psData.status === true &&
     txnStatus === "success" &&
@@ -522,8 +522,19 @@ export async function POST(request: NextRequest) {
 
   // Award referral credit to referrer (fire and forget)
   const safeVia = typeof referralVia === "string" ? referralVia.trim() : "";
-  if (safeVia && safeVia !== phone) {
+  // Validate referralVia is a plausible Ghana phone number before awarding credit
+  const viaIsValid = /^0[2-5][0-9]{8}$/.test(safeVia);
+  if (safeVia && safeVia !== phone && viaIsValid) {
     (async () => {
+      // Rate-limit: max 5 credits per referrer per day (prevents bulk promo code farming)
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+      const { count: todayCount } = await supabase.from("referral_credits")
+        .select("id", { count: "exact", head: true })
+        .eq("phone", safeVia)
+        .not("from_phone", "like", "MILESTONE:%")
+        .gte("created_at", todayStart.toISOString());
+      if ((todayCount ?? 0) >= 5) return; // silently skip — abuse prevention
+
       // Count how many regular credits this referrer has already earned
       const { count: totalUses } = await supabase
         .from("referral_credits")

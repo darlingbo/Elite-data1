@@ -35,6 +35,7 @@ interface Order {
   agent_commission: number; cost_price?: number; customer_name: string; phone: string; network: string;
   bundle_size: string; created_at: string; agent_id: string | null;
   agent_name?: string | null; agent_code?: string | null;
+  refunded?: boolean; refunded_at?: string | null; refund_amount?: number | null;
 }
 interface Agent {
   id: string; name: string; email: string; phone: string; whatsapp?: string; business_name: string;
@@ -858,6 +859,7 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
   const [retrying, setRetrying] = useState<string | null>(null);
   const [retryMsg, setRetryMsg] = useState<{ ref: string; ok: boolean; text: string } | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
+  const [refunding, setRefunding] = useState<string | null>(null);
   const [deletingOne, setDeletingOne] = useState<string | null>(null);
   const [deletingFailed, setDeletingFailed] = useState(false);
   const [deleteFailedMsg, setDeleteFailedMsg] = useState("");
@@ -905,6 +907,18 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
       else setRetryMsg({ ref: reference, ok: false, text: d.error ?? "Failed" });
     } catch { setRetryMsg({ ref: reference, ok: false, text: "Network error" }); }
     finally { setCompleting(null); setTimeout(() => setRetryMsg(null), 4000); }
+  }
+
+  async function handleRefund(reference: string, amount: number) {
+    if (!confirm(`Refund GH₵${amount.toFixed(2)} to customer via Paystack?`)) return;
+    setRefunding(reference);
+    try {
+      const res = await fetch("/api/admin/orders/refund", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference }) });
+      const d = await res.json();
+      if (d.success) { setRetryMsg({ ref: reference, ok: true, text: `✓ Refunded GH₵${Number(d.amount).toFixed(2)}` }); onRefresh(); }
+      else setRetryMsg({ ref: reference, ok: false, text: d.error ?? "Refund failed" });
+    } catch { setRetryMsg({ ref: reference, ok: false, text: "Network error" }); }
+    finally { setRefunding(null); setTimeout(() => setRetryMsg(null), 5000); }
   }
 
   async function handleSync() {
@@ -1116,6 +1130,17 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
                               </button>
                             </>
                           )
+                        )}
+                        {["failed", "completed"].includes((o.status ?? "").toLowerCase()) && !o.refunded && o.amount > 0 && (
+                          <button onClick={() => handleRefund(o.reference, o.amount)} disabled={refunding === o.reference}
+                            title="Refund customer via Paystack"
+                            className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
+                            style={{ background: "rgba(251,191,36,0.12)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.3)" }}>
+                            {refunding === o.reference ? "…" : "↩️"}
+                          </button>
+                        )}
+                        {o.refunded && (
+                          <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: "rgba(251,191,36,0.1)", color: "#fbbf24" }}>Refunded</span>
                         )}
                         <button onClick={() => openLogs(o.reference)} title="View logs"
                           className="text-xs font-bold px-2.5 py-1.5 rounded-lg" style={{ background: "rgba(99,102,241,0.12)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.3)" }}>
