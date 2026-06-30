@@ -22,14 +22,18 @@ function getRpId() {
 function getOrigin() {
   return process.env.SITE_URL ?? "https://elitedata1.com";
 }
-// Use the live request origin so biometric works from any valid URL (production or Vercel preview)
-function getRequestOrigin(request: NextRequest): string {
-  return request.headers.get("origin") ?? getOrigin();
+// Accept all valid origins — www, non-www, and whatever the request came from
+function getExpectedOrigins(request: NextRequest): string[] {
+  const origins = new Set(["https://www.elitedata1.com", "https://elitedata1.com"]);
+  const reqOrigin = request.headers.get("origin");
+  if (reqOrigin) origins.add(reqOrigin);
+  const envOrigin = process.env.SITE_URL;
+  if (envOrigin) origins.add(envOrigin);
+  return [...origins];
 }
 function getRequestRpId(request: NextRequest): string {
-  const o = request.headers.get("origin");
-  if (o) { try { return new URL(o).hostname; } catch {} }
-  return getRpId();
+  // Use base domain so credentials work from both www and non-www
+  return "elitedata1.com";
 }
 const ADMIN_USER_ID = new TextEncoder().encode("elite-admin");
 const CHALLENGE_TTL = 5 * 60 * 1000;
@@ -112,7 +116,7 @@ export async function GET(request: NextRequest) {
       attestationType: "none",
       authenticatorSelection: {
         authenticatorAttachment: "platform",
-        userVerification: "required",
+        userVerification: "preferred",
         residentKey: "preferred",
       },
       excludeCredentials: existingCreds.map(c => ({
@@ -129,8 +133,9 @@ export async function GET(request: NextRequest) {
     if (!creds.length) return Response.json({ error: "No credentials registered" }, { status: 404 });
     const options = await generateAuthenticationOptions({
       rpID: getRequestRpId(request),
-      userVerification: "required",
-      allowCredentials: creds.map(c => ({ id: c.credentialId, transports: c.transports })),
+      userVerification: "preferred",
+      // Empty allowCredentials lets any passkey on the device authenticate (cross-device compatible)
+      allowCredentials: [],
     });
     await saveChallenge(options.challenge);
     return Response.json(options);
@@ -164,9 +169,9 @@ export async function POST(request: NextRequest) {
       verification = await verifyRegistrationResponse({
         response: body,
         expectedChallenge,
-        expectedOrigin: getRequestOrigin(request),
+        expectedOrigin: getExpectedOrigins(request),
         expectedRPID: getRequestRpId(request),
-        requireUserVerification: true,
+        requireUserVerification: false,
       });
     } catch (e) {
       return Response.json({ error: `Verification error: ${String(e)}` }, { status: 400 });
@@ -211,9 +216,9 @@ export async function POST(request: NextRequest) {
       verification = await verifyAuthenticationResponse({
         response: body,
         expectedChallenge,
-        expectedOrigin: getRequestOrigin(request),
+        expectedOrigin: getExpectedOrigins(request),
         expectedRPID: getRequestRpId(request),
-        requireUserVerification: true,
+        requireUserVerification: false,
         credential: {
           id: matchedCred.credentialId,
           publicKey: Buffer.from(matchedCred.publicKey, "base64url"),
