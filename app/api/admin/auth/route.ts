@@ -34,10 +34,7 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 async function verifyAdminPassword(password: string): Promise<boolean> {
-  const sessionToken = process.env.ADMIN_SESSION_TOKEN ?? "";
-
-  // Emergency bypass: ADMIN_SESSION_TOKEN itself can be used as a recovery password
-  if (sessionToken && safeEqual(String(password), sessionToken)) return true;
+  const sessionToken = process.env.ADMIN_SESSION_TOKEN ?? ""; // used as hash salt below
 
   // Check DB-stored hash first (set via Change Password / Reset Password feature)
   try {
