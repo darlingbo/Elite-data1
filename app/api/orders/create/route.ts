@@ -510,10 +510,41 @@ export async function POST(request: NextRequest) {
   // Award referral credit to referrer (fire and forget)
   const safeVia = typeof referralVia === "string" ? referralVia.trim() : "";
   if (safeVia && safeVia !== phone) {
-    supabase
-      .from("referral_credits")
-      .insert({ phone: safeVia, credit_ghc: 1, from_phone: phone })
-      .then(() => {});
+    (async () => {
+      // Count how many regular credits this referrer has already earned
+      const { count: totalUses } = await supabase
+        .from("referral_credits")
+        .select("id", { count: "exact", head: true })
+        .eq("phone", safeVia)
+        .not("from_phone", "like", "MILESTONE:%");
+
+      const epochPos = (totalUses ?? 0) % 10; // 0–9 position in current 10-use cycle
+
+      // Award GH₵0.20 per referral (down from GH₵1)
+      await supabase.from("referral_credits").insert({ phone: safeVia, credit_ghc: 0.20, from_phone: phone });
+
+      // On the 10th use of each cycle: generate a 20% off promo code for the referrer
+      if (epochPos === 9) {
+        const milestoneCode = `BONUS20-${safeVia.slice(-6)}-${Date.now()}`;
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        try {
+          await supabase.from("promo_codes").insert({
+            code: milestoneCode,
+            discount_type: "percent",
+            discount_value: 20,
+            max_uses: 1,
+            used_count: 0,
+            active: true,
+            expires_at: expiresAt,
+          });
+        } catch { /* promo_codes table may not exist yet */ }
+        try {
+          await supabase.from("referral_credits").insert({
+            phone: safeVia, credit_ghc: 0, from_phone: `MILESTONE:${milestoneCode}`,
+          });
+        } catch { /* ignore */ }
+      }
+    })().catch(() => {});
   }
 
   // ─── OPTIMISATION 2: Inventor API with 20s timeout + 1 auto-retry ───────

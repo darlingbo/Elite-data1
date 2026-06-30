@@ -74,6 +74,8 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const [success, setSuccess] = useState<SuccessState | null>(null);
   const [referralCredit, setReferralCredit] = useState(0);
   const [creditChecked, setCreditChecked] = useState(false);
+  const [milestoneCode, setMilestoneCode] = useState<string | null>(null);
+  const [referralUsesLeft, setReferralUsesLeft] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [promoApplying, setPromoApplying] = useState(false);
@@ -117,6 +119,11 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
         .then((data) => {
           setReferralCredit(data.credits ?? 0);
           setCreditChecked(true);
+          setReferralUsesLeft(data.usesLeft ?? null);
+          if (data.milestoneCode && !promoResult) {
+            setPromoCode(data.milestoneCode);
+            setMilestoneCode(data.milestoneCode);
+          }
         })
         .catch(() => {});
     }, 600);
@@ -379,6 +386,16 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
               className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" />
             {creditChecked && referralCredit > 0 && (
               <p className="text-xs text-emerald-600 font-semibold mt-1">🎁 GH₵{referralCredit.toFixed(2)} referral credit applied!</p>
+            )}
+            {creditChecked && milestoneCode && !promoResult && (
+              <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                <p className="text-xs font-black text-amber-700">🏆 You earned a 20% milestone bonus!</p>
+                <p className="text-xs text-amber-600 mt-0.5">10 people used your referral link. Tap Apply to get 20% off this order.</p>
+                <button onClick={applyPromo} className="mt-1.5 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 px-3 py-1 rounded-md">Apply 20% Off</button>
+              </div>
+            )}
+            {creditChecked && referralUsesLeft !== null && referralUsesLeft > 0 && referralUsesLeft < 10 && (
+              <p className="text-xs text-blue-500 mt-1">🔗 Your referral link: <span className="font-bold">{10 - referralUsesLeft}/10</span> uses · {referralUsesLeft} more to earn 20% off</p>
             )}
           </div>
 
