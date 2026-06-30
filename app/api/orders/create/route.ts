@@ -241,7 +241,7 @@ async function callInventorAPI(
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { name, email, phone, bundleId, paystackRef, agentCode, applyReferralCredit, referralVia } = body;
+  const { name, email, phone, bundleId, paystackRef, agentCode, applyReferralCredit, referralVia, fastDelivery } = body;
 
   if (!name || !email || !phone || !bundleId || !paystackRef) {
     return Response.json({ error: "Missing required fields." }, { status: 400 });
@@ -504,6 +504,7 @@ export async function POST(request: NextRequest) {
   }
 
   await sendAdminAlert(
+    (fastDelivery ? "⚡ FAST DELIVERY\n" : "") +
     fmtOrder({ ref: paystackRef, network: bundleMeta.network, size: bundleMeta.size, phone, amount: chargedAmount, profit, agentName })
   );
 

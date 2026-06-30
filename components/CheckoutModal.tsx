@@ -17,6 +17,7 @@ declare global {
 }
 
 const PLATFORM_FEE_RATE = 0.02;
+const FAST_DELIVERY_FEE = 0.50;
 
 type LoyaltyData = {
   count: number;
@@ -78,6 +79,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const [referralUsesLeft, setReferralUsesLeft] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const [promoCode, setPromoCode] = useState("");
+  const [fastDelivery, setFastDelivery] = useState(false);
   const [promoApplying, setPromoApplying] = useState(false);
   const [promoResult, setPromoResult] = useState<{ discount: number; code: string; id: string; label: string } | null>(null);
   const [promoError, setPromoError] = useState("");
@@ -88,7 +90,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const feeAmount = parseFloat((bundle.price * PLATFORM_FEE_RATE).toFixed(2));
   const baseTotal = parseFloat((bundle.price + feeAmount).toFixed(2));
   const promoDiscount = promoResult?.discount ?? 0;
-  const totalAmount = parseFloat(Math.max(baseTotal - referralCredit - promoDiscount, 0).toFixed(2));
+  const totalAmount = parseFloat(Math.max(baseTotal - referralCredit - promoDiscount + (fastDelivery ? FAST_DELIVERY_FEE : 0), 0).toFixed(2));
 
   async function applyPromo() {
     if (!promoCode.trim()) return;
@@ -196,6 +198,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
               agentCode: agentCode ?? null,
               referralVia: referralVia ?? null,
               applyReferralCredit: referralCredit > 0,
+              fastDelivery: fastDelivery,
               promoCode: promoResult?.code ?? null,
               promoDiscount: promoDiscount > 0 ? promoDiscount : null,
             }),
@@ -355,6 +358,12 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
                   <span>−GH₵{promoResult.discount.toFixed(2)}</span>
                 </div>
               )}
+              {fastDelivery && (
+                <div className="flex items-center gap-2 text-xs text-orange-500 font-semibold">
+                  <span>⚡ Fast delivery</span>
+                  <span>+GH₵{FAST_DELIVERY_FEE.toFixed(2)}</span>
+                </div>
+              )}
               <div className={`flex items-center gap-2 text-base font-black ${net.textColor}`}>
                 <span>Total</span>
                 <span>GH₵{totalAmount.toFixed(2)}</span>
@@ -426,6 +435,22 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
           <div className="bg-blue-50 rounded-lg px-3 py-2 text-xs text-blue-700">
             Bundle delivered instantly after payment · Validity: {bundle.validity}
           </div>
+
+          {/* Fast delivery toggle */}
+          <button
+            type="button"
+            onClick={() => setFastDelivery(v => !v)}
+            className={`w-full flex items-center gap-3 rounded-xl border-2 px-4 py-3 transition-all text-left ${fastDelivery ? "border-orange-400 bg-orange-50" : "border-gray-200 bg-white hover:border-orange-200"}`}
+          >
+            <span className="text-2xl">⚡</span>
+            <div className="flex-1">
+              <p className={`text-sm font-black ${fastDelivery ? "text-orange-600" : "text-gray-700"}`}>Fast Delivery</p>
+              <p className="text-xs text-gray-400">Priority processing · +GH₵0.50</p>
+            </div>
+            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${fastDelivery ? "border-orange-400 bg-orange-400" : "border-gray-300"}`}>
+              {fastDelivery && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+            </div>
+          </button>
 
           <button onClick={handlePay} disabled={loading || !paystackReady}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl transition-colors text-sm">
