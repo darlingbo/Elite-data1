@@ -30,15 +30,15 @@ async function getBundleInfo(bundleId: string): Promise<BundleInfo> {
   // Check static bundles first (no DB needed)
   const staticBundle = bundles.find((b) => b.id === bundleId);
 
-  const { data } = await supabase
-    .from("bundle_prices")
-    .select("id, network, size_label, size_gb, price, cost_price")
-    .eq("id", bundleId)
-    .eq("active", true)
-    .maybeSingle();
+  const [bundlePriceResult, mashupResult] = await Promise.all([
+    supabase.from("bundle_prices").select("id, network, size_label, size_gb, price, cost_price")
+      .eq("id", bundleId).eq("active", true).maybeSingle(),
+    supabase.from("mashup_bundles").select("id, name, data_value, data_unit, minutes, price, cost_price")
+      .eq("id", bundleId).eq("active", true).maybeSingle(),
+  ]);
 
+  const data = bundlePriceResult.data;
   if (data) {
-    // network is null for default bundles (implied by ID) — fall back to static
     const network = (data.network as Network | null) ?? staticBundle?.network;
     if (network) {
       const sizeGB = data.size_gb ?? parseSizeGbFromLabel(data.size_label) ?? staticBundle?.sizeGB ?? 1;
@@ -48,6 +48,19 @@ async function getBundleInfo(bundleId: string): Promise<BundleInfo> {
         pricing: { price: data.price, costPrice: data.cost_price, sizeGB },
       };
     }
+  }
+
+  // Check mashup bundles — delivered as MTN via Inventor API
+  const mashup = mashupResult.data;
+  if (mashup) {
+    const sizeGB = mashup.data_unit === "MB" ? mashup.data_value / 1024 : Number(mashup.data_value);
+    const size = mashup.minutes > 0
+      ? `${mashup.data_value}${mashup.data_unit} + ${mashup.minutes}min`
+      : `${mashup.data_value}${mashup.data_unit}`;
+    return {
+      meta: { id: mashup.id, network: "mtn" as Network, size, sizeGB },
+      pricing: { price: mashup.price, costPrice: mashup.cost_price, sizeGB },
+    };
   }
 
   // Fall back to static bundle

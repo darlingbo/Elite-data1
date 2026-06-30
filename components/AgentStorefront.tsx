@@ -28,10 +28,15 @@ export function getShopPalette(name: string): Palette {
   return PALETTES[hash % PALETTES.length];
 }
 
+interface MashupBundle {
+  id: string; name: string; data_value: number; data_unit: string; minutes: number; price: number;
+}
+
 const NETWORKS = [
   { id: "mtn" as const, label: "MTN" },
   { id: "telecel" as const, label: "Telecel" },
   { id: "airteltigo" as const, label: "AirtelTigo" },
+  { id: "mashup" as const, label: "Mashup" },
 ];
 
 interface Props {
@@ -49,15 +54,21 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode, is
   const supportNumber = agentWhatsapp && agentWhatsapp.length > 5 ? agentWhatsapp : MAIN_WHATSAPP;
   const palette = getShopPalette(shopName);
   const [bundles, setBundles] = useState<Bundle[]>([]);
+  const [mashupBundles, setMashupBundles] = useState<MashupBundle[]>([]);
   const [loading, setLoading] = useState(true);
-  const [network, setNetwork] = useState<"mtn" | "telecel" | "airteltigo">("mtn");
+  const [network, setNetwork] = useState<"mtn" | "telecel" | "airteltigo" | "mashup">("mtn");
   const [selected, setSelected] = useState<Bundle | null>(null);
   const [voucherOpen, setVoucherOpen] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/bundles?agent=${encodeURIComponent(agentCode)}`)
-      .then((r) => r.json())
-      .then((d) => { setBundles(d.bundles ?? []); setLoading(false); });
+    Promise.all([
+      fetch(`/api/bundles?agent=${encodeURIComponent(agentCode)}`).then(r => r.json()),
+      fetch(`/api/mashup-bundles`).then(r => r.json()),
+    ]).then(([d, m]) => {
+      setBundles(d.bundles ?? []);
+      setMashupBundles(m.bundles ?? []);
+      setLoading(false);
+    });
   }, [agentCode]);
 
   const filtered = bundles
@@ -114,6 +125,42 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode, is
               <div key={i} className="bg-white/60 rounded-2xl h-32 animate-pulse" />
             ))}
           </div>
+        ) : network === "mashup" ? (
+          mashupBundles.length === 0 ? (
+            <div className="text-center py-12 font-semibold" style={{ color: palette.text }}>
+              No Mashup bundles available right now.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {mashupBundles.map((b) => {
+                const asBundle: Bundle = {
+                  id: b.id,
+                  network: "mtn",
+                  size: b.minutes > 0 ? `${b.data_value}${b.data_unit} + ${b.minutes}min` : `${b.data_value}${b.data_unit}`,
+                  sizeGB: b.data_unit === "MB" ? b.data_value / 1024 : b.data_value,
+                  price: b.price,
+                  costPrice: 0,
+                  validity: "30 days",
+                };
+                return (
+                  <button key={b.id} onClick={() => setSelected(asBundle)}
+                    className="bg-white rounded-2xl shadow-sm p-4 text-left hover:shadow-md transition-all border border-transparent hover:border-white/80">
+                    <div className="text-xs font-black mb-2 px-2 py-0.5 rounded-full inline-block text-white"
+                      style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
+                      Mashup
+                    </div>
+                    <p className="font-black text-gray-800 text-sm leading-snug mb-0.5">{b.name}</p>
+                    {b.minutes > 0 && <p className="text-xs text-purple-600 font-semibold mb-0.5">📞 {b.minutes} mins</p>}
+                    <p className="font-black text-xl" style={{ color: palette.btn }}>GH₵{b.price.toFixed(2)}</p>
+                    <div className="mt-3 w-full py-1.5 rounded-xl text-xs font-bold text-white text-center"
+                      style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
+                      Buy Now
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )
         ) : filtered.length === 0 ? (
           <div className="text-center py-12 font-semibold" style={{ color: palette.text }}>
             No bundles available for this network right now.
