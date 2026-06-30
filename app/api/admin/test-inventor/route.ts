@@ -5,17 +5,22 @@ async function isAdmin() {
   return c.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
 }
 
-async function probe(url: string, key: string, method = "GET", body?: object) {
+async function tryNetwork(base: string, key: string, networkName: string) {
   try {
-    const res = await fetch(url, {
-      method,
+    const res = await fetch(`${base}/api/developer/purchase`, {
+      method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      ...(body ? { body: JSON.stringify(body) } : {}),
+      body: JSON.stringify({
+        network: networkName,
+        Phone: "0200000000",
+        Datasize: 1,
+        reference: `test-at-${networkName.replace(/\s/g, "-").toLowerCase()}-${Date.now()}`,
+      }),
     });
     const text = await res.text();
-    let json: unknown;
-    try { json = JSON.parse(text); } catch { json = text; }
-    return { status: res.status, body: json };
+    let body: unknown;
+    try { body = JSON.parse(text); } catch { body = text.slice(0, 200); }
+    return { status: res.status, body };
   } catch (e) { return { error: String(e) }; }
 }
 
@@ -26,12 +31,13 @@ export async function GET() {
   const key = process.env.INVENTOR_API_KEY;
   if (!base || !key) return Response.json({ error: "Inventor env vars missing" });
 
-  const [plans, bundles, data, profile] = await Promise.all([
-    probe(`${base}/api/developer/get-plans`, key),
-    probe(`${base}/api/developer/bundles`, key),
-    probe(`${base}/api/developer/data-plans`, key),
-    probe(`${base}/api/developer/profile`, key),
-  ]);
+  // Try all known AirtelTigo network name variations
+  const variants = ["AT ISHARE", "AT", "AIRTELTIGO", "AIRTEL", "TIGO", "AT_ISHARE", "at ishare"];
 
-  return Response.json({ base, plans, bundles, data, profile });
+  const results: Record<string, unknown> = {};
+  for (const name of variants) {
+    results[name] = await tryNetwork(base, key, name);
+  }
+
+  return Response.json({ base, results });
 }
