@@ -8,8 +8,8 @@ const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
 const LOYALTY_REQUIRED = 4;
 
-// Inventor must respond within this time — if not, order stays "pending" for monitor to pick up
-const INVENTOR_TIMEOUT_MS = 7_000;
+// Inventor must respond within this time — AT ISHARE can be slow, give it 25s
+const INVENTOR_TIMEOUT_MS = 25_000;
 
 type BundleMeta = { id: string; network: Network; size: string; sizeGB: number };
 type BundlePricing = { price: number; costPrice: number; sizeGB: number };
@@ -604,6 +604,8 @@ export async function POST(request: NextRequest) {
     rawInvStatus.includes("dispatch") ||
     rawInvStatus.includes("pending");
 
+  // If Inventor timed out (status 0), treat as processing — it may already have the order
+  const inventorTimedOut = inventorHttpStatus === 0;
   const inventorOk = invOkRaw && !invIsProcessing;
 
   // Process loyalty fire-and-forget — doesn't block response
@@ -699,13 +701,13 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
   }
 
-  if (invIsProcessing) {
+  if (invIsProcessing || inventorTimedOut) {
     await supabase
       .from("orders")
       .update({ status: "processing", bundle_size: actualSize, network: bundleMeta.network, customer_name: name })
       .eq("reference", paystackRef);
     await sendAdminAlert(
-      `⏳ ORDER PROCESSING\nRef: ${paystackRef}\nPhone: ${phone}\n${bundleMeta.network.toUpperCase()} ${actualSize}\n${inventorLog}`
+      `⏳ ORDER PROCESSING\nRef: ${paystackRef}\nPhone: ${phone}\n${bundleMeta.network.toUpperCase()} ${actualSize}\n${inventorTimedOut ? "⚠️ Inventor timed out — order left as processing for monitor to sync" : inventorLog}`
     );
 
     // Deduct wallet for price-mode agents immediately — commission credited when sync confirms delivery

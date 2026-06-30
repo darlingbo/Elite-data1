@@ -161,12 +161,22 @@ function TrackContent() {
                       </span>
                     </div>
                   </div>
-                  <div style={{ padding: "8px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <p style={{ fontSize: 10, color: D.muted, fontFamily: "monospace", margin: 0 }}>{o.reference}</p>
-                    <button onClick={() => { setQuery(o.reference); searchByRef(o.reference); setOrders(null); }}
-                      style={{ fontSize: 11, fontWeight: 700, color: D.blue, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
-                      View Details →
-                    </button>
+                  <div style={{ padding: "8px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <p style={{ fontSize: 10, color: D.muted, fontFamily: "monospace", margin: 0, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.reference}</p>
+                    <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                      {o.status?.toLowerCase() === "failed" && (
+                        <a
+                          href={`https://wa.me/233509794503?text=${encodeURIComponent(`Refund request\nRef: ${o.reference}\nAmount: GH₵${Number(o.amount).toFixed(2)}`)}`}
+                          target="_blank" rel="noreferrer"
+                          style={{ fontSize: 11, fontWeight: 700, color: "#f87171", textDecoration: "none" }}>
+                          💸 Refund
+                        </a>
+                      )}
+                      <button onClick={() => { setQuery(o.reference); searchByRef(o.reference); setOrders(null); }}
+                        style={{ fontSize: 11, fontWeight: 700, color: D.blue, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
+                        View Details →
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -245,13 +255,26 @@ function TrackContent() {
               ))}
             </div>
 
-            {/* Failed CTA */}
+            {/* Failed — Refund request card */}
             {statusKey === "failed" && (
-              <div style={{ padding: "0 20px 20px" }}>
-                <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer"
+              <div style={{ margin: "0 20px 20px", background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 14, padding: "16px 18px" }}>
+                <p style={{ fontSize: 13, fontWeight: 800, color: "#f87171", margin: "0 0 4px" }}>💸 Refund Available</p>
+                <p style={{ fontSize: 13, color: D.muted, margin: "0 0 14px", lineHeight: 1.5 }}>
+                  Your payment of <strong style={{ color: "white" }}>GH₵{Number(order.amount).toFixed(2)}</strong> was charged but the bundle was not delivered.
+                  Send a refund request to the admin on WhatsApp — include your reference number below.
+                </p>
+                <div style={{ background: D.bg, borderRadius: 8, padding: "8px 12px", marginBottom: 14, fontFamily: "monospace", fontSize: 11, color: D.muted, wordBreak: "break-all" }}>
+                  Ref: {order.reference}
+                </div>
+                <a
+                  href={`https://wa.me/233509794503?text=${encodeURIComponent(`Hello, I would like a refund for my failed data order.\n\nReference: ${order.reference}\nAmount: GH₵${Number(order.amount).toFixed(2)}\nPhone: ${order.phone ?? ""}\n\nPlease process my refund. Thank you.`)}`}
+                  target="_blank" rel="noreferrer"
                   style={{ display: "block", width: "100%", textAlign: "center", background: "#16a34a", color: "white", fontWeight: 800, padding: "13px", borderRadius: 12, textDecoration: "none", fontSize: 14, boxSizing: "border-box" }}>
-                  Contact Support on WhatsApp
+                  📩 Request Refund on WhatsApp
                 </a>
+                <p style={{ fontSize: 11, color: D.muted, margin: "10px 0 0", textAlign: "center" }}>
+                  Refunds are processed manually by the admin within 24 hours.
+                </p>
               </div>
             )}
           </div>
