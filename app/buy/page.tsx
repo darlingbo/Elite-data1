@@ -7,10 +7,11 @@ import AnnouncementBanner from "@/components/AnnouncementBanner";
 import AgentStorefront from "@/components/AgentStorefront";
 import SocialProofTicker from "@/components/SocialProofTicker";
 
-const NETS: { id: Network; label: string; color: string; text: string }[] = [
+const NETS: { id: Network | "mashup"; label: string; color: string; text: string }[] = [
   { id: "mtn",        label: "MTN",        color: "#f59e0b", text: "#78350f" },
   { id: "telecel",    label: "Telecel",    color: "#ef4444", text: "#ffffff" },
   { id: "airteltigo", label: "AirtelTigo", color: "#3b82f6", text: "#ffffff" },
+  { id: "mashup",     label: "Mashup",     color: "#8b5cf6", text: "#ffffff" },
 ];
 
 const D = { bg: "#0d1117", card: "#161b22", border: "#21262d", text: "#e6edf3", muted: "#8b949e" };
@@ -31,7 +32,8 @@ function BuyContent() {
   const [agentInfo, setAgentInfo]           = useState<AgentInfo | null>(null);
   const [agentInfoReady, setAgentInfoReady] = useState(!agentCode);
   const [bundles, setBundles]               = useState<Bundle[]>([]);
-  const [activeNet, setActiveNet]           = useState<Network>("mtn");
+  const [mashupBundles, setMashupBundles]   = useState<{id:string;name:string;data_value:number;data_unit:string;minutes:number;price:number}[]>([]);
+  const [activeNet, setActiveNet]           = useState<Network | "mashup">("mtn");
   const [selected, setSelected]             = useState<Bundle | null>(null);
   const [referralVia, setReferralVia]       = useState<string | undefined>();
 
@@ -45,6 +47,7 @@ function BuyContent() {
   useEffect(() => {
     const url = agentCode ? `/api/bundles?agent=${encodeURIComponent(agentCode)}` : "/api/bundles";
     fetch(url).then(r => r.json()).then(d => setBundles(d.bundles ?? []));
+    fetch("/api/mashup-bundles").then(r => r.json()).then(d => setMashupBundles(d.bundles ?? []));
   }, [agentCode]);
 
   useEffect(() => {
@@ -71,7 +74,7 @@ function BuyContent() {
   }
 
   const net = NETS.find(n => n.id === activeNet) ?? NETS[0];
-  const filtered = bundles.filter(b => b.network === activeNet).sort((a, b) => (a.sizeGB ?? 0) - (b.sizeGB ?? 0));
+  const filtered = activeNet === "mashup" ? [] : bundles.filter(b => b.network === activeNet).sort((a, b) => (a.sizeGB ?? 0) - (b.sizeGB ?? 0));
   const bestId = filtered.length > 0
     ? filtered.reduce((bst, b) => (b.sizeGB / b.price) > (bst.sizeGB / bst.price) ? b : bst, filtered[0]).id
     : null;
@@ -138,7 +141,39 @@ function BuyContent() {
         </div>
 
         {/* Bundle grid */}
-        {bundles.length === 0 ? (
+        {activeNet === "mashup" ? (
+          mashupBundles.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "48px 20px", color: D.muted }}>
+              <p style={{ fontSize: 32, margin: "0 0 8px" }}>📭</p>
+              <p style={{ fontSize: 14 }}>No Mashup bundles available right now.</p>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {mashupBundles.map(b => {
+                const asBundle: Bundle = {
+                  id: b.id, network: "mtn",
+                  size: b.minutes > 0 ? `${b.data_value}${b.data_unit} + ${b.minutes}min` : `${b.data_value}${b.data_unit}`,
+                  sizeGB: b.data_unit === "MB" ? b.data_value / 1024 : b.data_value,
+                  price: b.price, costPrice: 0, validity: "30 days",
+                };
+                return (
+                  <button key={b.id} onClick={() => setSelected(asBundle)} style={{ background: D.card, border: `2px solid #8b5cf620`, borderRadius: 18, padding: 18, cursor: "pointer", textAlign: "left", position: "relative", transition: "all .15s" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: "rgba(139,92,246,0.15)", color: "#a78bfa" }}>Mashup</span>
+                      <span style={{ fontSize: 10, color: D.muted }}>30 days</span>
+                    </div>
+                    <p style={{ margin: "0 0 2px", fontSize: 15, fontWeight: 900, color: D.text, lineHeight: 1.3 }}>{b.name}</p>
+                    {b.minutes > 0 && <p style={{ margin: "2px 0 6px", fontSize: 11, color: "#a78bfa", fontWeight: 600 }}>📞 {b.minutes} mins</p>}
+                    <p style={{ margin: "0 0 16px", fontSize: 22, fontWeight: 900, color: "#8b5cf6" }}>GH₵{b.price.toFixed(2)}</p>
+                    <div style={{ background: "#8b5cf6", color: "#fff", borderRadius: 12, padding: "11px 0", fontSize: 13, fontWeight: 800, textAlign: "center" }}>
+                      Buy Now ⚡
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )
+        ) : bundles.length === 0 ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} style={{ background: D.card, borderRadius: 18, height: 160, border: `1px solid ${D.border}` }} className="animate-pulse" />
