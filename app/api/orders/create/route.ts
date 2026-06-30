@@ -436,10 +436,12 @@ export async function POST(request: NextRequest) {
   }
 
   // Use Paystack as source of truth for the charged amount.
-  // Derive effective selling price by reversing the fee + credit.
+  // Strip fast delivery fee before commission calc — it goes entirely to admin.
   const chargedAmount = parseFloat((txnAmount / 100).toFixed(2));
+  const fastDeliveryFee = fastDelivery === true ? 0.50 : 0;
+  const chargedForCommission = parseFloat((chargedAmount - fastDeliveryFee).toFixed(2));
   const effectivePriceFromPayment = parseFloat(
-    ((chargedAmount + creditAmount) / (1 + PLATFORM_FEE_RATE)).toFixed(2)
+    ((chargedForCommission + creditAmount) / (1 + PLATFORM_FEE_RATE)).toFixed(2)
   );
 
   // Resolve commission split — global default then per-agent override
@@ -462,13 +464,14 @@ export async function POST(request: NextRequest) {
     agentCommission = 0;
     adminCommission = parseFloat(Math.max(0, effectivePriceFromPayment - pricing.costPrice).toFixed(2));
   } else if (agentType === "custom_price") {
-    // Agent keeps markup above admin tier price; admin keeps tier price minus Inventor cost
-    agentCommission = parseFloat(Math.max(0, chargedAmount - adminTierPrice).toFixed(2));
-    adminCommission = parseFloat(Math.max(0, adminTierPrice - pricing.costPrice).toFixed(2));
+    // Agent keeps markup above admin tier price; fast delivery fee excluded
+    agentCommission = parseFloat(Math.max(0, chargedForCommission - adminTierPrice).toFixed(2));
+    adminCommission = parseFloat(Math.max(0, adminTierPrice - pricing.costPrice).toFixed(2)) + fastDeliveryFee;
   } else {
     const profit = Math.max(0, effectivePriceFromPayment - pricing.costPrice);
     agentCommission = parseFloat((profit * agentSplitRate).toFixed(2));
-    adminCommission = parseFloat((profit * (1 - agentSplitRate)).toFixed(2));
+    // Fast delivery fee goes entirely to admin, not split with agent
+    adminCommission = parseFloat((profit * (1 - agentSplitRate) + fastDeliveryFee).toFixed(2));
   }
   const profit = agentCommission + adminCommission;
 
