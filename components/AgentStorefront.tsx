@@ -59,6 +59,13 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode, is
   const [network, setNetwork] = useState<"mtn" | "telecel" | "airteltigo" | "mashup">("mtn");
   const [selected, setSelected] = useState<Bundle | null>(null);
   const [voucherOpen, setVoucherOpen] = useState(false);
+  const [netStatus, setNetStatus] = useState<{ mtn: boolean; telecel: boolean; at: boolean; mashup: boolean }>({ mtn: true, telecel: true, at: true, mashup: true });
+
+  useEffect(() => {
+    fetch("/api/network-status").then(r => r.json()).then(d => {
+      setNetStatus({ mtn: d.mtn !== false, telecel: d.telecel !== false, at: d.at !== false, mashup: d.mashup !== false });
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -107,7 +114,7 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode, is
 
         {/* Network tabs */}
         <div className="flex gap-2 p-1.5 rounded-2xl bg-black/6" style={{ background: "rgba(0,0,0,0.06)" }}>
-          {NETWORKS.map((n) => (
+          {NETWORKS.filter(n => ({ mtn: netStatus.mtn, telecel: netStatus.telecel, airteltigo: netStatus.at, mashup: netStatus.mashup }[n.id] !== false)).map((n) => (
             <button key={n.id} onClick={() => setNetwork(n.id)}
               className="flex-1 py-2.5 rounded-xl font-bold text-sm transition-all"
               style={network === n.id

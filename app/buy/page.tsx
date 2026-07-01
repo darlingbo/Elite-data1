@@ -36,6 +36,13 @@ function BuyContent() {
   const [activeNet, setActiveNet]           = useState<Network | "mashup">("mtn");
   const [selected, setSelected]             = useState<Bundle | null>(null);
   const [referralVia, setReferralVia]       = useState<string | undefined>();
+  const [netStatus, setNetStatus]           = useState<{ mtn: boolean; telecel: boolean; at: boolean; mashup: boolean }>({ mtn: true, telecel: true, at: true, mashup: true });
+
+  useEffect(() => {
+    fetch("/api/network-status").then(r => r.json()).then(d => {
+      setNetStatus({ mtn: d.mtn !== false, telecel: d.telecel !== false, at: d.at !== false, mashup: d.mashup !== false });
+    }).catch(() => {/* keep defaults on error */});
+  }, []);
 
   useEffect(() => {
     if (!agentCode) { setAgentInfoReady(true); return; }
@@ -73,7 +80,9 @@ function BuyContent() {
     return <AgentStorefront shopName={agentInfo.shop_name} agentName={agentInfo.name ?? ""} agentWhatsapp={agentInfo.whatsapp ?? ""} agentCode={agentCode} />;
   }
 
-  const net = NETS.find(n => n.id === activeNet) ?? NETS[0];
+  const netStatusMap: Record<string, boolean> = { mtn: netStatus.mtn, telecel: netStatus.telecel, airteltigo: netStatus.at, mashup: netStatus.mashup };
+  const visibleNets = NETS.filter(n => netStatusMap[n.id] !== false);
+  const net = visibleNets.find(n => n.id === activeNet) ?? visibleNets[0] ?? NETS[0];
   const filtered = activeNet === "mashup" ? [] : bundles.filter(b => b.network === activeNet).sort((a, b) => (a.sizeGB ?? 0) - (b.sizeGB ?? 0));
   const bestId = filtered.length > 0
     ? filtered.reduce((bst, b) => (b.sizeGB / b.price) > (bst.sizeGB / bst.price) ? b : bst, filtered[0]).id
@@ -121,7 +130,7 @@ function BuyContent() {
 
         {/* Network selector — icon style */}
         <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-          {NETS.map(n => (
+          {visibleNets.map(n => (
             <button key={n.id} onClick={() => setActiveNet(n.id)} style={{ flex: 1, padding: "14px 8px", borderRadius: 16, border: `2px solid ${activeNet === n.id ? n.color : D.border}`, background: activeNet === n.id ? `${n.color}15` : D.card, cursor: "pointer", transition: "all .2s" }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: activeNet === n.id ? n.color : `${n.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13, color: activeNet === n.id ? n.text : n.color, margin: "0 auto 6px" }}>
                 {n.label.slice(0, 3)}
