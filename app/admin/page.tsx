@@ -860,9 +860,6 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
   const [retryMsg, setRetryMsg] = useState<{ ref: string; ok: boolean; text: string } | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
   const [refunding, setRefunding] = useState<string | null>(null);
-  const [markingRefund, setMarkingRefund] = useState<string | null>(null);
-  const [bulkMarking, setBulkMarking] = useState(false);
-  const [bulkMarkMsg, setBulkMarkMsg] = useState("");
   const [deletingOne, setDeletingOne] = useState<string | null>(null);
   const [deletingFailed, setDeletingFailed] = useState(false);
   const [deleteFailedMsg, setDeleteFailedMsg] = useState("");
@@ -947,32 +944,6 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
       else setRetryMsg({ ref: reference, ok: false, text: d.error ?? "Refund failed" });
     } catch { setRetryMsg({ ref: reference, ok: false, text: "Network error" }); }
     finally { setRefunding(null); setTimeout(() => setRetryMsg(null), 5000); }
-  }
-
-  async function handleMarkRefunded(reference: string) {
-    if (!confirm(`Mark this order as manually refunded? (No Paystack — confirm you've sent money via MoMo or other.)`)) return;
-    setMarkingRefund(reference);
-    try {
-      const res = await fetch("/api/admin/orders/mark-refunded", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference }) });
-      const d = await res.json();
-      if (d.success) { setRetryMsg({ ref: reference, ok: true, text: "✓ Marked as refunded" }); onRefresh(); }
-      else setRetryMsg({ ref: reference, ok: false, text: d.error ?? "Failed" });
-    } catch { setRetryMsg({ ref: reference, ok: false, text: "Network error" }); }
-    finally { setMarkingRefund(null); setTimeout(() => setRetryMsg(null), 5000); }
-  }
-
-  async function handleBulkMarkRefunded() {
-    const failedCount = orders.filter(o => o.status.toLowerCase() === "failed" && !o.refunded).length;
-    if (failedCount === 0) { alert("No unrefunded failed orders found."); return; }
-    if (!confirm(`Mark ALL ${failedCount} failed orders as manually refunded?\n\nMake sure you've already sent the money to each customer via MoMo before doing this.`)) return;
-    setBulkMarking(true); setBulkMarkMsg("");
-    try {
-      const res = await fetch("/api/admin/orders/mark-refunded", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ markAllFailed: true }) });
-      const d = await res.json();
-      if (d.success) { setBulkMarkMsg(`✓ ${d.count} orders marked as refunded`); onRefresh(); }
-      else setBulkMarkMsg(d.error ?? "Failed");
-    } catch { setBulkMarkMsg("Network error"); }
-    finally { setBulkMarking(false); setTimeout(() => setBulkMarkMsg(""), 6000); }
   }
 
   async function handleSync() {
@@ -1093,11 +1064,9 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
           <button onClick={handleSync} disabled={syncing} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl transition-colors" style={{ background: "rgba(59,130,246,0.1)", borderColor: "#3b82f660", color: "#60a5fa" }}>{syncing ? "Syncing…" : "⚡ Sync"}</button>
           <button onClick={handleRecalculate} disabled={recalculating} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl" style={{ background: "rgba(34,197,94,0.1)", borderColor: "#22c55e60", color: "#4ade80" }}>{recalculating ? "Fixing…" : "💰 Fix Commissions"}</button>
           <button onClick={handleExport} className="text-sm font-medium border px-3 py-2 rounded-xl" style={{ background: "rgba(34,197,94,0.1)", borderColor: "#22c55e60", color: "#4ade80" }} title={`Export ${filtered.length} orders as CSV`}>⬇️ Export {statusFilter === "ALL" ? "" : statusFilter} ({filtered.length})</button>
-          <button onClick={handleBulkMarkRefunded} disabled={bulkMarking} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl" style={{ background: "rgba(34,197,94,0.1)", borderColor: "#22c55e60", color: "#4ade80" }} title="Mark all failed orders as manually refunded (no Paystack)">{bulkMarking ? "Marking…" : "✅ Mark All Failed Refunded"}</button>
           <button onClick={handleDeleteFailed} disabled={deletingFailed} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl" style={{ background: "rgba(239,68,68,0.1)", borderColor: "#ef444460", color: "#f87171" }}>{deletingFailed ? "Deleting…" : "🗑️ Delete Failed"}</button>
           <button onClick={() => setAiOpen(v => !v)} className="text-sm font-bold border px-3 py-2 rounded-xl transition-all" style={{ background: aiOpen ? "rgba(139,92,246,0.2)" : "rgba(139,92,246,0.1)", borderColor: "rgba(139,92,246,0.5)", color: "#a78bfa" }}>🤖 Ask AI</button>
           {syncMsg && <span className="text-xs font-semibold text-green-400">{syncMsg}</span>}
-          {bulkMarkMsg && <span className="text-xs font-semibold text-green-400">{bulkMarkMsg}</span>}
           {recalcMsg && <span className="text-xs font-semibold text-green-400">{recalcMsg}</span>}
           {deleteFailedMsg && <span className="text-xs font-semibold" style={{ color: deleteFailedMsg.startsWith("✓") ? "#4ade80" : "#f87171" }}>{deleteFailedMsg}</span>}
         </div>
@@ -1189,20 +1158,12 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
                           )
                         )}
                         {["failed", "completed"].includes((o.status ?? "").toLowerCase()) && !o.refunded && o.amount > 0 && (
-                          <>
-                            <button onClick={() => handleRefund(o.reference, o.amount)} disabled={refunding === o.reference}
-                              title="Refund via Paystack"
-                              className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
-                              style={{ background: "rgba(251,191,36,0.12)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.3)" }}>
-                              {refunding === o.reference ? "…" : "↩️"}
-                            </button>
-                            <button onClick={() => handleMarkRefunded(o.reference)} disabled={markingRefund === o.reference}
-                              title="Mark as manually refunded (MoMo/cash — no Paystack)"
-                              className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
-                              style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)" }}>
-                              {markingRefund === o.reference ? "…" : "✓"}
-                            </button>
-                          </>
+                          <button onClick={() => handleRefund(o.reference, o.amount)} disabled={refunding === o.reference}
+                            title="Refund customer via Paystack"
+                            className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
+                            style={{ background: "rgba(251,191,36,0.12)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.3)" }}>
+                            {refunding === o.reference ? "…" : "↩️"}
+                          </button>
                         )}
                         {o.refunded && (
                           <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: "rgba(251,191,36,0.1)", color: "#fbbf24" }}>Refunded</span>
