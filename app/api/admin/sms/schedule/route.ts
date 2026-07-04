@@ -49,42 +49,28 @@ export async function PATCH() {
 
   if (!due?.length) return Response.json({ processed: 0 });
 
-  const hasArkesel = !!process.env.ARKESEL_API_KEY;
-  const hasAT      = !!(process.env.AT_API_KEY && process.env.AT_USERNAME);
-  if (!hasArkesel && !hasAT) return Response.json({ error: "SMS not configured" }, { status: 500 });
+  const apiKey   = process.env.AT_API_KEY;
+  const username = process.env.AT_USERNAME;
+  if (!apiKey || !username) return Response.json({ error: "SMS not configured" }, { status: 500 });
 
-  function normalise(phones: string[]): string[] {
+  function normalizePhones(phones: string[]): string {
     return phones.map((p: string) => {
       const d = p.replace(/\D/g, "");
       if (d.startsWith("233")) return `+${d}`;
       if (d.startsWith("0")) return `+233${d.slice(1)}`;
       return `+${d}`;
-    });
+    }).join(",");
   }
 
   let processed = 0;
   for (const job of due) {
-    const normalised = normalise(job.phones ?? []);
-    let ok = false;
-
-    if (hasArkesel) {
-      const res = await fetch("https://sms.arkesel.com/api/v2/sms/send", {
-        method: "POST",
-        headers: { "api-key": process.env.ARKESEL_API_KEY!, "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: process.env.ARKESEL_SENDER_ID ?? "EliteData", message: job.message, recipients: normalised }),
-      }).catch(() => null);
-      ok = res?.ok ?? false;
-    } else {
-      const body = new URLSearchParams({ username: process.env.AT_USERNAME!, to: normalised.join(","), message: job.message });
-      const res = await fetch("https://api.africastalking.com/version1/messaging", {
-        method: "POST",
-        headers: { apiKey: process.env.AT_API_KEY!, "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-        body: body.toString(),
-      }).catch(() => null);
-      ok = res?.ok ?? false;
-    }
-
-    await supabase.from("sms_scheduled").update({ status: ok ? "sent" : "failed" }).eq("id", job.id);
+    const body = new URLSearchParams({ username, to: normalizePhones(job.phones ?? []), message: job.message });
+    const res = await fetch("https://api.africastalking.com/version1/messaging", {
+      method: "POST",
+      headers: { apiKey, "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: body.toString(),
+    }).catch(() => null);
+    await supabase.from("sms_scheduled").update({ status: res?.ok ? "sent" : "failed" }).eq("id", job.id);
     processed++;
   }
   return Response.json({ processed });
