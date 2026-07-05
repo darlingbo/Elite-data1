@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     return Response.json({ canFulfill: true });
   }
 
-  const cost = await getAgentBundleCost(bundleId, agent.registration_ref);
+  const cost = await getAgentBundleCost(bundleId, agent.registration_ref, agent.agent_type);
   if (cost == null) return Response.json({ canFulfill: true });
 
   const walletBalance = Number(agent.wallet_balance ?? 0);

@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
   // Load agent (including registration_ref to determine Free vs Pro pricing)
   const agentRes = await supabase
     .from("agents")
-    .select("id, name, wallet_balance, status, telegram_chat_id, registration_ref")
+    .select("id, name, wallet_balance, status, telegram_chat_id, registration_ref, agent_type")
     .eq("id", agentId)
     .eq("referral_code", referralCode.toUpperCase())
     .eq("status", "approved")
@@ -65,9 +65,9 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Agent account not found or not approved." }, { status: 403 });
   }
 
-  // Free agents pay bundle_prices.price × 0.96 — Pro agents pay custom_tier_prices.price
+  // Commission/Free agents pay bundle_prices.price × 0.96 — Price-mode/Pro agents pay custom_tier_prices.price
   const [costPrice, bundleRes] = await Promise.all([
-    getAgentBundleCost(bundleId, agent.registration_ref),
+    getAgentBundleCost(bundleId, agent.registration_ref, agent.agent_type),
     supabase.from("bundle_prices").select("size_label, size_gb").eq("id", bundleId).maybeSingle(),
   ]);
 

@@ -7,15 +7,17 @@ export const FREE_AGENT_DISCOUNT = 0.04; // 4% off customer selling price
 const isFreeRef = (ref: string | null | undefined) => ref === "FREE";
 
 /**
- * Returns the cost price for ONE bundle for an agent based on their plan.
- * Pro (registration_ref ≠ "FREE") → custom_tier_prices
- * Free (registration_ref === "FREE") → bundle_prices.price × 0.96 (customer price - 4%)
+ * Returns the cost price for ONE bundle for an agent based on their plan/type.
+ * Commission agents OR FREE-plan agents → bundle_prices.price × 0.96 (customer price - 4%)
+ * Price-mode / Pro agents → custom_tier_prices
  */
 export async function getAgentBundleCost(
   bundleId: string,
-  registrationRef: string | null | undefined
+  registrationRef: string | null | undefined,
+  agentType?: string | null
 ): Promise<number | null> {
-  const isPro = !isFreeRef(registrationRef);
+  // commission mode always gets 4% off, regardless of registration_ref
+  const isPro = agentType !== "commission" && !isFreeRef(registrationRef);
 
   if (isPro) {
     const { data } = await supabase
@@ -41,9 +43,10 @@ export async function getAgentBundleCost(
  * Mirrors exactly what /api/bundles returns so the price list always matches.
  */
 export async function getAllAgentBundleCosts(
-  registrationRef: string | null | undefined
+  registrationRef: string | null | undefined,
+  agentType?: string | null
 ): Promise<{ bundle_id: string; price: number }[]> {
-  const isPro = !isFreeRef(registrationRef);
+  const isPro = agentType !== "commission" && !isFreeRef(registrationRef);
 
   if (isPro) {
     const { data } = await supabase
