@@ -1233,9 +1233,10 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
 
   const isCommission = data.agent_type === "commission";
 
-  // Commission agents buy at 4% off customer price; price-mode agents use admin-set prices
+  // Commission agents pay full customer price (earn 80% profit via referrals)
+  // Price-mode agents pay their admin-set tier prices from wallet
   function getBuyPrice(bundle: BundleItem): number {
-    if (isCommission) return parseFloat((bundle.price * 0.96).toFixed(2));
+    if (isCommission) return bundle.price;
     return tierPrices[bundle.id] ?? bundle.costPrice;
   }
 
