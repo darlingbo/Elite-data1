@@ -33,7 +33,7 @@ async function getBundleInfo(bundleId: string): Promise<BundleInfo> {
   const [bundlePriceResult, mashupResult] = await Promise.all([
     supabase.from("bundle_prices").select("id, network, size_label, size_gb, price, cost_price")
       .eq("id", bundleId).eq("active", true).maybeSingle(),
-    supabase.from("mashup_bundles").select("id, name, data_value, data_unit, minutes, price, cost_price")
+    supabase.from("mashup_bundles").select("id, name, data_value, data_unit, minutes, price, cost_price, network")
       .eq("id", bundleId).eq("active", true).maybeSingle(),
   ]);
 
@@ -50,15 +50,17 @@ async function getBundleInfo(bundleId: string): Promise<BundleInfo> {
     }
   }
 
-  // Check mashup bundles — delivered as MTN via Inventor API
+  // Check mashup bundles — routed via Inventor using their configured network
   const mashup = mashupResult.data;
   if (mashup) {
     const sizeGB = mashup.data_unit === "MB" ? mashup.data_value / 1024 : Number(mashup.data_value);
     const size = mashup.minutes > 0
       ? `${mashup.data_value}${mashup.data_unit} + ${mashup.minutes}min`
       : `${mashup.data_value}${mashup.data_unit}`;
+    // Use the network set on the bundle (defaults to airteltigo if not set)
+    const mashupNetwork = (mashup.network as Network | null) ?? "airteltigo";
     return {
-      meta: { id: mashup.id, network: "mtn" as Network, size, sizeGB },
+      meta: { id: mashup.id, network: mashupNetwork, size, sizeGB },
       pricing: { price: mashup.price, costPrice: mashup.cost_price, sizeGB },
     };
   }
