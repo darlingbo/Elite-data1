@@ -40,8 +40,13 @@ function BuyContent() {
 
   useEffect(() => {
     fetch("/api/network-status").then(r => r.json()).then(d => {
-      setNetStatus({ mtn: d.mtn !== false, telecel: d.telecel !== false, at: d.at !== false, mashup: d.mashup !== false });
-    }).catch(() => {/* keep defaults on error */});
+      const status = { mtn: d.mtn !== false, telecel: d.telecel !== false, at: d.at !== false, mashup: d.mashup !== false };
+      setNetStatus(status);
+      // Auto-select first enabled network so bundles show without clicking
+      const statusMap: Record<string, boolean> = { mtn: status.mtn, telecel: status.telecel, airteltigo: status.at, mashup: status.mashup };
+      const firstEnabled = NETS.find(n => statusMap[n.id] !== false);
+      if (firstEnabled) setActiveNet(firstEnabled.id);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {

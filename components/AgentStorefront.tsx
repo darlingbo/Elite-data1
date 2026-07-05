@@ -63,7 +63,11 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode, is
 
   useEffect(() => {
     fetch("/api/network-status").then(r => r.json()).then(d => {
-      setNetStatus({ mtn: d.mtn !== false, telecel: d.telecel !== false, at: d.at !== false, mashup: d.mashup !== false });
+      const status = { mtn: d.mtn !== false, telecel: d.telecel !== false, at: d.at !== false, mashup: d.mashup !== false };
+      setNetStatus(status);
+      const statusMap: Record<string, boolean> = { mtn: status.mtn, telecel: status.telecel, airteltigo: status.at, mashup: status.mashup };
+      const firstEnabled = NETWORKS.find(n => statusMap[n.id] !== false);
+      if (firstEnabled) setNetwork(firstEnabled.id);
     }).catch(() => {});
   }, []);
 
