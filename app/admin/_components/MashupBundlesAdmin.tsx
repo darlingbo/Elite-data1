@@ -19,12 +19,12 @@ const SQL = `CREATE TABLE IF NOT EXISTS mashup_bundles (
   created_at timestamp with time zone DEFAULT now()
 );
 -- If table already exists, add the column:
-ALTER TABLE mashup_bundles ADD COLUMN IF NOT EXISTS network text NOT NULL DEFAULT 'airteltigo';`;
+ALTER TABLE mashup_bundles ADD COLUMN IF NOT EXISTS network text NOT NULL DEFAULT 'mtn';`;
 
 export default function MashupBundlesAdmin() {
   const [bundles, setBundles] = useState<Bundle[]>([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ name: "", data_value: "", data_unit: "GB", minutes: "0", price: "", cost_price: "", network: "airteltigo" });
+  const [form, setForm] = useState({ name: "", data_value: "", data_unit: "GB", minutes: "0", price: "", cost_price: "", network: "mtn" });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
@@ -46,7 +46,7 @@ export default function MashupBundlesAdmin() {
     const method = editId ? "PATCH" : "POST";
     const payload = editId ? { id: editId, ...body } : body;
     const r = await fetch("/api/admin/mashup-bundles", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    if (r.ok) { toast3(editId ? "Updated!" : "Bundle added!"); setForm({ name: "", data_value: "", data_unit: "GB", minutes: "0", price: "", cost_price: "", network: "airteltigo" }); setEditId(null); load(); }
+    if (r.ok) { toast3(editId ? "Updated!" : "Bundle added!"); setForm({ name: "", data_value: "", data_unit: "GB", minutes: "0", price: "", cost_price: "", network: "mtn" }); setEditId(null); load(); }
     else { const d = await r.json(); toast3(d.error ?? "Failed"); }
     setSaving(false);
   }
@@ -96,8 +96,8 @@ export default function MashupBundlesAdmin() {
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Delivers via</label>
             <select className={inp} style={{ background: BG, borderColor: BORDER }} value={form.network} onChange={e => setForm(f => ({ ...f, network: e.target.value }))}>
-              <option value="airteltigo">AirtelTigo (AT ISHARE)</option>
               <option value="mtn">MTN</option>
+              <option value="airteltigo">AirtelTigo (AT ISHARE)</option>
               <option value="telecel">Telecel</option>
             </select>
           </div>

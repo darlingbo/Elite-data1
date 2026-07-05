@@ -57,8 +57,8 @@ async function getBundleInfo(bundleId: string): Promise<BundleInfo> {
     const size = mashup.minutes > 0
       ? `${mashup.data_value}${mashup.data_unit} + ${mashup.minutes}min`
       : `${mashup.data_value}${mashup.data_unit}`;
-    // Use the network set on the bundle (defaults to airteltigo if not set)
-    const mashupNetwork = (mashup.network as Network | null) ?? "airteltigo";
+    // Use the network set on the bundle (defaults to mtn if not set)
+    const mashupNetwork = (mashup.network as Network | null) ?? "mtn";
     return {
       meta: { id: mashup.id, network: mashupNetwork, size, sizeGB },
       pricing: { price: mashup.price, costPrice: mashup.cost_price, sizeGB },

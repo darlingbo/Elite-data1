@@ -17,7 +17,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
-  const { name, data_value, data_unit = "GB", minutes = 0, price, cost_price = 0, network = "airteltigo" } = body;
+  const { name, data_value, data_unit = "GB", minutes = 0, price, cost_price = 0, network = "mtn" } = body;
   if (!name || !data_value || !price) return Response.json({ error: "name, data_value, price required" }, { status: 400 });
   const { data, error } = await supabase.from("mashup_bundles").insert({ name, data_value, data_unit, minutes, price, cost_price, network, active: true }).select().single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
