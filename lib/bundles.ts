@@ -56,4 +56,13 @@ export const networkConfig = {
     bgLight: "bg-rose-50",
     logo: "AT",
   },
+  mashup: {
+    name: "Mashup",
+    color: "#8b5cf6",
+    bgColor: "bg-purple-500",
+    textColor: "text-purple-600",
+    borderColor: "border-purple-500",
+    bgLight: "bg-purple-50",
+    logo: "MX",
+  },
 };
