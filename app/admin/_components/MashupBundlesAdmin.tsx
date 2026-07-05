@@ -64,7 +64,7 @@ export default function MashupBundlesAdmin() {
 
   function startEdit(b: Bundle) {
     setEditId(b.id);
-    setForm({ name: b.name, data_value: String(b.data_value), data_unit: b.data_unit, minutes: String(b.minutes), price: String(b.price), cost_price: String(b.cost_price), network: b.network ?? "airteltigo" });
+    setForm({ name: b.name, data_value: String(b.data_value), data_unit: b.data_unit, minutes: String(b.minutes), price: String(b.price), cost_price: String(b.cost_price), network: b.network ?? "mashup" });
   }
 
   if (loading) return <div className="flex items-center justify-center py-32"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
@@ -96,6 +96,7 @@ export default function MashupBundlesAdmin() {
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Delivers via</label>
             <select className={inp} style={{ background: BG, borderColor: BORDER }} value={form.network} onChange={e => setForm(f => ({ ...f, network: e.target.value }))}>
+              <option value="mashup">Mashup / Combo (sends MASHUP to Inventor)</option>
               <option value="mtn">MTN</option>
               <option value="airteltigo">AirtelTigo (AT ISHARE)</option>
               <option value="telecel">Telecel</option>
@@ -139,8 +140,11 @@ export default function MashupBundlesAdmin() {
                     <tr key={b.id} className="border-b last:border-0 hover:bg-white/[0.02]" style={{ borderColor: BORDER }}>
                       <td className="px-4 py-3.5 font-semibold text-white">{b.name}</td>
                       <td className="px-4 py-3.5">
-                        <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: b.network === "mtn" ? "rgba(245,158,11,0.15)" : b.network === "telecel" ? "rgba(239,68,68,0.15)" : "rgba(59,130,246,0.15)", color: b.network === "mtn" ? "#f59e0b" : b.network === "telecel" ? "#ef4444" : "#60a5fa" }}>
-                          {b.network === "mtn" ? "MTN" : b.network === "telecel" ? "Telecel" : "AT ISHARE"}
+                        <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{
+                          background: b.network === "mtn" ? "rgba(245,158,11,0.15)" : b.network === "telecel" ? "rgba(239,68,68,0.15)" : b.network === "mashup" ? "rgba(139,92,246,0.15)" : "rgba(59,130,246,0.15)",
+                          color: b.network === "mtn" ? "#f59e0b" : b.network === "telecel" ? "#ef4444" : b.network === "mashup" ? "#a78bfa" : "#60a5fa"
+                        }}>
+                          {b.network === "mtn" ? "MTN" : b.network === "telecel" ? "Telecel" : b.network === "mashup" ? "MASHUP" : "AT ISHARE"}
                         </span>
                       </td>
                       <td className="px-4 py-3.5 text-slate-300">{b.data_value}{b.data_unit}</td>

@@ -1,4 +1,4 @@
-export type Network = "mtn" | "telecel" | "airteltigo";
+export type Network = "mtn" | "telecel" | "airteltigo" | "mashup";
 
 export interface Bundle {
   id: string;
@@ -16,6 +16,7 @@ export const networkApiName: Record<Network, string> = {
   mtn: "MTN",
   telecel: "TELECEL",
   airteltigo: "AT ISHARE",
+  mashup: "MASHUP",
 };
 
 // All bundles are managed via the admin panel (bundle_prices table in DB).
