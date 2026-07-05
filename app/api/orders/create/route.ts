@@ -13,7 +13,7 @@ const INVENTOR_TIMEOUT_MS = 25_000;
 
 type BundleMeta = { id: string; network: Network; size: string; sizeGB: number };
 type BundlePricing = { price: number; costPrice: number; sizeGB: number };
-type BundleInfo = { meta: BundleMeta; pricing: BundlePricing } | null;
+type BundleInfo = { meta: BundleMeta; pricing: BundlePricing; isMashup: boolean } | null;
 
 // Extract a numeric GB value from a label like "4GB" or "500MB"
 function parseSizeGbFromLabel(label: string | null | undefined): number | null {
@@ -46,22 +46,23 @@ async function getBundleInfo(bundleId: string): Promise<BundleInfo> {
       return {
         meta: { id: data.id, network, size, sizeGB },
         pricing: { price: data.price, costPrice: data.cost_price, sizeGB },
+        isMashup: false,
       };
     }
   }
 
-  // Check mashup bundles — routed via Inventor using their configured network
+  // Check mashup bundles — manually fulfilled by admin
   const mashup = mashupResult.data;
   if (mashup) {
     const sizeGB = mashup.data_unit === "MB" ? mashup.data_value / 1024 : Number(mashup.data_value);
     const size = mashup.minutes > 0
       ? `${mashup.data_value}${mashup.data_unit} + ${mashup.minutes}min`
       : `${mashup.data_value}${mashup.data_unit}`;
-    // Use the network set on the bundle (defaults to mtn if not set)
     const mashupNetwork = (mashup.network as Network | null) ?? "mtn";
     return {
       meta: { id: mashup.id, network: mashupNetwork, size, sizeGB },
       pricing: { price: mashup.price, costPrice: mashup.cost_price, sizeGB },
+      isMashup: true,
     };
   }
 
@@ -70,6 +71,7 @@ async function getBundleInfo(bundleId: string): Promise<BundleInfo> {
     return {
       meta: staticBundle,
       pricing: { price: staticBundle.price, costPrice: staticBundle.costPrice, sizeGB: staticBundle.sizeGB },
+      isMashup: false,
     };
   }
 
@@ -254,7 +256,7 @@ export async function POST(request: NextRequest) {
   if (!bundleInfo) {
     return Response.json({ error: "Invalid bundle." }, { status: 400 });
   }
-  const { meta: bundleMeta, pricing } = bundleInfo;
+  const { meta: bundleMeta, pricing, isMashup } = bundleInfo;
 
   // ─── OPTIMISATION 3: run idempotency check + agent lookup + referral
   //     credit lookup all at the same time instead of one-by-one ──────────
@@ -575,6 +577,44 @@ export async function POST(request: NextRequest) {
         } catch { /* ignore */ }
       }
     })().catch(() => {});
+  }
+
+  // ─── MASHUP: skip Inventor — admin fulfils manually ─────────────────────
+  if (isMashup) {
+    await supabase
+      .from("orders")
+      .update({ status: "processing", bundle_size: bundleMeta.size, network: bundleMeta.network, customer_name: name })
+      .eq("reference", paystackRef);
+
+    const mashupAlert =
+      `🟡 <b>MASHUP ORDER — SEND DATA MANUALLY</b>\n\n` +
+      `👤 <b>Customer:</b> ${name}\n` +
+      `📱 <b>Phone:</b> <code>${phone}</code>\n` +
+      `📦 <b>Bundle:</b> ${bundleMeta.size}\n` +
+      `💰 <b>Amount Paid:</b> GH₵${chargedAmount.toFixed(2)}\n` +
+      `📎 <b>Ref:</b> <code>${paystackRef}</code>\n\n` +
+      `➡️ Send the bundle to the customer's number then mark the order as completed in the admin panel.`;
+
+    await sendAdminAlert(mashupAlert);
+    await sendAdminBotMessage(mashupAlert, retryKeyboard(paystackRef));
+
+    // SMS customer so they know it's being processed
+    sendCustomerSMS(phone, orderReceivedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
+
+    if (agentTelegramChatId) {
+      sendAgentNotification(
+        agentTelegramChatId,
+        `🛒 <b>New Mashup Sale!</b>\n\n` +
+        `📱 ${bundleMeta.size} → <code>${phone}</code>\n` +
+        `💰 Sold for: GH₵${chargedAmount.toFixed(2)}\n` +
+        `💵 Your commission: GH₵${agentCommission.toFixed(2)}\n` +
+        `🔄 Status: Processing (manual delivery)\n` +
+        `📎 Ref: <code>${paystackRef}</code>`
+      ).catch(() => {});
+    }
+
+    processLoyalty(phone, bundleMeta.network, paystackRef).catch(() => {});
+    return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
   }
 
   // ─── OPTIMISATION 2: Inventor API with 20s timeout + 1 auto-retry ───────
