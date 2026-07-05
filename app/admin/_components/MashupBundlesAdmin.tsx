@@ -103,7 +103,7 @@ export default function MashupBundlesAdmin() {
           </div>
         </div>
         <div className="flex gap-3">
-          {editId && <button onClick={() => { setEditId(null); setForm({ name: "", data_value: "", data_unit: "GB", minutes: "0", price: "", cost_price: "" }); }} className="border text-slate-400 font-semibold py-2.5 px-5 rounded-xl text-sm hover:text-white" style={{ borderColor: BORDER }}>Cancel</button>}
+          {editId && <button onClick={() => { setEditId(null); setForm({ name: "", data_value: "", data_unit: "GB", minutes: "0", price: "", cost_price: "", network: "mtn" }); }} className="border text-slate-400 font-semibold py-2.5 px-5 rounded-xl text-sm hover:text-white" style={{ borderColor: BORDER }}>Cancel</button>}
           <button onClick={save} disabled={saving || !form.name || !form.data_value || !form.price}
             className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-50"
             style={{ background: saving ? "#334155" : "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
