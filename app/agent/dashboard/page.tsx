@@ -1231,6 +1231,14 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
   const [histLoading, setHistLoading] = useState(true);
   const [walletBalance, setWalletBalance] = useState(data.wallet_balance ?? 0);
 
+  const isCommission = data.agent_type === "commission";
+
+  // Commission agents buy at 4% off customer price; price-mode agents use admin-set prices
+  function getBuyPrice(bundle: BundleItem): number {
+    if (isCommission) return parseFloat((bundle.price * 0.96).toFixed(2));
+    return tierPrices[bundle.id] ?? bundle.costPrice;
+  }
+
   useEffect(() => {
     Promise.all([
       fetch("/api/bundles").then(r => r.json()),
@@ -1242,13 +1250,13 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
       setTierPrices(tm);
     });
     fetch(`/api/agents/manual-order?agentId=${data.id}`).then(r => r.json()).then(d => { setHistory(d.orders ?? []); setHistLoading(false); }).catch(() => setHistLoading(false));
-  }, [data.id]);
+  }, [data.id, data.referral_code]);
 
   async function submitWalletOrder() {
     const cleaned = phone.replace(/\s/g, "");
     if (!selected) { setMsg({ text: "Select a bundle first.", ok: false }); return; }
     if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setMsg({ text: "Enter a valid Ghana phone number (e.g. 0241234567).", ok: false }); return; }
-    const cost = tierPrices[selected.id] ?? selected.costPrice;
+    const cost = getBuyPrice(selected);
     if (walletBalance < cost) {
       setMsg({ text: `Insufficient wallet balance. Need GH₵${cost.toFixed(2)}, you have GH₵${walletBalance.toFixed(2)}.`, ok: false });
       return;
@@ -1301,7 +1309,7 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
   const nets: { id: "mtn" | "telecel" | "airteltigo"; label: string }[] = [{ id: "mtn", label: "MTN" }, { id: "telecel", label: "Telecel" }, { id: "airteltigo", label: "AirtelTigo" }];
   const netColor: Record<string, string> = { mtn: M.amber, telecel: M.red, airteltigo: M.purple };
   const netBundles = dbBundles.filter(b => b.network === activeNet);
-  const selectedCost = selected ? (tierPrices[selected.id] ?? selected.costPrice) : 0;
+  const selectedCost = selected ? getBuyPrice(selected) : 0;
   const canAfford = walletBalance >= selectedCost;
 
   const isWallet = mode === "wallet";
@@ -1349,7 +1357,7 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
           <div style={{ display: "flex", flexDirection: "column" }}>
             {netBundles.map((b, i) => {
               const isSel = selected?.id === b.id;
-              const cost = tierPrices[b.id] ?? b.costPrice;
+              const cost = getBuyPrice(b);
               const affordable = walletBalance >= cost;
               return (
                 <button key={b.id} onClick={() => setSelected(b)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderTop: i > 0 ? `1px solid ${M.border}` : "none", background: isSel ? "#eff6ff" : "transparent", border: "none", cursor: "pointer", textAlign: "left", opacity: isWallet && !affordable ? 0.5 : 1 }}>
@@ -1364,7 +1372,7 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
                         <p style={{ color: M.muted, fontSize: 10, margin: 0 }}>from wallet</p>
                       </>
                     ) : (
-                      <p style={{ fontWeight: 900, color: isSel ? M.blue : M.text, fontSize: 16, margin: 0 }}>GH₵{b.price.toFixed(2)}</p>
+                      <p style={{ fontWeight: 900, color: isSel ? M.blue : M.text, fontSize: 16, margin: 0 }}>GH₵{getBuyPrice(b).toFixed(2)}</p>
                     )}
                     {isSel && <span style={{ fontSize: 10, fontWeight: 700, background: "#dbeafe", color: M.blue, padding: "2px 8px", borderRadius: 20 }}>Selected ✓</span>}
                   </div>
@@ -1387,7 +1395,7 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
                   {selected.validity} ·{" "}
                   {isWallet
                     ? <span>Cost: <strong style={{ color: M.blue }}>GH₵{selectedCost.toFixed(2)}</strong></span>
-                    : <span>GH₵{selected.price.toFixed(2)}</span>
+                    : <span>GH₵{selectedCost.toFixed(2)}</span>
                   }
                 </p>
                 {isWallet && !canAfford && (

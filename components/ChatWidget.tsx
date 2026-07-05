@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 interface Message {
   id: number;
@@ -194,34 +194,64 @@ export default function ChatWidget() {
     );
   }
 
+  // ─── Draggable bubble ────────────────────────────────────────────────────────
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const dragging = useRef(false);
+  const dragStart = useRef({ mx: 0, my: 0, bx: 0, by: 0 });
+  const bubbleRef = useRef<HTMLButtonElement>(null);
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    dragging.current = false;
+    const rect = bubbleRef.current!.getBoundingClientRect();
+    dragStart.current = { mx: e.clientX, my: e.clientY, bx: rect.left, by: rect.top };
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - dragStart.current.mx;
+      const dy = ev.clientY - dragStart.current.my;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) dragging.current = true;
+      const x = Math.min(Math.max(dragStart.current.bx + dx, 0), window.innerWidth - 56);
+      const y = Math.min(Math.max(dragStart.current.by + dy, 0), window.innerHeight - 56);
+      setPos({ x, y });
+    };
+    const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, []);
+
+  const bubbleStyle: React.CSSProperties = pos
+    ? { position: "fixed", left: pos.x, top: pos.y, bottom: "auto" }
+    : { position: "fixed", bottom: 24, left: 24 };
+
   return (
     <>
-      {/* Bubble */}
+      {/* Bubble — draggable */}
       <button
-        onClick={() => setOpen((o) => !o)}
-        className="fixed bottom-6 left-6 z-50 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+        ref={bubbleRef}
+        onPointerDown={onPointerDown}
+        onClick={() => { if (!dragging.current) setOpen((o) => !o); }}
+        style={{ ...bubbleStyle, zIndex: 50, width: 56, height: 56, borderRadius: "50%", background: "#2563eb", color: "#fff", border: "none", cursor: "grab", boxShadow: "0 8px 32px rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", touchAction: "none" }}
         aria-label="Chat support"
       >
         {open ? (
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg width={24} height={24} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
           </svg>
         ) : (
-          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+          <svg width={24} height={24} fill="currentColor" viewBox="0 0 24 24">
             <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
           </svg>
         )}
         {!open && unread > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs font-bold flex items-center justify-center">
+          <span style={{ position: "absolute", top: -4, right: -4, width: 20, height: 20, background: "#ef4444", borderRadius: "50%", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
             {unread}
           </span>
         )}
       </button>
 
-      {/* Chat window */}
+      {/* Chat window — appears above bubble */}
       {open && (
-        <div className="fixed bottom-24 left-6 z-50 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col overflow-hidden"
-          style={{ maxHeight: "70vh" }}>
+        <div className="fixed z-50 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col overflow-hidden"
+          style={{ maxHeight: "70vh", bottom: pos ? "auto" : 96, left: pos ? Math.min(pos.x, window.innerWidth - 384) : 24, top: pos ? Math.max(pos.y - Math.min(window.innerHeight * 0.7, 480) - 8, 8) : "auto" }}>
           {/* Header */}
           <div className="bg-blue-600 px-4 py-3 flex items-center gap-3">
             <div className="w-9 h-9 bg-blue-400 rounded-full flex items-center justify-center font-black text-white text-sm">E</div>
