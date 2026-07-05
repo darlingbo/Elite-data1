@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles";
 import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
 import { sendCustomerSMS, orderReceivedSMS, orderConfirmedSMS } from "@/lib/sms";
+import { sendAdminWhatsApp } from "@/lib/whatsapp";
 
 const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
@@ -597,6 +598,17 @@ export async function POST(request: NextRequest) {
 
     await sendAdminAlert(mashupAlert);
     await sendAdminBotMessage(mashupAlert, retryKeyboard(paystackRef));
+
+    // WhatsApp alert to admin
+    const waMsg =
+      `🟡 MASHUP ORDER - SEND DATA MANUALLY\n\n` +
+      `Customer: ${name}\n` +
+      `Phone: ${phone}\n` +
+      `Bundle: ${bundleMeta.size}\n` +
+      `Amount Paid: GH${chargedAmount.toFixed(2)}\n` +
+      `Ref: ${paystackRef}\n\n` +
+      `Send the bundle to the customer's number then mark order as completed.`;
+    sendAdminWhatsApp(waMsg).catch(() => {});
 
     // SMS customer so they know it's being processed
     sendCustomerSMS(phone, orderReceivedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
