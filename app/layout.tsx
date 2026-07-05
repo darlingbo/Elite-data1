@@ -18,6 +18,12 @@ export const metadata: Metadata = {
   ],
   metadataBase: new URL("https://www.elitedata1.com"),
   alternates: { canonical: "/" },
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Elite Data",
+  },
   openGraph: {
     title: "Elite Data — Cheap Data Bundles in Ghana",
     description: "MTN, Telecel & AirtelTigo bundles at the best prices. Instant delivery, secure payment.",
@@ -43,6 +49,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en">
+      <head>
+        <meta name="theme-color" content="#3b82f6" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <link rel="apple-touch-icon" href="/logo.png" />
+      </head>
       <body className="min-h-screen flex flex-col bg-gray-50 text-gray-900">
         {!isStandalone && <PublicNav />}
         <main className="flex-1">{children}</main>
