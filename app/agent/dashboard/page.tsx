@@ -766,8 +766,8 @@ function OrdersPage({ orders, agentId, onPlaceOrder, isPro }: { orders: Order[];
             ⭐ Export CSV
           </button>
         )}
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search orders…" style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 10, padding: "9px 14px", color: M.text, fontSize: 13, width: 200, outline: "none" }} />
-        <div style={{ display: "flex", gap: 6 }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search orders…" style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 10, padding: "9px 14px", color: M.text, fontSize: 13, width: "min(200px, 100%)", maxWidth: 200, outline: "none", minWidth: 0, flex: "1 1 auto" }} />
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} className="orders-filter-row">
           {["ALL", "COMPLETED", "PENDING", "PROCESSING", "FAILED"].map(s => (
             <button key={s} onClick={() => setFilter(s)} style={{ padding: "7px 14px", borderRadius: 10, border: `1px solid ${filter === s ? M.blue : M.border}`, background: filter === s ? "#eff6ff" : "white", color: filter === s ? M.blue : M.muted, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{s === "ALL" ? "All" : s.charAt(0) + s.slice(1).toLowerCase()}</button>
           ))}
@@ -2601,10 +2601,10 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
   }, []);
 
   return (
-    <div style={{ minHeight: "100vh", background: M.bg, display: "flex" }}>
+    <div style={{ minHeight: "100vh", background: M.bg, display: "flex", width: "100%", maxWidth: "100vw", overflowX: "hidden" }}>
       <Sidebar page={page} setPage={setPage} data={data} onLogout={onLogout} onWithdraw={() => setShowWithdraw(true)} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }} className="main-with-sidebar">
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: "100vh", overflowX: "hidden" }} className="main-with-sidebar">
         {/* FuzeServe-style mobile header */}
         <header className="mobile-header" style={{ display: "none", background: SB.bg, padding: "10px 20px", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 30, borderBottom: `1px solid ${SB.border}` }}>
           {/* USER / PRO pill */}
@@ -2624,7 +2624,7 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
           </div>
         </header>
 
-        <main style={{ flex: 1, padding: "28px 28px", overflowY: "auto", maxWidth: 1300, width: "100%", margin: "0 auto" }} className="main-content">
+        <main style={{ flex: 1, padding: "28px 28px", overflowY: "auto", overflowX: "hidden", maxWidth: 1300, width: "100%", minWidth: 0, margin: "0 auto", boxSizing: "border-box" }} className="main-content">
           {page === "dashboard"    && <DashboardPage data={data} onAddFunds={() => setShowAddFunds(true)} onWithdraw={() => setShowWithdraw(true)} onNavigate={setPage} />}
           {page === "orders"       && <OrdersPage orders={data.orders} agentId={data.id} onPlaceOrder={() => setPage("buy_data")} isPro={!!(data.registration_ref && data.registration_ref !== "FREE")} />}
           {page === "customers"    && <CustomersPage orders={data.orders} />}
@@ -2681,10 +2681,16 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
       {showWithdraw && <WithdrawModal agentId={data.id} referralCode={data.referral_code} profitBalance={data.agent_type === "custom_price" ? (data.commission_balance ?? 0) + (data.paystack_wallet_balance ?? 0) : (data.commission_balance ?? 0)} onClose={() => setShowWithdraw(false)} onSuccess={onRefresh} />}
 
       <style>{`
+        /* Prevent any horizontal overflow at the root */
+        html, body { overflow-x: hidden !important; max-width: 100% !important; }
+        *, *::before, *::after { box-sizing: border-box; }
+
         /* FuzeServe layout — header + bottom nav always on */
         .mobile-header { display: flex !important; }
         .bottom-nav { display: flex !important; justify-content: center !important; }
-        .main-content { padding: 16px 16px 82px !important; }
+        .main-content { padding: 16px 16px 82px !important; overflow-x: hidden !important; }
+        .main-with-sidebar { overflow-x: hidden !important; min-width: 0 !important; }
+
         /* Dark theme: override hardcoded light inputs */
         input, textarea, select {
           background: #1e293b !important;
@@ -2692,11 +2698,19 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
           border-color: #1e3a5f !important;
         }
         input::placeholder, textarea::placeholder { color: #475569 !important; }
+
         /* Responsive grids */
         @media (max-width: 767px) {
           .stat-grid { grid-template-columns: 1fr 1fr !important; }
           .main-grid { grid-template-columns: 1fr !important; }
           .wallet-grid { grid-template-columns: 1fr !important; }
+          /* Wrap order toolbar on mobile */
+          .orders-toolbar { flex-direction: column !important; align-items: stretch !important; }
+          .orders-toolbar input { width: 100% !important; }
+          .orders-filter-row { flex-wrap: wrap !important; }
+          /* All tables scroll inside their card, not the page */
+          table { min-width: 500px; }
+          .table-wrap { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
         }
         @media (min-width: 768px) and (max-width: 1199px) {
           .stat-grid { grid-template-columns: repeat(2,1fr) !important; }
