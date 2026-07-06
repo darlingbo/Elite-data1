@@ -77,15 +77,24 @@ export function fmtFailed(ref: string, phone: string, network: string, size: str
   );
 }
 
-export function fmtAgentApplied(name: string, email: string, phone: string, business?: string) {
+export function fmtAgentApplied(name: string, email: string, phone: string, business?: string, agentId?: string) {
   return (
     `👤 <b>New Agent Application</b>\n` +
     `Name: ${name}\n` +
     `Email: ${email}\n` +
     `Phone: <code>${phone}</code>\n` +
     (business ? `Business: ${business}\n` : "") +
-    `\n⚡ Use /agents to approve or reject`
+    `\n⚡ Use the buttons below to approve or reject instantly.`
   );
+}
+
+export function agentApprovalKeyboard(agentId: string) {
+  return {
+    inline_keyboard: [[
+      { text: "✅ Approve", callback_data: `approve_agent:${agentId}` },
+      { text: "❌ Reject", callback_data: `reject_agent:${agentId}` },
+    ]],
+  };
 }
 
 export function fmtAgentApproved(name: string, code: string) {
