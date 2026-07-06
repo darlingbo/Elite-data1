@@ -863,6 +863,10 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
   const [deletingOne, setDeletingOne] = useState<string | null>(null);
   const [deletingFailed, setDeletingFailed] = useState(false);
   const [deleteFailedMsg, setDeleteFailedMsg] = useState("");
+  const [sendingManual, setSendingManual] = useState<Record<string, boolean>>({});
+  const [manualMsg, setManualMsg] = useState<{ ref: string; ok: boolean; text: string } | null>(null);
+  const [sendingAllManual, setSendingAllManual] = useState(false);
+  const [sendAllManualMsg, setSendAllManualMsg] = useState("");
   // AI chat
   const [aiOpen, setAiOpen] = useState(false);
   const [aiInput, setAiInput] = useState("");
@@ -969,6 +973,32 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
     finally { setDeletingFailed(false); setTimeout(() => setDeleteFailedMsg(""), 5000); }
   }
 
+  async function handleManualDelivery(reference: string) {
+    setSendingManual(s => ({ ...s, [reference]: true }));
+    setManualMsg(null);
+    try {
+      const res = await fetch("/api/admin/orders/manual-delivery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ references: [reference] }) });
+      const d = await res.json();
+      if (d.queued > 0) { setManualMsg({ ref: reference, ok: true, text: "✓ Admin alerted" }); onRefresh(); }
+      else setManualMsg({ ref: reference, ok: false, text: d.error ?? "Failed" });
+    } catch { setManualMsg({ ref: reference, ok: false, text: "Network error" }); }
+    finally { setSendingManual(s => ({ ...s, [reference]: false })); setTimeout(() => setManualMsg(null), 5000); }
+  }
+
+  async function handleSendAllManual() {
+    const failedRefs = filtered.filter(o => o.status.toUpperCase() === "FAILED").map(o => o.reference).filter(Boolean);
+    if (failedRefs.length === 0) { setSendAllManualMsg("No failed orders in current view"); setTimeout(() => setSendAllManualMsg(""), 3000); return; }
+    if (!window.confirm(`Send ${failedRefs.length} failed order(s) for manual delivery? Admin will be notified via Telegram & WhatsApp.`)) return;
+    setSendingAllManual(true); setSendAllManualMsg("");
+    try {
+      const res = await fetch("/api/admin/orders/manual-delivery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ references: failedRefs }) });
+      const d = await res.json();
+      if (d.queued > 0) { setSendAllManualMsg(`✓ ${d.queued} order(s) queued for manual delivery`); onRefresh(); }
+      else setSendAllManualMsg(d.error ?? "Failed");
+    } catch { setSendAllManualMsg("Network error"); }
+    finally { setSendingAllManual(false); setTimeout(() => setSendAllManualMsg(""), 6000); }
+  }
+
   async function handleRecalculate() {
     setRecalculating(true); setRecalcMsg("");
     try {
@@ -1064,11 +1094,13 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
           <button onClick={handleSync} disabled={syncing} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl transition-colors" style={{ background: "rgba(59,130,246,0.1)", borderColor: "#3b82f660", color: "#60a5fa" }}>{syncing ? "Syncing…" : "⚡ Sync"}</button>
           <button onClick={handleRecalculate} disabled={recalculating} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl" style={{ background: "rgba(34,197,94,0.1)", borderColor: "#22c55e60", color: "#4ade80" }}>{recalculating ? "Fixing…" : "💰 Fix Commissions"}</button>
           <button onClick={handleExport} className="text-sm font-medium border px-3 py-2 rounded-xl" style={{ background: "rgba(34,197,94,0.1)", borderColor: "#22c55e60", color: "#4ade80" }} title={`Export ${filtered.length} orders as CSV`}>⬇️ Export {statusFilter === "ALL" ? "" : statusFilter} ({filtered.length})</button>
+          <button onClick={handleSendAllManual} disabled={sendingAllManual} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl" style={{ background: "rgba(168,85,247,0.1)", borderColor: "#a855f760", color: "#c084fc" }} title="Mark failed orders as processing and alert admin for manual delivery">{sendingAllManual ? "Sending…" : "📬 Manual Delivery"}</button>
           <button onClick={handleDeleteFailed} disabled={deletingFailed} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl" style={{ background: "rgba(239,68,68,0.1)", borderColor: "#ef444460", color: "#f87171" }}>{deletingFailed ? "Deleting…" : "🗑️ Delete Failed"}</button>
           <button onClick={() => setAiOpen(v => !v)} className="text-sm font-bold border px-3 py-2 rounded-xl transition-all" style={{ background: aiOpen ? "rgba(139,92,246,0.2)" : "rgba(139,92,246,0.1)", borderColor: "rgba(139,92,246,0.5)", color: "#a78bfa" }}>🤖 Ask AI</button>
           {syncMsg && <span className="text-xs font-semibold text-green-400">{syncMsg}</span>}
           {recalcMsg && <span className="text-xs font-semibold text-green-400">{recalcMsg}</span>}
           {deleteFailedMsg && <span className="text-xs font-semibold" style={{ color: deleteFailedMsg.startsWith("✓") ? "#4ade80" : "#f87171" }}>{deleteFailedMsg}</span>}
+          {sendAllManualMsg && <span className="text-xs font-semibold" style={{ color: sendAllManualMsg.startsWith("✓") ? "#4ade80" : "#f87171" }}>{sendAllManualMsg}</span>}
         </div>
       </div>
 
@@ -1134,7 +1166,9 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-1.5">
                         {["pending", "processing", "failed"].includes((o.status ?? "").toLowerCase()) && o.reference && (
-                          retryMsg?.ref === o.reference ? (
+                          (manualMsg?.ref === o.reference) ? (
+                            <span className={`text-xs font-bold ${manualMsg.ok ? "text-green-400" : "text-red-400"}`}>{manualMsg.text}</span>
+                          ) : retryMsg?.ref === o.reference ? (
                             <span className={`text-xs font-bold ${retryMsg.ok ? "text-green-400" : "text-red-400"}`}>{retryMsg.text}</span>
                           ) : (
                             <>
@@ -1142,6 +1176,13 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
                                 className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ background: "rgba(251,146,60,0.15)", color: "#fb923c", border: "1px solid rgba(251,146,60,0.3)" }}>
                                 {retrying === o.reference ? "…" : "🔄"}
                               </button>
+                              {(o.status ?? "").toLowerCase() === "failed" && (
+                                <button onClick={() => handleManualDelivery(o.reference)} disabled={sendingManual[o.reference] || retrying === o.reference || completing === o.reference}
+                                  title="Queue for manual delivery — alerts admin via Telegram & WhatsApp"
+                                  className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ background: "rgba(168,85,247,0.12)", color: "#c084fc", border: "1px solid rgba(168,85,247,0.3)" }}>
+                                  {sendingManual[o.reference] ? "…" : "📬"}
+                                </button>
+                              )}
                               <button onClick={() => handleForceComplete(o.reference)} disabled={completing === o.reference || retrying === o.reference || deletingOne === o.reference}
                                 title="Force complete" className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.3)" }}>
                                 {completing === o.reference ? "…" : "✓"}

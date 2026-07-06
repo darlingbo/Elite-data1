@@ -807,6 +807,37 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
   }
 
+  // Beneficiary list error — Inventor blocks certain numbers.
+  // Treat like Mashup: keep order as processing, alert admin to deliver manually.
+  const inventorErrorMsg = String(
+    (inventorBody.message as string) ??
+    (inventorBody.error as string) ??
+    (inventorBody.description as string) ??
+    ""
+  );
+  if (inventorErrorMsg.toLowerCase().includes("beneficiary")) {
+    await supabase
+      .from("orders")
+      .update({ status: "processing", bundle_size: bundleMeta.size, network: bundleMeta.network, customer_name: name })
+      .eq("reference", paystackRef);
+
+    const manualAlert =
+      `🔴 <b>MANUAL DELIVERY — INVENTOR BLOCKED</b>\n\n` +
+      `👤 <b>Customer:</b> ${name}\n` +
+      `📱 <b>Phone:</b> <code>${phone}</code>\n` +
+      `📦 <b>Bundle:</b> ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\n` +
+      `💰 <b>Amount Paid:</b> GH₵${chargedAmount.toFixed(2)}\n` +
+      `📎 <b>Ref:</b> <code>${paystackRef}</code>\n\n` +
+      `❌ Inventor said: <i>${inventorErrorMsg}</i>\n\n` +
+      `➡️ Send data manually via Inventor dashboard, then mark completed in admin panel.`;
+
+    await sendAdminAlert(manualAlert);
+    await sendAdminBotMessage(manualAlert, retryKeyboard(paystackRef));
+    sendAdminWhatsApp(manualAlert.replace(/<[^>]*>/g, "")).catch(() => {});
+
+    return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
+  }
+
   await supabase.from("orders").update({ status: "failed" }).eq("reference", paystackRef);
 
   const failMsg = `${fmtFailed(paystackRef, phone, bundleMeta.network, bundleMeta.size, pricing.price)}\n\n${inventorLog}`;

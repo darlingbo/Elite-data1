@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendAgentNotification } from "@/lib/telegram";
+import { sendAgentNotification, sendAdminAlert } from "@/lib/telegram";
+import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { getAgentBundleCost } from "@/lib/agent-pricing";
 
 const INVENTOR_TIMEOUT_MS = 10_000;
@@ -140,6 +141,48 @@ export async function POST(request: NextRequest) {
   }
 
   if (isFailed) {
+    const errMsg = String(
+      (result.body.message as string) ??
+      (result.body.error as string) ??
+      (result.body.description as string) ??
+      ""
+    );
+
+    // Beneficiary list error — Inventor blocks specific numbers.
+    // Keep wallet deducted; alert admin to deliver manually.
+    if (errMsg.toLowerCase().includes("beneficiary")) {
+      await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
+
+      const manualAlert =
+        `🔴 <b>MANUAL DELIVERY — INVENTOR BLOCKED (Agent Wallet)</b>\n\n` +
+        `👤 <b>Agent:</b> ${agent.name}\n` +
+        `📱 <b>Phone:</b> <code>${cleaned}</code>\n` +
+        `📦 <b>Bundle:</b> ${network.toUpperCase()} ${label}\n` +
+        `💰 <b>Cost:</b> GH₵${costPrice.toFixed(2)} (deducted)\n` +
+        `📎 <b>Ref:</b> <code>${reference}</code>\n\n` +
+        `❌ Inventor said: <i>${errMsg}</i>\n\n` +
+        `➡️ Send data manually, then mark completed in admin panel.`;
+
+      sendAdminAlert(manualAlert).catch(() => {});
+      sendAdminWhatsApp(manualAlert.replace(/<[^>]*>/g, "")).catch(() => {});
+
+      if (agent.telegram_chat_id) {
+        sendAgentNotification(
+          agent.telegram_chat_id,
+          `⏳ Order queued for manual delivery\n\n📱 ${network.toUpperCase()} ${label} → ${cleaned}\n💰 GH₵${costPrice.toFixed(2)} deducted\nAdmin will deliver shortly.\n📎 Ref: <code>${reference}</code>`
+        ).catch(() => {});
+      }
+
+      return Response.json({
+        success: true,
+        pending: true,
+        reference,
+        message: "Order queued for manual delivery. Admin has been notified.",
+        costDeducted: costPrice,
+        newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
+      });
+    }
+
     await supabase.from("agents").update({ wallet_balance: walletBalance }).eq("id", agentId);
     await supabase.from("orders").update({ status: "failed" }).eq("reference", reference);
     return Response.json({
