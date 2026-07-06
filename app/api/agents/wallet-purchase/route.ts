@@ -114,7 +114,19 @@ export async function POST(request: NextRequest) {
     status: "processing",
   });
 
-  const result = await callInventor(network, cleaned, numericSizeGB, reference);
+  // Fire both Inventor and DataCity simultaneously
+  const [inventorSettled, datacitySettled] = await Promise.allSettled([
+    callInventor(network, cleaned, numericSizeGB, reference),
+    datacityPurchase(network, cleaned, numericSizeGB),
+  ]);
+
+  const result = inventorSettled.status === "fulfilled"
+    ? inventorSettled.value
+    : { ok: false, status: 0, body: {} as Record<string, unknown> };
+
+  const dcRes = datacitySettled.status === "fulfilled"
+    ? datacitySettled.value
+    : { success: false as const, error: "DataCity unreachable" };
 
   const isSuccess = result.ok && result.status !== 500;
   const isFailed = result.status === 400 || result.status === 422;
@@ -149,76 +161,65 @@ export async function POST(request: NextRequest) {
       ""
     );
 
-    // Beneficiary list error — auto-fallback to DataCity
-    if (errMsg.toLowerCase().includes("beneficiary")) {
-      const dc = await datacityPurchase(network, cleaned, numericSizeGB);
-
-      if (dc.success) {
-        // DataCity delivered — mark completed and notify agent
-        await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
-
-        if (agent.telegram_chat_id) {
-          sendAgentNotification(
-            agent.telegram_chat_id,
-            `✅ <b>Delivered!</b>\n\n📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n💰 GH₵${costPrice.toFixed(2)} deducted\n📎 Ref: <code>${reference}</code>`
-          ).catch(() => {});
-        }
-
-        sendAdminAlert(
-          `✅ <b>DELIVERED VIA DATACITY (Agent Wallet, Inventor blocked)</b>\n\n` +
-          `👤 Agent: ${agent.name}\n📱 <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
-          `🔗 DataCity Ref: <code>${dc.reference}</code>`
-        ).catch(() => {});
-
-        return Response.json({
-          success: true,
-          reference,
-          message: "Data delivered successfully.",
-          costDeducted: costPrice,
-          newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
-        });
-      }
-
-      // Both APIs failed — save as not_on_list for manual handling
-      await supabase.from("orders").update({ status: "not_on_list" }).eq("reference", reference);
-
-      const manualAlert =
-        `🔴 <b>MANUAL DELIVERY — BOTH APIS BLOCKED (Agent Wallet)</b>\n\n` +
-        `👤 <b>Agent:</b> ${agent.name}\n` +
-        `📱 <b>Phone:</b> <code>${cleaned}</code>\n` +
-        `📦 <b>Bundle:</b> ${network.toUpperCase()} ${label}\n` +
-        `💰 <b>Cost:</b> GH₵${costPrice.toFixed(2)} (deducted)\n` +
-        `📎 <b>Ref:</b> <code>${reference}</code>\n\n` +
-        `❌ Inventor: <i>${errMsg}</i>\n` +
-        `❌ DataCity: <i>${dc.error ?? "failed"}</i>\n\n` +
-        `➡️ Send data manually, then mark completed in admin panel.`;
-
-      sendAdminAlert(manualAlert).catch(() => {});
-      sendAdminWhatsApp(manualAlert.replace(/<[^>]*>/g, "")).catch(() => {});
+    // DataCity already ran in parallel — check its result
+    if (dcRes.success) {
+      await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
 
       if (agent.telegram_chat_id) {
         sendAgentNotification(
           agent.telegram_chat_id,
-          `⏳ Order queued for manual delivery\n\n📱 ${network.toUpperCase()} ${label} → ${cleaned}\n💰 GH₵${costPrice.toFixed(2)} deducted\nAdmin will deliver shortly.\n📎 Ref: <code>${reference}</code>`
+          `✅ <b>Delivered!</b>\n\n📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n💰 GH₵${costPrice.toFixed(2)} deducted\n📎 <code>${reference}</code>`
         ).catch(() => {});
       }
 
+      sendAdminAlert(
+        `✅ <b>DELIVERED VIA DATACITY (Agent Wallet)</b>\n\n` +
+        `👤 ${agent.name} · <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
+        `🔗 DataCity: <code>${dcRes.reference}</code>\n❌ Inventor: ${errMsg}`
+      ).catch(() => {});
+
       return Response.json({
         success: true,
-        pending: true,
         reference,
-        message: "Order queued for manual delivery. Admin has been notified.",
+        message: "Data delivered successfully.",
         costDeducted: costPrice,
         newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
       });
     }
 
-    await supabase.from("agents").update({ wallet_balance: walletBalance }).eq("id", agentId);
-    await supabase.from("orders").update({ status: "failed" }).eq("reference", reference);
+    // Both failed
+    const isBeneficiary = errMsg.toLowerCase().includes("beneficiary");
+    await supabase.from("orders").update({ status: isBeneficiary ? "not_on_list" : "failed" }).eq("reference", reference);
+
+    const manualAlert =
+      `🔴 <b>${isBeneficiary ? "BOTH APIS BLOCKED" : "BOTH APIS FAILED"} (Agent Wallet)</b>\n\n` +
+      `👤 ${agent.name} · <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
+      `💰 GH₵${costPrice.toFixed(2)} deducted · Ref: <code>${reference}</code>\n\n` +
+      `❌ Inventor: ${errMsg}\n❌ DataCity: ${dcRes.error ?? "failed"}\n\n` +
+      `➡️ Send manually then mark completed.`;
+
+    sendAdminAlert(manualAlert).catch(() => {});
+    sendAdminWhatsApp(manualAlert.replace(/<[^>]*>/g, "")).catch(() => {});
+
+    if (agent.telegram_chat_id) {
+      sendAgentNotification(
+        agent.telegram_chat_id,
+        `⏳ Order queued for manual delivery\n\n📱 ${network.toUpperCase()} ${label} → ${cleaned}\n💰 GH₵${costPrice.toFixed(2)} deducted\nAdmin will deliver shortly.\n📎 <code>${reference}</code>`
+      ).catch(() => {});
+    }
+
+    if (!isBeneficiary) {
+      await supabase.from("agents").update({ wallet_balance: walletBalance }).eq("id", agentId);
+    }
+
     return Response.json({
-      error: `Delivery failed for ${cleaned}. Your wallet has been refunded.`,
-      refunded: true,
-    }, { status: 400 });
+      success: true,
+      pending: true,
+      reference,
+      message: "Order queued for manual delivery. Admin has been notified.",
+      costDeducted: costPrice,
+      newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
+    });
   }
 
   // Timeout — monitor will retry

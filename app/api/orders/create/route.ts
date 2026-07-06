@@ -632,13 +632,26 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
   }
 
-  // ─── OPTIMISATION 2: Inventor API with 20s timeout + 1 auto-retry ───────
-  const { ok: invOkRaw, status: inventorHttpStatus, body: inventorBody } = await callInventorAPI({
-    network: networkApiName[bundleMeta.network],
-    Phone: phone,
-    Datasize: pricing.sizeGB,
-    reference: paystackRef,
-  });
+  // ─── Fire BOTH Inventor and DataCity simultaneously ──────────────────────
+  const [inventorSettled, datacitySettled] = await Promise.allSettled([
+    callInventorAPI({
+      network: networkApiName[bundleMeta.network],
+      Phone: phone,
+      Datasize: pricing.sizeGB,
+      reference: paystackRef,
+    }),
+    datacityPurchase(bundleMeta.network, phone, pricing.sizeGB),
+  ]);
+
+  const { ok: invOkRaw, status: inventorHttpStatus, body: inventorBody } =
+    inventorSettled.status === "fulfilled"
+      ? inventorSettled.value
+      : { ok: false, status: 0, body: {} as Record<string, unknown> };
+
+  const dcRes =
+    datacitySettled.status === "fulfilled"
+      ? datacitySettled.value
+      : { success: false as const, error: "DataCity unreachable" };
 
   const inventorLog = `Inventor HTTP ${inventorHttpStatus}: ${JSON.stringify(inventorBody).slice(0, 300)}`;
 
@@ -810,77 +823,66 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
   }
 
-  // Beneficiary list error — Inventor blocks certain numbers.
-  // Treat like Mashup: keep order as processing, alert admin to deliver manually.
+  // Inventor failed — DataCity already ran in parallel, check its result now
   const inventorErrorMsg = String(
     (inventorBody.message as string) ??
     (inventorBody.error as string) ??
     (inventorBody.description as string) ??
     ""
   );
-  if (inventorErrorMsg.toLowerCase().includes("beneficiary")) {
-    // Auto-fallback: try DataCity when Inventor blocks the number
-    const dc = await datacityPurchase(bundleMeta.network, phone, bundleMeta.sizeGB);
 
-    if (dc.success) {
-      // DataCity delivered — mark completed
-      await supabase.from("orders").update({
-        status: "completed",
-        bundle_size: bundleMeta.size,
-        network: bundleMeta.network,
-        customer_name: name,
-      }).eq("reference", paystackRef);
-
-      // Credit agent commission if applicable
-      if (agentId && agentCommission > 0) await creditAgent(agentId, agentCommission, chargedAmount);
-
-      const dcAlert =
-        `✅ <b>DELIVERED VIA DATACITY (Inventor blocked)</b>\n\n` +
-        `👤 <b>Customer:</b> ${name}\n` +
-        `📱 <b>Phone:</b> <code>${phone}</code>\n` +
-        `📦 <b>Bundle:</b> ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\n` +
-        `💰 <b>Amount:</b> GH₵${chargedAmount.toFixed(2)}\n` +
-        `📎 <b>Ref:</b> <code>${paystackRef}</code>\n` +
-        `🔗 <b>DataCity Ref:</b> <code>${dc.reference}</code>`;
-      sendAdminAlert(dcAlert).catch(() => {});
-
-      return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
-    }
-
-    // DataCity also failed — save as not_on_list for manual handling
+  if (dcRes.success) {
+    // DataCity delivered while Inventor was failing — mark completed
     await supabase.from("orders").update({
-      status: "not_on_list",
+      status: "completed",
       bundle_size: bundleMeta.size,
       network: bundleMeta.network,
       customer_name: name,
     }).eq("reference", paystackRef);
 
-    const manualAlert =
-      `🔴 <b>MANUAL DELIVERY — BOTH APIS BLOCKED</b>\n\n` +
-      `👤 <b>Customer:</b> ${name}\n` +
-      `📱 <b>Phone:</b> <code>${phone}</code>\n` +
-      `📦 <b>Bundle:</b> ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\n` +
-      `💰 <b>Amount Paid:</b> GH₵${chargedAmount.toFixed(2)}\n` +
-      `📎 <b>Ref:</b> <code>${paystackRef}</code>\n\n` +
-      `❌ Inventor: <i>${inventorErrorMsg}</i>\n` +
-      `❌ DataCity: <i>${dc.error ?? "failed"}</i>\n\n` +
-      `➡️ Send data manually, then mark completed in admin panel.`;
+    if (agentId && agentCommission > 0) await creditAgent(agentId, agentCommission, chargedAmount);
 
-    await sendAdminAlert(manualAlert);
-    await sendAdminBotMessage(manualAlert, retryKeyboard(paystackRef));
-    sendAdminWhatsApp(manualAlert.replace(/<[^>]*>/g, "")).catch(() => {});
+    sendAdminAlert(
+      `✅ <b>DELIVERED VIA DATACITY</b>\n\n` +
+      `👤 ${name} · <code>${phone}</code>\n` +
+      `📦 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} · GH₵${chargedAmount.toFixed(2)}\n` +
+      `📎 Paystack: <code>${paystackRef}</code>\n` +
+      `🔗 DataCity: <code>${dcRes.reference}</code>\n` +
+      `⚠️ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}`
+    ).catch(() => {});
 
-    return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
+    sendCustomerSMS(phone, orderConfirmedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
+
+    if (agentTelegramChatId) {
+      sendAgentNotification(agentTelegramChatId,
+        `🛒 <b>New Sale!</b>\n\n📱 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → <code>${phone}</code>\n` +
+        `💰 GH₵${chargedAmount.toFixed(2)} · Commission: GH₵${agentCommission.toFixed(2)}\n✅ Delivered\n📎 <code>${paystackRef}</code>`
+      ).catch(() => {});
+    }
+
+    return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
   }
 
-  await supabase.from("orders").update({ status: "failed" }).eq("reference", paystackRef);
+  // Both APIs failed — check reason
+  const isBeneficiary = inventorErrorMsg.toLowerCase().includes("beneficiary");
+  const finalStatus = isBeneficiary ? "not_on_list" : "failed";
 
-  const failMsg = `${fmtFailed(paystackRef, phone, bundleMeta.network, bundleMeta.size, pricing.price)}\n\n${inventorLog}`;
-  await sendAdminAlert(failMsg);
-  await sendAdminBotMessage(failMsg, retryKeyboard(paystackRef));
+  await supabase.from("orders")
+    .update({ status: finalStatus, bundle_size: bundleMeta.size, network: bundleMeta.network, customer_name: name })
+    .eq("reference", paystackRef);
 
-  return Response.json(
-    { error: "Bundle delivery failed. Support has been notified. You will be refunded." },
-    { status: 502 }
-  );
+  const bothFailedMsg =
+    `🔴 <b>${isBeneficiary ? "BOTH APIS BLOCKED — NOT ON LIST" : "BOTH APIS FAILED"}</b>\n\n` +
+    `👤 ${name} · <code>${phone}</code>\n` +
+    `📦 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} · GH₵${chargedAmount.toFixed(2)}\n` +
+    `📎 <code>${paystackRef}</code>\n\n` +
+    `❌ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}\n` +
+    `❌ DataCity: ${dcRes.error ?? "failed"}\n\n` +
+    `➡️ Deliver manually then mark completed in admin panel.`;
+
+  await sendAdminAlert(bothFailedMsg);
+  await sendAdminBotMessage(bothFailedMsg, retryKeyboard(paystackRef));
+  sendAdminWhatsApp(bothFailedMsg.replace(/<[^>]*>/g, "")).catch(() => {});
+
+  return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
 }
