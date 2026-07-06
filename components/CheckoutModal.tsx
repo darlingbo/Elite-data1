@@ -153,6 +153,22 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
 
     setLoading(true);
 
+    // Check if this phone number has previously been blocked by Inventor's beneficiary list
+    try {
+      const preCheck = await fetch(`/api/pre-check?phone=${encodeURIComponent(phone.replace(/\s/g, ""))}`);
+      const preData = await preCheck.json();
+      if (preData.blocked) {
+        setLoading(false);
+        setError(
+          "⚠️ This number was previously blocked from receiving data. " +
+          "Please contact us on WhatsApp before paying so we can resolve it first."
+        );
+        return;
+      }
+    } catch {
+      // Network error on pre-check — let it through, backend will handle it
+    }
+
     // For price-mode agent storefronts, check wallet balance before charging the customer
     if (agentCode) {
       try {
