@@ -649,39 +649,19 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
   }
 
-  // ─── Fire Inventor, DataCity, and Datify simultaneously ─────────────────
+  // ─── Sequential fallback: Inventor → DataCity → Datify ──────────────────
+  // Each provider is only called if the previous one definitively failed.
+  // This prevents double delivery and unnecessary charges.
   const [inventorOn, datacityOn, datifyOn] = await Promise.all([isInventorEnabled(), isDatacityEnabled(), isDatifyEnabled()]);
-  const [inventorSettled, datacitySettled, datifySettled] = await Promise.allSettled([
-    inventorOn
-      ? callInventorAPI({
-          network: networkApiName[bundleMeta.network],
-          Phone: phone,
-          Datasize: pricing.sizeGB,
-          reference: paystackRef,
-        })
-      : Promise.resolve({ ok: false, status: -1, body: { error: "Inventor disabled" } as Record<string, unknown> }),
-    datacityOn
-      ? datacityPurchase(bundleMeta.network, phone, pricing.sizeGB)
-      : Promise.resolve({ success: false as const, error: "DataCity disabled" }),
-    datifyOn
-      ? datifyPurchase(bundleMeta.network, phone, pricing.sizeGB)
-      : Promise.resolve({ success: false as const, error: "Datify disabled" }),
-  ]);
 
-  const { ok: invOkRaw, status: inventorHttpStatus, body: inventorBody } =
-    inventorSettled.status === "fulfilled"
-      ? inventorSettled.value
-      : { ok: false, status: 0, body: {} as Record<string, unknown> };
-
-  const dcRes =
-    datacitySettled.status === "fulfilled"
-      ? datacitySettled.value
-      : { success: false as const, error: "DataCity unreachable" };
-
-  const dtRes =
-    datifySettled.status === "fulfilled"
-      ? datifySettled.value
-      : { success: false as const, error: "Datify unreachable" };
+  const { ok: invOkRaw, status: inventorHttpStatus, body: inventorBody } = inventorOn
+    ? await callInventorAPI({
+        network: networkApiName[bundleMeta.network],
+        Phone: phone,
+        Datasize: pricing.sizeGB,
+        reference: paystackRef,
+      })
+    : { ok: false, status: -1, body: { error: "Inventor disabled" } as Record<string, unknown> };
 
   const inventorLog = `Inventor HTTP ${inventorHttpStatus}: ${JSON.stringify(inventorBody).slice(0, 300)}`;
 
@@ -818,6 +798,11 @@ export async function POST(request: NextRequest) {
   // This ensures that if DataCity or Datify delivered while Inventor was
   // still in-flight or disabled, we complete immediately rather than waiting.
 
+  // Inventor failed → try DataCity
+  const dcRes = datacityOn
+    ? await datacityPurchase(bundleMeta.network, phone, pricing.sizeGB)
+    : { success: false as const, error: "DataCity disabled" };
+
   if (dcRes.success) {
     await supabase.from("orders").update({
       status: "completed",
@@ -849,6 +834,18 @@ export async function POST(request: NextRequest) {
 
     return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
   }
+
+  // DataCity timed out → stop here, don't try Datify (might still deliver)
+  if (dcRes.timedOut) {
+    await supabase.from("orders").update({ status: "processing", bundle_size: bundleMeta.size, network: bundleMeta.network, customer_name: name }).eq("reference", paystackRef);
+    await sendAdminAlert(`⏳ ORDER PROCESSING\nRef: ${paystackRef}\nPhone: ${phone}\n${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\n⚠️ DataCity timed out — order left as processing`);
+    return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
+  }
+
+  // DataCity also rejected → try Datify
+  const dtRes = datifyOn
+    ? await datifyPurchase(bundleMeta.network, phone, pricing.sizeGB)
+    : { success: false as const, error: "Datify disabled" };
 
   if (dtRes.success) {
     await supabase.from("orders").update({
@@ -883,7 +880,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
   }
 
-  // No fallback delivered — check if Inventor is still in-flight
+  // All 3 failed — check if Inventor is still in-flight
   if (!inventorDisabled && (invIsProcessing || inventorTimedOut)) {
     await supabase
       .from("orders")

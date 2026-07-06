@@ -60,7 +60,7 @@ export async function datacityPurchase(
   network: string,
   phone: string,
   sizeGB: number
-): Promise<{ success: boolean; reference?: string; error?: string }> {
+): Promise<{ success: boolean; reference?: string; error?: string; timedOut?: boolean }> {
   const net = NET_MAP[network.toLowerCase()];
   if (!net) return { success: false, error: `Network "${network}" not supported by DataCity` };
   if (!key()) return { success: false, error: "DATACITY_API_KEY not configured" };
@@ -81,7 +81,8 @@ export async function datacityPurchase(
     }
     return { success: false, error: String(data.message ?? "Purchase failed") };
   } catch (err) {
-    return { success: false, error: String(err) };
+    const isTimeout = String(err).includes("TimeoutError") || String(err).includes("AbortError");
+    return { success: false, timedOut: isTimeout, error: String(err) };
   }
 }
 

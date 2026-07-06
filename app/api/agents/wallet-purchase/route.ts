@@ -115,31 +115,13 @@ export async function POST(request: NextRequest) {
     status: "processing",
   });
 
-  // Fire Inventor, DataCity, and Datify simultaneously
+  // Sequential fallback: Inventor → DataCity → Datify
+  // Each provider is only called if the previous one definitively failed.
   const [inventorOn, datacityOn, datifyOn] = await Promise.all([isInventorEnabled(), isDatacityEnabled(), isDatifyEnabled()]);
-  const [inventorSettled, datacitySettled, datifySettled] = await Promise.allSettled([
-    inventorOn
-      ? callInventor(network, cleaned, numericSizeGB, reference)
-      : Promise.resolve({ ok: false, status: -1, body: { error: "Inventor disabled" } as Record<string, unknown> }),
-    datacityOn
-      ? datacityPurchase(network, cleaned, numericSizeGB)
-      : Promise.resolve({ success: false as const, error: "DataCity disabled" }),
-    datifyOn
-      ? datifyPurchase(network, cleaned, numericSizeGB)
-      : Promise.resolve({ success: false as const, error: "Datify disabled" }),
-  ]);
 
-  const result = inventorSettled.status === "fulfilled"
-    ? inventorSettled.value
-    : { ok: false, status: 0, body: {} as Record<string, unknown> };
-
-  const dcRes = datacitySettled.status === "fulfilled"
-    ? datacitySettled.value
-    : { success: false as const, error: "DataCity unreachable" };
-
-  const dtRes = datifySettled.status === "fulfilled"
-    ? datifySettled.value
-    : { success: false as const, error: "Datify unreachable" };
+  const result = inventorOn
+    ? await callInventor(network, cleaned, numericSizeGB, reference)
+    : { ok: false, status: -1, body: { error: "Inventor disabled" } as Record<string, unknown> };
 
   const isSuccess = result.ok && result.status !== 500;
   const isFailed = result.status === 400 || result.status === 422 || result.status === -1;
@@ -180,7 +162,11 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // ── Inventor didn't succeed — check fallbacks (they ran in parallel) ──────
+  // ── Inventor failed → try DataCity ───────────────────────────────────────
+  const dcRes = datacityOn
+    ? await datacityPurchase(network, cleaned, numericSizeGB)
+    : { success: false as const, error: "DataCity disabled" };
+
   if (dcRes.success) {
     await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
 
@@ -205,6 +191,18 @@ export async function POST(request: NextRequest) {
       newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
     });
   }
+
+  // DataCity timed out → stop, don't try Datify (might still deliver)
+  if (dcRes.timedOut) {
+    await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
+    sendAdminAlert(`⏳ ORDER PROCESSING (Agent Wallet)\n👤 ${agent.name} · ${cleaned}\n📦 ${network.toUpperCase()} ${label}\n⚠️ DataCity timed out — awaiting confirmation`).catch(() => {});
+    return Response.json({ success: true, pending: true, reference, message: "Order placed. Delivery in 1–5 minutes.", costDeducted: costPrice, newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)) });
+  }
+
+  // ── DataCity rejected → try Datify ────────────────────────────────────────
+  const dtRes = datifyOn
+    ? await datifyPurchase(network, cleaned, numericSizeGB)
+    : { success: false as const, error: "Datify disabled" };
 
   if (dtRes.success) {
     await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);

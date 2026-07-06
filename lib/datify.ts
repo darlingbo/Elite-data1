@@ -68,13 +68,12 @@ export async function datifyPurchase(
   network: string,
   phone: string,
   sizeGB: number
-): Promise<{ success: boolean; reference?: string; error?: string }> {
+): Promise<{ success: boolean; reference?: string; error?: string; timedOut?: boolean }> {
   const net = NET_MAP[network.toLowerCase()];
   if (!net) return { success: false, error: `Network "${network}" not supported by Datify` };
   if (!apiKey()) return { success: false, error: "DATIFY_API_KEY not configured" };
 
   const plans = await getPlans(net);
-  // Match by size within 5% + 0.01GB tolerance
   const match = plans.find(p => Math.abs(parseVolToGB(p.data_volume) - sizeGB) <= sizeGB * 0.05 + 0.01);
   if (!match) return { success: false, error: `No Datify plan for ${sizeGB}GB on ${net}` };
 
@@ -92,7 +91,8 @@ export async function datifyPurchase(
     }
     return { success: false, error: String(data.message ?? "Purchase failed") };
   } catch (err) {
-    return { success: false, error: String(err) };
+    const isTimeout = String(err).includes("TimeoutError") || String(err).includes("AbortError");
+    return { success: false, timedOut: isTimeout, error: String(err) };
   }
 }
 
