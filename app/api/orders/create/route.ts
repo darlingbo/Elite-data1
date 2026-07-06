@@ -4,6 +4,7 @@ import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles"
 import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
 import { sendCustomerSMS, orderReceivedSMS, orderConfirmedSMS } from "@/lib/sms";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
+import { datacityPurchase } from "@/lib/datacity";
 
 const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
@@ -818,20 +819,52 @@ export async function POST(request: NextRequest) {
     ""
   );
   if (inventorErrorMsg.toLowerCase().includes("beneficiary")) {
-    await supabase
-      .from("orders")
-      .update({ status: "not_on_list", bundle_size: bundleMeta.size, network: bundleMeta.network, customer_name: name })
-      .eq("reference", paystackRef);
+    // Auto-fallback: try DataCity when Inventor blocks the number
+    const dc = await datacityPurchase(bundleMeta.network, phone, bundleMeta.sizeGB);
+
+    if (dc.success) {
+      // DataCity delivered — mark completed
+      await supabase.from("orders").update({
+        status: "completed",
+        bundle_size: bundleMeta.size,
+        network: bundleMeta.network,
+        customer_name: name,
+      }).eq("reference", paystackRef);
+
+      // Credit agent commission if applicable
+      if (agentId && agentCommission > 0) await creditAgent(agentId, agentCommission, chargedAmount);
+
+      const dcAlert =
+        `✅ <b>DELIVERED VIA DATACITY (Inventor blocked)</b>\n\n` +
+        `👤 <b>Customer:</b> ${name}\n` +
+        `📱 <b>Phone:</b> <code>${phone}</code>\n` +
+        `📦 <b>Bundle:</b> ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\n` +
+        `💰 <b>Amount:</b> GH₵${chargedAmount.toFixed(2)}\n` +
+        `📎 <b>Ref:</b> <code>${paystackRef}</code>\n` +
+        `🔗 <b>DataCity Ref:</b> <code>${dc.reference}</code>`;
+      sendAdminAlert(dcAlert).catch(() => {});
+
+      return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
+    }
+
+    // DataCity also failed — save as not_on_list for manual handling
+    await supabase.from("orders").update({
+      status: "not_on_list",
+      bundle_size: bundleMeta.size,
+      network: bundleMeta.network,
+      customer_name: name,
+    }).eq("reference", paystackRef);
 
     const manualAlert =
-      `🔴 <b>MANUAL DELIVERY — INVENTOR BLOCKED</b>\n\n` +
+      `🔴 <b>MANUAL DELIVERY — BOTH APIS BLOCKED</b>\n\n` +
       `👤 <b>Customer:</b> ${name}\n` +
       `📱 <b>Phone:</b> <code>${phone}</code>\n` +
       `📦 <b>Bundle:</b> ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\n` +
       `💰 <b>Amount Paid:</b> GH₵${chargedAmount.toFixed(2)}\n` +
       `📎 <b>Ref:</b> <code>${paystackRef}</code>\n\n` +
-      `❌ Inventor said: <i>${inventorErrorMsg}</i>\n\n` +
-      `➡️ Send data manually via Inventor dashboard, then mark completed in admin panel.`;
+      `❌ Inventor: <i>${inventorErrorMsg}</i>\n` +
+      `❌ DataCity: <i>${dc.error ?? "failed"}</i>\n\n` +
+      `➡️ Send data manually, then mark completed in admin panel.`;
 
     await sendAdminAlert(manualAlert);
     await sendAdminBotMessage(manualAlert, retryKeyboard(paystackRef));

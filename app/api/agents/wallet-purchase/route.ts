@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { sendAgentNotification, sendAdminAlert } from "@/lib/telegram";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { getAgentBundleCost } from "@/lib/agent-pricing";
+import { datacityPurchase } from "@/lib/datacity";
 
 const INVENTOR_TIMEOUT_MS = 10_000;
 
@@ -148,19 +149,48 @@ export async function POST(request: NextRequest) {
       ""
     );
 
-    // Beneficiary list error — Inventor blocks specific numbers.
-    // Keep wallet deducted; alert admin to deliver manually.
+    // Beneficiary list error — auto-fallback to DataCity
     if (errMsg.toLowerCase().includes("beneficiary")) {
+      const dc = await datacityPurchase(network, cleaned, numericSizeGB);
+
+      if (dc.success) {
+        // DataCity delivered — mark completed and notify agent
+        await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
+
+        if (agent.telegram_chat_id) {
+          sendAgentNotification(
+            agent.telegram_chat_id,
+            `✅ <b>Delivered!</b>\n\n📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n💰 GH₵${costPrice.toFixed(2)} deducted\n📎 Ref: <code>${reference}</code>`
+          ).catch(() => {});
+        }
+
+        sendAdminAlert(
+          `✅ <b>DELIVERED VIA DATACITY (Agent Wallet, Inventor blocked)</b>\n\n` +
+          `👤 Agent: ${agent.name}\n📱 <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
+          `🔗 DataCity Ref: <code>${dc.reference}</code>`
+        ).catch(() => {});
+
+        return Response.json({
+          success: true,
+          reference,
+          message: "Data delivered successfully.",
+          costDeducted: costPrice,
+          newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
+        });
+      }
+
+      // Both APIs failed — save as not_on_list for manual handling
       await supabase.from("orders").update({ status: "not_on_list" }).eq("reference", reference);
 
       const manualAlert =
-        `🔴 <b>MANUAL DELIVERY — INVENTOR BLOCKED (Agent Wallet)</b>\n\n` +
+        `🔴 <b>MANUAL DELIVERY — BOTH APIS BLOCKED (Agent Wallet)</b>\n\n` +
         `👤 <b>Agent:</b> ${agent.name}\n` +
         `📱 <b>Phone:</b> <code>${cleaned}</code>\n` +
         `📦 <b>Bundle:</b> ${network.toUpperCase()} ${label}\n` +
         `💰 <b>Cost:</b> GH₵${costPrice.toFixed(2)} (deducted)\n` +
         `📎 <b>Ref:</b> <code>${reference}</code>\n\n` +
-        `❌ Inventor said: <i>${errMsg}</i>\n\n` +
+        `❌ Inventor: <i>${errMsg}</i>\n` +
+        `❌ DataCity: <i>${dc.error ?? "failed"}</i>\n\n` +
         `➡️ Send data manually, then mark completed in admin panel.`;
 
       sendAdminAlert(manualAlert).catch(() => {});
