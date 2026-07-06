@@ -16,7 +16,7 @@ async function isAdmin(): Promise<boolean> {
 async function checkInventorOrder(reference: string): Promise<"completed" | "processing" | "failed" | null> {
   try {
     const res = await fetch(
-      `${process.env.INVENTOR_API_BASE_URL}/api/developer/order/${encodeURIComponent(reference)}`,
+      `${process.env.INVENTOR_API_BASE_URL}/api/developer/orders/${encodeURIComponent(reference)}`,
       { headers: { Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` }, signal: AbortSignal.timeout(8000) }
     );
     const body = await res.json().catch(() => ({})) as Record<string, unknown>;
