@@ -21,12 +21,14 @@ const CouponsAdmin = dynamic(() => import("./_components/CouponsAdmin"), { loadi
 const WithdrawalsAdmin = dynamic(() => import("./_components/WithdrawalsAdmin"), { loading: () => <Spinner /> });
 const AnalyticsAdmin = dynamic(() => import("./_components/AnalyticsAdmin"), { loading: () => <Spinner /> });
 const PaystackSplitAdmin = dynamic(() => import("./_components/PaystackSplitAdmin"), { loading: () => <Spinner /> });
+const RefundNumbers = dynamic(() => import("./_components/RefundNumbers"), { loading: () => <Spinner /> });
 
 type Tab =
   | "overview" | "all-orders" | "pending-orders" | "processing" | "completed" | "failed-orders"
   | "data-bundles" | "bundle-prices" | "all-agents" | "agent-applications" | "agent-wallets" | "leaderboard"
   | "transactions" | "commissions" | "manual" | "compensate" | "announcements" | "promo" | "apikeys" | "sms" | "settings"
-  | "customers" | "mashup-bundles" | "network-providers" | "coupons" | "referrals" | "withdrawals" | "agent-ranks" | "analytics" | "developer-api" | "paystack-split" | "notifications";
+  | "customers" | "mashup-bundles" | "network-providers" | "coupons" | "referrals" | "withdrawals" | "agent-ranks" | "analytics" | "developer-api" | "paystack-split" | "notifications"
+  | "refund-numbers";
 
 type OrderStatus = "ALL" | "COMPLETED" | "PROCESSING" | "PENDING" | "FAILED";
 
@@ -403,9 +405,10 @@ function Sidebar({ tab, setTab, pendingOrders, pendingAgents, onLogout, onChange
     {
       label: "ORDERS",
       items: [
-        { id: "pending-orders" as Tab, icon: <Ic.clock />, label: "Pending", badge: pendingOrders || undefined },
-        { id: "processing" as Tab,     icon: <Ic.sync />,  label: "Processing" },
-        { id: "manual" as Tab,         icon: <Ic.edit />,  label: "Manual Orders" },
+        { id: "pending-orders" as Tab,  icon: <Ic.clock />, label: "Pending", badge: pendingOrders || undefined },
+        { id: "processing" as Tab,      icon: <Ic.sync />,  label: "Processing" },
+        { id: "manual" as Tab,          icon: <Ic.edit />,  label: "Manual Orders" },
+        { id: "refund-numbers" as Tab,  icon: <Ic.wallet />, label: "MoMo Refunds" },
       ],
     },
     {
@@ -2137,7 +2140,7 @@ export default function AdminDashboard() {
     "completed": "Completed", "failed-orders": "Failed Orders", "data-bundles": "Data Bundles", "bundle-prices": "Agent Prices",
     "all-agents": "All Agents", "agent-applications": "Agent Applications", "agent-wallets": "Agent Wallets",
     "leaderboard": "Referrals & Leaderboard", "referrals": "Referrals & Leaderboard", "transactions": "Transactions", "commissions": "Commissions",
-    "manual": "Manual Orders", "compensate": "Compensate", "announcements": "Notifications", "notifications": "Notifications", "promo": "Promo Banner",
+    "manual": "Manual Orders", "refund-numbers": "MoMo Refund Numbers", "compensate": "Compensate", "announcements": "Notifications", "notifications": "Notifications", "promo": "Promo Banner",
     "sms": "SMS Messaging", "apikeys": "API Keys", "settings": "Settings",
     "customers": "Customers", "mashup-bundles": "Mashup Bundles", "network-providers": "Network Providers",
     "coupons": "Coupons", "withdrawals": "Withdrawal Requests", "agent-ranks": "Agent Ranks",
@@ -2213,6 +2216,7 @@ export default function AdminDashboard() {
               {tab === "transactions"      && <PnLView orders={stats.orders.all} agents={stats.agents.all} />}
               {tab === "commissions"       && <CommissionAdmin />}
               {tab === "manual"            && <ManualOrdersAdmin />}
+              {tab === "refund-numbers"    && <RefundNumbers />}
               {tab === "compensate"        && <CompensateView />}
               {(tab === "announcements" || tab === "notifications") && <AnnouncementsAdmin />}
               {tab === "promo"             && <PromoBannerAdmin />}

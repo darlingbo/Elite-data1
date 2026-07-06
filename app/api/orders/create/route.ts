@@ -246,7 +246,7 @@ async function callInventorAPI(
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { name, email, phone, bundleId, paystackRef, agentCode, applyReferralCredit, referralVia, fastDelivery } = body;
+  const { name, email, phone, bundleId, paystackRef, agentCode, applyReferralCredit, referralVia, fastDelivery, refundPhone, refundNetwork } = body;
 
   if (!name || !email || !phone || !bundleId || !paystackRef) {
     return Response.json({ error: "Missing required fields." }, { status: 400 });
@@ -494,6 +494,8 @@ export async function POST(request: NextRequest) {
     admin_commission: adminCommission,
     agent_commission: agentCommission,
     agent_id: agentId,
+    refund_phone: refundPhone ?? null,
+    refund_network: refundNetwork ?? null,
     status: "pending",
   });
 
