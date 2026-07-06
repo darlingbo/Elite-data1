@@ -4,7 +4,8 @@ import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles"
 import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
 import { sendCustomerSMS, orderReceivedSMS, orderConfirmedSMS } from "@/lib/sms";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
-import { datacityPurchase, isDatacityEnabled } from "@/lib/datacity";
+import { datacityPurchase, isDatacityEnabled, isInventorEnabled } from "@/lib/datacity";
+import { datifyPurchase, isDatifyEnabled } from "@/lib/datify";
 
 const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
@@ -215,6 +216,22 @@ async function processLoyalty(
   } catch {
     return { count: 0, total: LOYALTY_REQUIRED, windowEndsAt: null, rewardEarned: false };
   }
+}
+
+async function creditAgent(agentId: string, commission: number, revenue: number) {
+  if (!agentId || !commission) return;
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("commission_balance, total_sales, total_revenue")
+    .eq("id", agentId)
+    .maybeSingle();
+  if (!agent) return;
+  await supabase.from("agents").update({
+    commission_balance: (Number(agent.commission_balance) || 0) + commission,
+    total_sales: (Number(agent.total_sales) || 0) + 1,
+    total_revenue: (Number(agent.total_revenue) || 0) + revenue,
+    updated_at: new Date().toISOString(),
+  }).eq("id", agentId);
 }
 
 // Inventor API call — single attempt with tight timeout
@@ -632,18 +649,23 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
   }
 
-  // ─── Fire BOTH Inventor and DataCity simultaneously ──────────────────────
-  const datacityOn = await isDatacityEnabled();
-  const [inventorSettled, datacitySettled] = await Promise.allSettled([
-    callInventorAPI({
-      network: networkApiName[bundleMeta.network],
-      Phone: phone,
-      Datasize: pricing.sizeGB,
-      reference: paystackRef,
-    }),
+  // ─── Fire Inventor, DataCity, and Datify simultaneously ─────────────────
+  const [inventorOn, datacityOn, datifyOn] = await Promise.all([isInventorEnabled(), isDatacityEnabled(), isDatifyEnabled()]);
+  const [inventorSettled, datacitySettled, datifySettled] = await Promise.allSettled([
+    inventorOn
+      ? callInventorAPI({
+          network: networkApiName[bundleMeta.network],
+          Phone: phone,
+          Datasize: pricing.sizeGB,
+          reference: paystackRef,
+        })
+      : Promise.resolve({ ok: false, status: -1, body: { error: "Inventor disabled" } as Record<string, unknown> }),
     datacityOn
       ? datacityPurchase(bundleMeta.network, phone, pricing.sizeGB)
       : Promise.resolve({ success: false as const, error: "DataCity disabled" }),
+    datifyOn
+      ? datifyPurchase(bundleMeta.network, phone, pricing.sizeGB)
+      : Promise.resolve({ success: false as const, error: "Datify disabled" }),
   ]);
 
   const { ok: invOkRaw, status: inventorHttpStatus, body: inventorBody } =
@@ -655,6 +677,11 @@ export async function POST(request: NextRequest) {
     datacitySettled.status === "fulfilled"
       ? datacitySettled.value
       : { success: false as const, error: "DataCity unreachable" };
+
+  const dtRes =
+    datifySettled.status === "fulfilled"
+      ? datifySettled.value
+      : { success: false as const, error: "Datify unreachable" };
 
   const inventorLog = `Inventor HTTP ${inventorHttpStatus}: ${JSON.stringify(inventorBody).slice(0, 300)}`;
 
@@ -681,7 +708,8 @@ export async function POST(request: NextRequest) {
     rawInvStatus.includes("dispatch") ||
     rawInvStatus.includes("pending");
 
-  // If Inventor timed out (status 0), treat as processing — it may already have the order
+  // status -1 = Inventor disabled by admin toggle; status 0 = timed out
+  const inventorDisabled = inventorHttpStatus === -1;
   const inventorTimedOut = inventorHttpStatus === 0;
   const inventorOk = invOkRaw && !invIsProcessing;
 
@@ -778,7 +806,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
   }
 
-  if (invIsProcessing || inventorTimedOut) {
+  if (!inventorDisabled && (invIsProcessing || inventorTimedOut)) {
     await supabase
       .from("orders")
       .update({ status: "processing", bundle_size: actualSize, network: bundleMeta.network, customer_name: name })
@@ -866,7 +894,40 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
   }
 
-  // Both APIs failed — check reason
+  // DataCity failed — check Datify
+  if (dtRes.success) {
+    await supabase.from("orders").update({
+      status: "completed",
+      bundle_size: bundleMeta.size,
+      network: bundleMeta.network,
+      customer_name: name,
+    }).eq("reference", paystackRef);
+
+    if (agentId && agentCommission > 0) await creditAgent(agentId, agentCommission, chargedAmount);
+
+    sendAdminAlert(
+      `✅ <b>DELIVERED VIA DATIFY</b>\n\n` +
+      `👤 ${name} · <code>${phone}</code>\n` +
+      `📦 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} · GH₵${chargedAmount.toFixed(2)}\n` +
+      `📎 Paystack: <code>${paystackRef}</code>\n` +
+      `🔗 Datify: <code>${dtRes.reference}</code>\n` +
+      `⚠️ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}\n` +
+      `⚠️ DataCity: ${dcRes.error ?? "failed"}`
+    ).catch(() => {});
+
+    sendCustomerSMS(phone, orderConfirmedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
+
+    if (agentTelegramChatId) {
+      sendAgentNotification(agentTelegramChatId,
+        `🛒 <b>New Sale!</b>\n\n📱 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → <code>${phone}</code>\n` +
+        `💰 GH₵${chargedAmount.toFixed(2)} · Commission: GH₵${agentCommission.toFixed(2)}\n✅ Delivered\n📎 <code>${paystackRef}</code>`
+      ).catch(() => {});
+    }
+
+    return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
+  }
+
+  // All APIs failed — check reason
   const isBeneficiary = inventorErrorMsg.toLowerCase().includes("beneficiary");
   const finalStatus = isBeneficiary ? "not_on_list" : "failed";
 
@@ -875,12 +936,13 @@ export async function POST(request: NextRequest) {
     .eq("reference", paystackRef);
 
   const bothFailedMsg =
-    `🔴 <b>${isBeneficiary ? "BOTH APIS BLOCKED — NOT ON LIST" : "BOTH APIS FAILED"}</b>\n\n` +
+    `🔴 <b>${isBeneficiary ? "ALL APIS BLOCKED — NOT ON LIST" : "ALL APIS FAILED"}</b>\n\n` +
     `👤 ${name} · <code>${phone}</code>\n` +
     `📦 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} · GH₵${chargedAmount.toFixed(2)}\n` +
     `📎 <code>${paystackRef}</code>\n\n` +
     `❌ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}\n` +
-    `❌ DataCity: ${dcRes.error ?? "failed"}\n\n` +
+    `❌ DataCity: ${dcRes.error ?? "failed"}\n` +
+    `❌ Datify: ${dtRes.error ?? "failed"}\n\n` +
     `➡️ Deliver manually then mark completed in admin panel.`;
 
   await sendAdminAlert(bothFailedMsg);

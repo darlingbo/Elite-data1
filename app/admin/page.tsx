@@ -1848,7 +1848,7 @@ function BiometricSettings({ showToast }: { showToast: (msg: string, ok?: boolea
 
 // ─── Settings View ────────────────────────────────────────────────────────────
 function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
-  const [net, setNet] = useState<{ mtn: boolean; telecel: boolean; at: boolean; mashup: boolean; autoHours: boolean; autoStart: string; autoEnd: string; datacity: boolean } | null>(null);
+  const [net, setNet] = useState<{ mtn: boolean; telecel: boolean; at: boolean; mashup: boolean; autoHours: boolean; autoStart: string; autoEnd: string; inventor: boolean; datacity: boolean; datify: boolean } | null>(null);
   const [netError, setNetError] = useState("");
   const [netSaving, setNetSaving] = useState<string | null>(null);
   const [toast, setToast] = useState("");
@@ -1869,14 +1869,15 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
       .catch(() => setNetError("Network error loading settings."));
   }, []);
 
-  async function toggleDatacity(value: boolean) {
+  async function toggleProvider(key: "inventor" | "datacity" | "datify", value: boolean) {
     if (!net) return;
-    setNet(prev => prev ? { ...prev, datacity: value } : prev);
-    setNetSaving("datacity");
-    const r = await fetch("/api/admin/network-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ datacity: value }) }).then(r => r.json());
+    setNet(prev => prev ? { ...prev, [key]: value } : prev);
+    setNetSaving(key);
+    const r = await fetch("/api/admin/network-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [key]: value }) }).then(r => r.json());
     setNetSaving(null);
-    if (r.success) showToast(`✓ DataCity ${value ? "enabled" : "disabled"}`);
-    else { showToast(`❌ ${r.error ?? "Save failed"}`, false); setNet(prev => prev ? { ...prev, datacity: !value } : prev); }
+    const labels: Record<string, string> = { inventor: "Inventor", datacity: "DataCity", datify: "Datify" };
+    if (r.success) showToast(`✓ ${labels[key]} ${value ? "enabled" : "disabled"}`);
+    else { showToast(`❌ ${r.error ?? "Save failed"}`, false); setNet(prev => prev ? { ...prev, [key]: !value } : prev); }
   }
 
   async function toggleNet(key: "mtn" | "telecel" | "at" | "mashup", value: boolean) {
@@ -1975,22 +1976,30 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
         </div>
       </div>
 
-      {/* DataCity API Toggle */}
+      {/* API Providers */}
       {net && (
         <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
-          <h2 className="font-bold text-white mb-1">DataCity API</h2>
-          <p className="text-xs text-slate-500 mb-4">When enabled, DataCity runs alongside Inventor on every order — if Inventor fails, DataCity delivers automatically</p>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="w-3 h-3 rounded-full shrink-0" style={{ background: "#06b6d4" }} />
-              <div>
-                <p className="font-semibold text-white text-sm">DataCity</p>
-                <p className="text-xs font-bold" style={{ color: net.datacity ? "#4ade80" : "#f87171" }}>
-                  {net.datacity ? "Active — running with Inventor" : "Disabled — Inventor only"}
-                </p>
+          <h2 className="font-bold text-white mb-1">API Providers</h2>
+          <p className="text-xs text-slate-500 mb-4">Toggle each data provider on or off at any time. All enabled providers fire in parallel on every order.</p>
+          <div className="space-y-4">
+            {([
+              { key: "inventor" as const,  label: "Inventor",  dot: "#22d3ee", desc: "Primary provider" },
+              { key: "datacity" as const,  label: "DataCity",  dot: "#06b6d4", desc: "Fallback provider" },
+              { key: "datify"   as const,  label: "Datify",    dot: "#a855f7", desc: "Fallback provider" },
+            ] as const).map(p => (
+              <div key={p.key} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="w-3 h-3 rounded-full shrink-0" style={{ background: p.dot }} />
+                  <div>
+                    <p className="font-semibold text-white text-sm">{p.label}</p>
+                    <p className="text-xs font-bold" style={{ color: net[p.key] ? "#4ade80" : "#f87171" }}>
+                      {net[p.key] ? `Active — ${p.desc}` : "Disabled"}
+                    </p>
+                  </div>
+                </div>
+                <SettingToggle checked={net[p.key]} saving={netSaving === p.key} onChange={v => toggleProvider(p.key, v)} />
               </div>
-            </div>
-            <SettingToggle checked={net.datacity} saving={netSaving === "datacity"} onChange={toggleDatacity} />
+            ))}
           </div>
         </div>
       )}

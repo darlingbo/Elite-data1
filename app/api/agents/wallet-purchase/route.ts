@@ -3,7 +3,8 @@ import { supabase } from "@/lib/supabase";
 import { sendAgentNotification, sendAdminAlert } from "@/lib/telegram";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { getAgentBundleCost } from "@/lib/agent-pricing";
-import { datacityPurchase, isDatacityEnabled } from "@/lib/datacity";
+import { datacityPurchase, isDatacityEnabled, isInventorEnabled } from "@/lib/datacity";
+import { datifyPurchase, isDatifyEnabled } from "@/lib/datify";
 
 const INVENTOR_TIMEOUT_MS = 10_000;
 
@@ -114,13 +115,18 @@ export async function POST(request: NextRequest) {
     status: "processing",
   });
 
-  // Fire both Inventor and DataCity simultaneously
-  const datacityOn = await isDatacityEnabled();
-  const [inventorSettled, datacitySettled] = await Promise.allSettled([
-    callInventor(network, cleaned, numericSizeGB, reference),
+  // Fire Inventor, DataCity, and Datify simultaneously
+  const [inventorOn, datacityOn, datifyOn] = await Promise.all([isInventorEnabled(), isDatacityEnabled(), isDatifyEnabled()]);
+  const [inventorSettled, datacitySettled, datifySettled] = await Promise.allSettled([
+    inventorOn
+      ? callInventor(network, cleaned, numericSizeGB, reference)
+      : Promise.resolve({ ok: false, status: -1, body: { error: "Inventor disabled" } as Record<string, unknown> }),
     datacityOn
       ? datacityPurchase(network, cleaned, numericSizeGB)
       : Promise.resolve({ success: false as const, error: "DataCity disabled" }),
+    datifyOn
+      ? datifyPurchase(network, cleaned, numericSizeGB)
+      : Promise.resolve({ success: false as const, error: "Datify disabled" }),
   ]);
 
   const result = inventorSettled.status === "fulfilled"
@@ -131,8 +137,13 @@ export async function POST(request: NextRequest) {
     ? datacitySettled.value
     : { success: false as const, error: "DataCity unreachable" };
 
+  const dtRes = datifySettled.status === "fulfilled"
+    ? datifySettled.value
+    : { success: false as const, error: "Datify unreachable" };
+
   const isSuccess = result.ok && result.status !== 500;
-  const isFailed = result.status === 400 || result.status === 422;
+  // -1 = Inventor disabled by admin toggle; treat as definitive failure so fallbacks run
+  const isFailed = result.status === 400 || result.status === 422 || result.status === -1;
   const isDuplicate = result.status === 409;
 
   if (isSuccess || isDuplicate) {
@@ -190,15 +201,41 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Both failed
+    // DataCity also failed — try Datify
+    if (dtRes.success) {
+      await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
+
+      if (agent.telegram_chat_id) {
+        sendAgentNotification(
+          agent.telegram_chat_id,
+          `✅ <b>Delivered!</b>\n\n📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n💰 GH₵${costPrice.toFixed(2)} deducted\n📎 <code>${reference}</code>`
+        ).catch(() => {});
+      }
+
+      sendAdminAlert(
+        `✅ <b>DELIVERED VIA DATIFY (Agent Wallet)</b>\n\n` +
+        `👤 ${agent.name} · <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
+        `🔗 Datify: <code>${dtRes.reference}</code>\n❌ Inventor: ${errMsg}\n❌ DataCity: ${dcRes.error ?? "failed"}`
+      ).catch(() => {});
+
+      return Response.json({
+        success: true,
+        reference,
+        message: "Data delivered successfully.",
+        costDeducted: costPrice,
+        newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
+      });
+    }
+
+    // All failed
     const isBeneficiary = errMsg.toLowerCase().includes("beneficiary");
     await supabase.from("orders").update({ status: isBeneficiary ? "not_on_list" : "failed" }).eq("reference", reference);
 
     const manualAlert =
-      `🔴 <b>${isBeneficiary ? "BOTH APIS BLOCKED" : "BOTH APIS FAILED"} (Agent Wallet)</b>\n\n` +
+      `🔴 <b>${isBeneficiary ? "ALL APIS BLOCKED" : "ALL APIS FAILED"} (Agent Wallet)</b>\n\n` +
       `👤 ${agent.name} · <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
       `💰 GH₵${costPrice.toFixed(2)} deducted · Ref: <code>${reference}</code>\n\n` +
-      `❌ Inventor: ${errMsg}\n❌ DataCity: ${dcRes.error ?? "failed"}\n\n` +
+      `❌ Inventor: ${errMsg}\n❌ DataCity: ${dcRes.error ?? "failed"}\n❌ Datify: ${dtRes.error ?? "failed"}\n\n` +
       `➡️ Send manually then mark completed.`;
 
     sendAdminAlert(manualAlert).catch(() => {});
