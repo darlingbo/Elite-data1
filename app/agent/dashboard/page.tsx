@@ -2009,7 +2009,7 @@ function AffiliatePage({ data }: { data: AgentData }) {
 
   const totalEarned = (data.commission_balance ?? 0) + (data.paystack_wallet_balance ?? 0);
   const siteUrl = typeof window !== "undefined" ? window.location.origin : "https://elitedata1.com";
-  const storeLink = `${siteUrl}/store/${data.referral_code}`;
+  const storeLink = `${siteUrl}/shop/${data.referral_code}`;
   const isActive = data.referral_code && (data.total_sales ?? 0) > 0;
   const minWithdraw = 30;
 
