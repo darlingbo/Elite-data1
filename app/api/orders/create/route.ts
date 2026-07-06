@@ -4,7 +4,7 @@ import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles"
 import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
 import { sendCustomerSMS, orderReceivedSMS, orderConfirmedSMS } from "@/lib/sms";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
-import { datacityPurchase } from "@/lib/datacity";
+import { datacityPurchase, isDatacityEnabled } from "@/lib/datacity";
 
 const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
@@ -633,6 +633,7 @@ export async function POST(request: NextRequest) {
   }
 
   // ─── Fire BOTH Inventor and DataCity simultaneously ──────────────────────
+  const datacityOn = await isDatacityEnabled();
   const [inventorSettled, datacitySettled] = await Promise.allSettled([
     callInventorAPI({
       network: networkApiName[bundleMeta.network],
@@ -640,7 +641,9 @@ export async function POST(request: NextRequest) {
       Datasize: pricing.sizeGB,
       reference: paystackRef,
     }),
-    datacityPurchase(bundleMeta.network, phone, pricing.sizeGB),
+    datacityOn
+      ? datacityPurchase(bundleMeta.network, phone, pricing.sizeGB)
+      : Promise.resolve({ success: false as const, error: "DataCity disabled" }),
   ]);
 
   const { ok: invOkRaw, status: inventorHttpStatus, body: inventorBody } =

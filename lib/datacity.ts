@@ -1,4 +1,15 @@
+import { supabase } from "@/lib/supabase";
+
 const BASE = "https://mydatacity.com/api";
+
+export async function isDatacityEnabled(): Promise<boolean> {
+  try {
+    const { data } = await supabase.from("system_settings").select("value").eq("key", "datacity_enabled").maybeSingle();
+    return (data?.value ?? "1") === "1";
+  } catch {
+    return true; // default on if DB unreachable
+  }
+}
 
 const NET_MAP: Record<string, string> = {
   mtn: "mtn",

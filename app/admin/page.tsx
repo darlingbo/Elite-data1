@@ -1848,7 +1848,7 @@ function BiometricSettings({ showToast }: { showToast: (msg: string, ok?: boolea
 
 // ─── Settings View ────────────────────────────────────────────────────────────
 function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
-  const [net, setNet] = useState<{ mtn: boolean; telecel: boolean; at: boolean; mashup: boolean; autoHours: boolean; autoStart: string; autoEnd: string } | null>(null);
+  const [net, setNet] = useState<{ mtn: boolean; telecel: boolean; at: boolean; mashup: boolean; autoHours: boolean; autoStart: string; autoEnd: string; datacity: boolean } | null>(null);
   const [netError, setNetError] = useState("");
   const [netSaving, setNetSaving] = useState<string | null>(null);
   const [toast, setToast] = useState("");
@@ -1868,6 +1868,16 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
       })
       .catch(() => setNetError("Network error loading settings."));
   }, []);
+
+  async function toggleDatacity(value: boolean) {
+    if (!net) return;
+    setNet(prev => prev ? { ...prev, datacity: value } : prev);
+    setNetSaving("datacity");
+    const r = await fetch("/api/admin/network-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ datacity: value }) }).then(r => r.json());
+    setNetSaving(null);
+    if (r.success) showToast(`✓ DataCity ${value ? "enabled" : "disabled"}`);
+    else { showToast(`❌ ${r.error ?? "Save failed"}`, false); setNet(prev => prev ? { ...prev, datacity: !value } : prev); }
+  }
 
   async function toggleNet(key: "mtn" | "telecel" | "at" | "mashup", value: boolean) {
     if (!net) return;
@@ -1964,6 +1974,26 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
           ))}
         </div>
       </div>
+
+      {/* DataCity API Toggle */}
+      {net && (
+        <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+          <h2 className="font-bold text-white mb-1">DataCity API</h2>
+          <p className="text-xs text-slate-500 mb-4">When enabled, DataCity runs alongside Inventor on every order — if Inventor fails, DataCity delivers automatically</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="w-3 h-3 rounded-full shrink-0" style={{ background: "#06b6d4" }} />
+              <div>
+                <p className="font-semibold text-white text-sm">DataCity</p>
+                <p className="text-xs font-bold" style={{ color: net.datacity ? "#4ade80" : "#f87171" }}>
+                  {net.datacity ? "Active — running with Inventor" : "Disabled — Inventor only"}
+                </p>
+              </div>
+            </div>
+            <SettingToggle checked={net.datacity} saving={netSaving === "datacity"} onChange={toggleDatacity} />
+          </div>
+        </div>
+      )}
 
       {/* Auto Store Hours */}
       {net && (

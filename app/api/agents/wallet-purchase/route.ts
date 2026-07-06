@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { sendAgentNotification, sendAdminAlert } from "@/lib/telegram";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { getAgentBundleCost } from "@/lib/agent-pricing";
-import { datacityPurchase } from "@/lib/datacity";
+import { datacityPurchase, isDatacityEnabled } from "@/lib/datacity";
 
 const INVENTOR_TIMEOUT_MS = 10_000;
 
@@ -115,9 +115,12 @@ export async function POST(request: NextRequest) {
   });
 
   // Fire both Inventor and DataCity simultaneously
+  const datacityOn = await isDatacityEnabled();
   const [inventorSettled, datacitySettled] = await Promise.allSettled([
     callInventor(network, cleaned, numericSizeGB, reference),
-    datacityPurchase(network, cleaned, numericSizeGB),
+    datacityOn
+      ? datacityPurchase(network, cleaned, numericSizeGB)
+      : Promise.resolve({ success: false as const, error: "DataCity disabled" }),
   ]);
 
   const result = inventorSettled.status === "fulfilled"
