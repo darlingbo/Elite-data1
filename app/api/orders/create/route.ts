@@ -776,7 +776,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    await sendAdminAlert(`${fmtDelivered(paystackRef, phone, bundleMeta.network, actualSize)}\n${inventorLog}`);
+    await sendAdminAlert(`${fmtDelivered(paystackRef, phone, bundleMeta.network, actualSize)}\n📡 Provider: Inventor\n${inventorLog}`);
 
     // SMS to customer after delivery confirmed
     sendCustomerSMS(phone, orderConfirmedSMS(name, bundleMeta.network, actualSize, phone, paystackRef)).catch(() => {});
@@ -806,6 +806,84 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
   }
 
+  // Extract Inventor error message — needed for fallback alerts
+  const inventorErrorMsg = String(
+    (inventorBody.message as string) ??
+    (inventorBody.error as string) ??
+    (inventorBody.description as string) ??
+    (inventorDisabled ? "Inventor disabled" : "")
+  );
+
+  // ── Check ALL fallback providers BEFORE the processing branch ───────────
+  // This ensures that if DataCity or Datify delivered while Inventor was
+  // still in-flight or disabled, we complete immediately rather than waiting.
+
+  if (dcRes.success) {
+    await supabase.from("orders").update({
+      status: "completed",
+      bundle_size: bundleMeta.size,
+      network: bundleMeta.network,
+      customer_name: name,
+    }).eq("reference", paystackRef);
+
+    if (agentId && agentCommission > 0) await creditAgent(agentId, agentCommission, chargedAmount);
+
+    sendAdminAlert(
+      `✅ <b>DELIVERED VIA DATACITY</b>\n\n` +
+      `👤 ${name} · <code>${phone}</code>\n` +
+      `📦 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} · GH₵${chargedAmount.toFixed(2)}\n` +
+      `📡 Provider: DataCity\n` +
+      `📎 Paystack: <code>${paystackRef}</code>\n` +
+      `🔗 DataCity ref: <code>${dcRes.reference}</code>\n` +
+      `⚠️ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}`
+    ).catch(() => {});
+
+    sendCustomerSMS(phone, orderConfirmedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
+
+    if (agentTelegramChatId) {
+      sendAgentNotification(agentTelegramChatId,
+        `🛒 <b>New Sale!</b>\n\n📱 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → <code>${phone}</code>\n` +
+        `💰 GH₵${chargedAmount.toFixed(2)} · Commission: GH₵${agentCommission.toFixed(2)}\n✅ Delivered via DataCity\n📎 <code>${paystackRef}</code>`
+      ).catch(() => {});
+    }
+
+    return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
+  }
+
+  if (dtRes.success) {
+    await supabase.from("orders").update({
+      status: "completed",
+      bundle_size: bundleMeta.size,
+      network: bundleMeta.network,
+      customer_name: name,
+    }).eq("reference", paystackRef);
+
+    if (agentId && agentCommission > 0) await creditAgent(agentId, agentCommission, chargedAmount);
+
+    sendAdminAlert(
+      `✅ <b>DELIVERED VIA DATIFY</b>\n\n` +
+      `👤 ${name} · <code>${phone}</code>\n` +
+      `📦 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} · GH₵${chargedAmount.toFixed(2)}\n` +
+      `📡 Provider: Datify\n` +
+      `📎 Paystack: <code>${paystackRef}</code>\n` +
+      `🔗 Datify ref: <code>${dtRes.reference}</code>\n` +
+      `⚠️ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}\n` +
+      `⚠️ DataCity: ${dcRes.error ?? "failed"}`
+    ).catch(() => {});
+
+    sendCustomerSMS(phone, orderConfirmedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
+
+    if (agentTelegramChatId) {
+      sendAgentNotification(agentTelegramChatId,
+        `🛒 <b>New Sale!</b>\n\n📱 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → <code>${phone}</code>\n` +
+        `💰 GH₵${chargedAmount.toFixed(2)} · Commission: GH₵${agentCommission.toFixed(2)}\n✅ Delivered via Datify\n📎 <code>${paystackRef}</code>`
+      ).catch(() => {});
+    }
+
+    return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
+  }
+
+  // No fallback delivered — check if Inventor is still in-flight
   if (!inventorDisabled && (invIsProcessing || inventorTimedOut)) {
     await supabase
       .from("orders")
@@ -852,79 +930,6 @@ export async function POST(request: NextRequest) {
       })
       .then(() => {});
     return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
-  }
-
-  // Inventor failed — DataCity already ran in parallel, check its result now
-  const inventorErrorMsg = String(
-    (inventorBody.message as string) ??
-    (inventorBody.error as string) ??
-    (inventorBody.description as string) ??
-    ""
-  );
-
-  if (dcRes.success) {
-    // DataCity delivered while Inventor was failing — mark completed
-    await supabase.from("orders").update({
-      status: "completed",
-      bundle_size: bundleMeta.size,
-      network: bundleMeta.network,
-      customer_name: name,
-    }).eq("reference", paystackRef);
-
-    if (agentId && agentCommission > 0) await creditAgent(agentId, agentCommission, chargedAmount);
-
-    sendAdminAlert(
-      `✅ <b>DELIVERED VIA DATACITY</b>\n\n` +
-      `👤 ${name} · <code>${phone}</code>\n` +
-      `📦 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} · GH₵${chargedAmount.toFixed(2)}\n` +
-      `📎 Paystack: <code>${paystackRef}</code>\n` +
-      `🔗 DataCity: <code>${dcRes.reference}</code>\n` +
-      `⚠️ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}`
-    ).catch(() => {});
-
-    sendCustomerSMS(phone, orderConfirmedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
-
-    if (agentTelegramChatId) {
-      sendAgentNotification(agentTelegramChatId,
-        `🛒 <b>New Sale!</b>\n\n📱 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → <code>${phone}</code>\n` +
-        `💰 GH₵${chargedAmount.toFixed(2)} · Commission: GH₵${agentCommission.toFixed(2)}\n✅ Delivered\n📎 <code>${paystackRef}</code>`
-      ).catch(() => {});
-    }
-
-    return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
-  }
-
-  // DataCity failed — check Datify
-  if (dtRes.success) {
-    await supabase.from("orders").update({
-      status: "completed",
-      bundle_size: bundleMeta.size,
-      network: bundleMeta.network,
-      customer_name: name,
-    }).eq("reference", paystackRef);
-
-    if (agentId && agentCommission > 0) await creditAgent(agentId, agentCommission, chargedAmount);
-
-    sendAdminAlert(
-      `✅ <b>DELIVERED VIA DATIFY</b>\n\n` +
-      `👤 ${name} · <code>${phone}</code>\n` +
-      `📦 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} · GH₵${chargedAmount.toFixed(2)}\n` +
-      `📎 Paystack: <code>${paystackRef}</code>\n` +
-      `🔗 Datify: <code>${dtRes.reference}</code>\n` +
-      `⚠️ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}\n` +
-      `⚠️ DataCity: ${dcRes.error ?? "failed"}`
-    ).catch(() => {});
-
-    sendCustomerSMS(phone, orderConfirmedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
-
-    if (agentTelegramChatId) {
-      sendAgentNotification(agentTelegramChatId,
-        `🛒 <b>New Sale!</b>\n\n📱 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → <code>${phone}</code>\n` +
-        `💰 GH₵${chargedAmount.toFixed(2)} · Commission: GH₵${agentCommission.toFixed(2)}\n✅ Delivered\n📎 <code>${paystackRef}</code>`
-      ).catch(() => {});
-    }
-
-    return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
   }
 
   // All APIs failed — check reason

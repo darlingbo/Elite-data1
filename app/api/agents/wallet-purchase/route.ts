@@ -142,19 +142,32 @@ export async function POST(request: NextRequest) {
     : { success: false as const, error: "Datify unreachable" };
 
   const isSuccess = result.ok && result.status !== 500;
-  // -1 = Inventor disabled by admin toggle; treat as definitive failure so fallbacks run
   const isFailed = result.status === 400 || result.status === 422 || result.status === -1;
   const isDuplicate = result.status === 409;
 
+  const errMsg = String(
+    (result.body.message as string) ??
+    (result.body.error as string) ??
+    (result.body.description as string) ??
+    (result.status === -1 ? "Inventor disabled" : "")
+  );
+
+  // ── Inventor delivered ────────────────────────────────────────────────────
   if (isSuccess || isDuplicate) {
     await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
 
     if (agent.telegram_chat_id) {
       sendAgentNotification(
         agent.telegram_chat_id,
-        `✅ Data Sent!\n\n📱 ${network.toUpperCase()} ${label} → ${cleaned}\n💰 GH₵${costPrice.toFixed(2)} deducted\n💳 Wallet left: GH₵${(walletBalance - costPrice).toFixed(2)}`
+        `✅ <b>Delivered!</b>\n\n📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n💰 GH₵${costPrice.toFixed(2)} deducted\n📡 Provider: Inventor\n📎 <code>${reference}</code>`
       ).catch(() => {});
     }
+
+    sendAdminAlert(
+      `✅ <b>DELIVERED VIA INVENTOR (Agent Wallet)</b>\n\n` +
+      `👤 ${agent.name} · <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
+      `📡 Provider: Inventor · Ref: <code>${reference}</code>`
+    ).catch(() => {});
 
     return Response.json({
       success: true,
@@ -167,67 +180,59 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // ── Inventor didn't succeed — check fallbacks (they ran in parallel) ──────
+  if (dcRes.success) {
+    await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
+
+    if (agent.telegram_chat_id) {
+      sendAgentNotification(
+        agent.telegram_chat_id,
+        `✅ <b>Delivered!</b>\n\n📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n💰 GH₵${costPrice.toFixed(2)} deducted\n📡 Provider: DataCity\n📎 <code>${reference}</code>`
+      ).catch(() => {});
+    }
+
+    sendAdminAlert(
+      `✅ <b>DELIVERED VIA DATACITY (Agent Wallet)</b>\n\n` +
+      `👤 ${agent.name} · <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
+      `📡 Provider: DataCity · 🔗 <code>${dcRes.reference}</code>\n❌ Inventor: ${errMsg}`
+    ).catch(() => {});
+
+    return Response.json({
+      success: true,
+      reference,
+      message: "Data delivered successfully.",
+      costDeducted: costPrice,
+      newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
+    });
+  }
+
+  if (dtRes.success) {
+    await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
+
+    if (agent.telegram_chat_id) {
+      sendAgentNotification(
+        agent.telegram_chat_id,
+        `✅ <b>Delivered!</b>\n\n📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n💰 GH₵${costPrice.toFixed(2)} deducted\n📡 Provider: Datify\n📎 <code>${reference}</code>`
+      ).catch(() => {});
+    }
+
+    sendAdminAlert(
+      `✅ <b>DELIVERED VIA DATIFY (Agent Wallet)</b>\n\n` +
+      `👤 ${agent.name} · <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
+      `📡 Provider: Datify · 🔗 <code>${dtRes.reference}</code>\n❌ Inventor: ${errMsg}\n❌ DataCity: ${dcRes.error ?? "failed"}`
+    ).catch(() => {});
+
+    return Response.json({
+      success: true,
+      reference,
+      message: "Data delivered successfully.",
+      costDeducted: costPrice,
+      newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
+    });
+  }
+
+  // ── All APIs failed ───────────────────────────────────────────────────────
   if (isFailed) {
-    const errMsg = String(
-      (result.body.message as string) ??
-      (result.body.error as string) ??
-      (result.body.description as string) ??
-      ""
-    );
-
-    // DataCity already ran in parallel — check its result
-    if (dcRes.success) {
-      await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
-
-      if (agent.telegram_chat_id) {
-        sendAgentNotification(
-          agent.telegram_chat_id,
-          `✅ <b>Delivered!</b>\n\n📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n💰 GH₵${costPrice.toFixed(2)} deducted\n📎 <code>${reference}</code>`
-        ).catch(() => {});
-      }
-
-      sendAdminAlert(
-        `✅ <b>DELIVERED VIA DATACITY (Agent Wallet)</b>\n\n` +
-        `👤 ${agent.name} · <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
-        `🔗 DataCity: <code>${dcRes.reference}</code>\n❌ Inventor: ${errMsg}`
-      ).catch(() => {});
-
-      return Response.json({
-        success: true,
-        reference,
-        message: "Data delivered successfully.",
-        costDeducted: costPrice,
-        newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
-      });
-    }
-
-    // DataCity also failed — try Datify
-    if (dtRes.success) {
-      await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
-
-      if (agent.telegram_chat_id) {
-        sendAgentNotification(
-          agent.telegram_chat_id,
-          `✅ <b>Delivered!</b>\n\n📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n💰 GH₵${costPrice.toFixed(2)} deducted\n📎 <code>${reference}</code>`
-        ).catch(() => {});
-      }
-
-      sendAdminAlert(
-        `✅ <b>DELIVERED VIA DATIFY (Agent Wallet)</b>\n\n` +
-        `👤 ${agent.name} · <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
-        `🔗 Datify: <code>${dtRes.reference}</code>\n❌ Inventor: ${errMsg}\n❌ DataCity: ${dcRes.error ?? "failed"}`
-      ).catch(() => {});
-
-      return Response.json({
-        success: true,
-        reference,
-        message: "Data delivered successfully.",
-        costDeducted: costPrice,
-        newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
-      });
-    }
-
-    // All failed
     const isBeneficiary = errMsg.toLowerCase().includes("beneficiary");
     await supabase.from("orders").update({ status: isBeneficiary ? "not_on_list" : "failed" }).eq("reference", reference);
 
