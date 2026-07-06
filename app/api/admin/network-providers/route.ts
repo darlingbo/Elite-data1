@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
+import { datacityBalance } from "@/lib/datacity";
+import { datifyBalance } from "@/lib/datify";
 
 async function isAdmin() {
   const s = await cookies();
@@ -16,53 +18,39 @@ async function setSetting(key: string, value: string) {
   await supabase.from("system_settings").upsert({ key, value }, { onConflict: "key" });
 }
 
-export async function GET() {
-  if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
-
-  const [datifyOverride, datifyStart, datifyEnd] = await Promise.all([
-    getSetting("datify_override"),
-    getSetting("datify_start_time"),
-    getSetting("datify_end_time"),
-  ]);
-
-  // Get Inventor balance
-  let inventorBalance: number | null = null;
+async function getInventorBalance(): Promise<number | null> {
   try {
     const r = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/balance`, {
       headers: { Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
+      signal: AbortSignal.timeout(8_000),
       cache: "no-store",
     });
-    if (r.ok) {
-      const d = await r.json();
-      const raw = d?.balance ?? d?.data?.balance ?? d?.wallet_balance ?? d?.data?.wallet_balance ?? null;
-      inventorBalance = raw !== null ? Number(raw) : null;
-    }
-  } catch { /* unreachable */ }
+    if (!r.ok) return null;
+    const d = await r.json();
+    const raw = d?.balance ?? d?.data?.balance ?? d?.wallet_balance ?? d?.data?.wallet_balance ?? null;
+    return raw !== null ? Number(raw) : null;
+  } catch { return null; }
+}
 
-  // Check if currently in Datify time window
-  const startTime = datifyStart ?? "18:40";
-  const endTime = datifyEnd ?? "09:00";
-  const now = new Date();
-  const ghTime = new Date(now.toLocaleString("en-US", { timeZone: "Africa/Accra" }));
-  const h = ghTime.getHours(), m = ghTime.getMinutes();
-  const [sh, sm] = startTime.split(":").map(Number);
-  const [eh, em] = endTime.split(":").map(Number);
-  const nowMins = h * 60 + m, startMins = sh * 60 + sm, endMins = eh * 60 + em;
-  const inWindow = startMins > endMins
-    ? nowMins >= startMins || nowMins < endMins
-    : nowMins >= startMins && nowMins < endMins;
+export async function GET() {
+  if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const override = datifyOverride === "1";
-  const datifyActive = override || inWindow;
+  const [inventorBal, datacityBal, datifyBal, invEnabled, dcEnabled, dtEnabled] = await Promise.all([
+    getInventorBalance(),
+    datacityBalance(),
+    datifyBalance(),
+    getSetting("inventor_enabled"),
+    getSetting("datacity_enabled"),
+    getSetting("datify_enabled"),
+  ]);
 
   return Response.json({
-    inventorBalance,
-    datifyOverride: override,
-    datifyStartTime: startTime,
-    datifyEndTime: endTime,
-    inWindow,
-    datifyActive,
-    activeProvider: datifyActive ? "datify" : "inventor",
+    inventorBalance:  inventorBal,
+    datacityBalance:  datacityBal,
+    datifyBalance:    datifyBal,
+    inventorEnabled:  (invEnabled ?? "1") === "1",
+    datacityEnabled:  (dcEnabled  ?? "1") === "1",
+    datifyEnabled:    (dtEnabled  ?? "1") === "1",
   });
 }
 
@@ -70,9 +58,9 @@ export async function PATCH(req: NextRequest) {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
   const ops: Promise<void>[] = [];
-  if ("datifyOverride" in body) ops.push(setSetting("datify_override", body.datifyOverride ? "1" : "0"));
-  if ("datifyStartTime" in body) ops.push(setSetting("datify_start_time", body.datifyStartTime));
-  if ("datifyEndTime" in body) ops.push(setSetting("datify_end_time", body.datifyEndTime));
+  if ("inventorEnabled" in body) ops.push(setSetting("inventor_enabled", body.inventorEnabled ? "1" : "0"));
+  if ("datacityEnabled" in body) ops.push(setSetting("datacity_enabled", body.datacityEnabled ? "1" : "0"));
+  if ("datifyEnabled"   in body) ops.push(setSetting("datify_enabled",   body.datifyEnabled   ? "1" : "0"));
   await Promise.all(ops);
   return Response.json({ success: true });
 }
