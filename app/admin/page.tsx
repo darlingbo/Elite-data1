@@ -30,7 +30,7 @@ type Tab =
   | "customers" | "mashup-bundles" | "network-providers" | "coupons" | "referrals" | "withdrawals" | "agent-ranks" | "analytics" | "developer-api" | "paystack-split" | "notifications"
   | "refund-numbers";
 
-type OrderStatus = "ALL" | "COMPLETED" | "PROCESSING" | "PENDING" | "FAILED";
+type OrderStatus = "ALL" | "COMPLETED" | "PROCESSING" | "PENDING" | "FAILED" | "NOT_ON_LIST";
 
 interface Order {
   reference: string; status: string; amount: number; admin_commission: number;
@@ -1065,16 +1065,21 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
     PROCESSING: orders.filter(o => o.status.toUpperCase() === "PROCESSING").length,
     PENDING: orders.filter(o => o.status.toUpperCase() === "PENDING").length,
     FAILED: orders.filter(o => o.status.toUpperCase() === "FAILED").length,
+    NOT_ON_LIST: orders.filter(o => o.status.toUpperCase() === "NOT_ON_LIST").length,
   };
 
   const tabDefs: { key: OrderStatus; color: string }[] = [
     { key: "ALL", color: "#3b82f6" }, { key: "COMPLETED", color: "#10b981" }, { key: "PROCESSING", color: "#3b82f6" },
     { key: "PENDING", color: "#f59e0b" }, { key: "FAILED", color: "#f87171" },
+    { key: "NOT_ON_LIST", color: "#f97316" },
   ];
 
   const statusStyle: Record<string, { bg: string; color: string }> = {
-    COMPLETED: { bg: "rgba(16,185,129,0.1)", color: "#10b981" }, PROCESSING: { bg: "rgba(59,130,246,0.1)", color: "#3b82f6" },
-    PENDING:   { bg: "rgba(245,158,11,0.1)", color: "#f59e0b"}, FAILED: { bg: "rgba(248,113,113,0.1)", color: "#f87171" },
+    COMPLETED:   { bg: "rgba(16,185,129,0.1)",  color: "#10b981" },
+    PROCESSING:  { bg: "rgba(59,130,246,0.1)",  color: "#3b82f6" },
+    PENDING:     { bg: "rgba(245,158,11,0.1)",  color: "#f59e0b" },
+    FAILED:      { bg: "rgba(248,113,113,0.1)", color: "#f87171" },
+    NOT_ON_LIST: { bg: "rgba(249,115,22,0.15)", color: "#f97316" },
   };
 
   return (
@@ -1114,7 +1119,7 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
             <button key={key} onClick={() => setStatusFilter(key)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap border transition-all"
               style={active ? { background: `${color}20`, color, borderColor: `${color}50` } : { background: CARD, color: "#64748b", borderColor: BORDER }}>
-              {key === "ALL" ? "All" : key.charAt(0) + key.slice(1).toLowerCase()}
+              {key === "ALL" ? "All" : key === "NOT_ON_LIST" ? "⚠️ Not On List" : key.charAt(0) + key.slice(1).toLowerCase()}
               <span className="text-[11px] px-1.5 py-0.5 rounded-full font-black" style={{ background: active ? `${color}30` : BORDER2, color: active ? color : "#475569" }}>{counts[key]}</span>
             </button>
           );
@@ -1162,13 +1167,13 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
                     <td className="px-4 py-3.5">
                       <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: st.bg, color: st.color }}>
                         <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.color }} />
-                        {(o.status ?? "").charAt(0) + (o.status ?? "").slice(1).toLowerCase()}
+                        {(o.status ?? "").toLowerCase() === "not_on_list" ? "⚠️ Not On List" : (o.status ?? "").charAt(0) + (o.status ?? "").slice(1).toLowerCase()}
                       </span>
                     </td>
                     <td className="px-4 py-3.5 text-slate-500 text-xs whitespace-nowrap">{new Date(o.created_at).toLocaleDateString("en-GH", { day: "2-digit", month: "short", year: "numeric" })}</td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-1.5">
-                        {["pending", "processing", "failed"].includes((o.status ?? "").toLowerCase()) && o.reference && (
+                        {["pending", "processing", "failed", "not_on_list"].includes((o.status ?? "").toLowerCase()) && o.reference && (
                           (manualMsg?.ref === o.reference) ? (
                             <span className={`text-xs font-bold ${manualMsg.ok ? "text-green-400" : "text-red-400"}`}>{manualMsg.text}</span>
                           ) : retryMsg?.ref === o.reference ? (

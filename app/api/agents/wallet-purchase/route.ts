@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
     // Beneficiary list error — Inventor blocks specific numbers.
     // Keep wallet deducted; alert admin to deliver manually.
     if (errMsg.toLowerCase().includes("beneficiary")) {
-      await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
+      await supabase.from("orders").update({ status: "not_on_list" }).eq("reference", reference);
 
       const manualAlert =
         `🔴 <b>MANUAL DELIVERY — INVENTOR BLOCKED (Agent Wallet)</b>\n\n` +

@@ -820,7 +820,7 @@ export async function POST(request: NextRequest) {
   if (inventorErrorMsg.toLowerCase().includes("beneficiary")) {
     await supabase
       .from("orders")
-      .update({ status: "processing", bundle_size: bundleMeta.size, network: bundleMeta.network, customer_name: name })
+      .update({ status: "not_on_list", bundle_size: bundleMeta.size, network: bundleMeta.network, customer_name: name })
       .eq("reference", paystackRef);
 
     const manualAlert =
