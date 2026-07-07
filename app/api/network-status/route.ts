@@ -8,12 +8,13 @@ export async function GET() {
     return data?.value ?? def;
   }
 
-  const [mtn, telecel, at, mashup] = await Promise.all([
+  const [mtn, telecel, at, mashup, slowDelivery] = await Promise.all([
     get("network_mtn_active"),
     get("network_telecel_active"),
     get("network_at_active"),
     get("network_mashup_active"),
+    get("slow_delivery", "0"),
   ]);
 
-  return Response.json({ mtn: mtn === "1", telecel: telecel === "1", at: at === "1", mashup: mashup === "1" });
+  return Response.json({ mtn: mtn === "1", telecel: telecel === "1", at: at === "1", mashup: mashup === "1", slowDelivery: slowDelivery === "1" });
 }

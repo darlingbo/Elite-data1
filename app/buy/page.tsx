@@ -37,9 +37,11 @@ function BuyContent() {
   const [selected, setSelected]             = useState<Bundle | null>(null);
   const [referralVia, setReferralVia]       = useState<string | undefined>();
   const [netStatus, setNetStatus]           = useState<{ mtn: boolean; telecel: boolean; at: boolean; mashup: boolean }>({ mtn: true, telecel: true, at: true, mashup: true });
+  const [slowDelivery, setSlowDelivery]     = useState(false);
 
   useEffect(() => {
     fetch("/api/network-status").then(r => r.json()).then(d => {
+      setSlowDelivery(d.slowDelivery === true);
       const status = { mtn: d.mtn !== false, telecel: d.telecel !== false, at: d.at !== false, mashup: d.mashup !== false };
       setNetStatus(status);
       // Auto-select first enabled network so bundles show without clicking
@@ -99,6 +101,17 @@ function BuyContent() {
       <div style={{ maxWidth: 600, margin: "0 auto", padding: "0 16px 80px" }}>
 
         <AnnouncementBanner target="customers" />
+
+        {/* Slow delivery banner */}
+        {slowDelivery && (
+          <div style={{ marginBottom: 12, background: "#fff8e7", border: "1px solid #fcd34d", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 20 }}>🐢</span>
+            <div>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#92400e" }}>Deliveries are slow today</p>
+              <p style={{ margin: 0, fontSize: 12, color: "#b45309", marginTop: 2 }}>Your data will be delivered but may take a little longer than usual. Thank you for your patience.</p>
+            </div>
+          </div>
+        )}
 
         {/* Delivery notice */}
         <div style={{ marginTop: 16, background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 10 }}>

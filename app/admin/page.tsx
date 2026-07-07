@@ -1848,7 +1848,7 @@ function BiometricSettings({ showToast }: { showToast: (msg: string, ok?: boolea
 
 // ─── Settings View ────────────────────────────────────────────────────────────
 function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
-  const [net, setNet] = useState<{ mtn: boolean; telecel: boolean; at: boolean; mashup: boolean; autoHours: boolean; autoStart: string; autoEnd: string; inventor: boolean; datacity: boolean; datify: boolean } | null>(null);
+  const [net, setNet] = useState<{ mtn: boolean; telecel: boolean; at: boolean; mashup: boolean; autoHours: boolean; autoStart: string; autoEnd: string; inventor: boolean; datacity: boolean; datify: boolean; slowDelivery: boolean } | null>(null);
   const [netError, setNetError] = useState("");
   const [netSaving, setNetSaving] = useState<string | null>(null);
   const [toast, setToast] = useState("");
@@ -1869,7 +1869,7 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
       .catch(() => setNetError("Network error loading settings."));
   }, []);
 
-  async function toggleProvider(key: "inventor" | "datacity" | "datify", value: boolean) {
+  async function toggleProvider(key: "inventor" | "datacity" | "datify" | "slowDelivery", value: boolean) {
     if (!net) return;
     setNet(prev => prev ? { ...prev, [key]: value } : prev);
     setNetSaving(key);
@@ -2001,6 +2001,24 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Slow Delivery Notice */}
+      {net && (
+        <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-bold text-white">🐢 Slow Delivery Mode</p>
+              <p className="text-xs text-slate-500 mt-0.5">Shows a notice on the buy page telling customers deliveries are slow today.</p>
+            </div>
+            <SettingToggle checked={net.slowDelivery} saving={netSaving === "slowDelivery"} onChange={v => toggleProvider("slowDelivery", v)} />
+          </div>
+          {net.slowDelivery && (
+            <div className="mt-3 rounded-xl px-4 py-2.5 text-sm font-semibold" style={{ background: "#292015", color: "#fbbf24" }}>
+              ⚠️ Customers are currently seeing the slow delivery notice.
+            </div>
+          )}
         </div>
       )}
 
