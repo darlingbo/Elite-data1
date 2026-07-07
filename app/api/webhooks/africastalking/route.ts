@@ -3,6 +3,10 @@ import { supabase } from "@/lib/supabase";
 import { sendSwiftAlert } from "@/lib/telegram";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 
+export async function GET() {
+  return new Response("OK", { status: 200 });
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Africa's Talking sends form-encoded POST
