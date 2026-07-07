@@ -4,6 +4,7 @@ import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles"
 import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
 import { sendCustomerSMS, orderReceivedSMS, orderConfirmedSMS, orderFailedSMS } from "@/lib/sms";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
+import { sendAlert as mpAlert } from "@/lib/messagepilot";
 import { datacityPurchase, isDatacityEnabled, isInventorEnabled } from "@/lib/datacity";
 import { datifyPurchase, isDatifyEnabled } from "@/lib/datify";
 
@@ -535,6 +536,7 @@ export async function POST(request: NextRequest) {
     (fastDelivery ? "⚡ FAST DELIVERY\n" : "") +
     fmtOrder({ ref: paystackRef, network: bundleMeta.network, size: bundleMeta.size, phone, amount: chargedAmount, profit, agentName })
   );
+  mpAlert("🛒 New Order", `${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → ${phone} | GH₵${chargedAmount.toFixed(2)}${agentName ? ` | Agent: ${agentName}` : ""} | Ref: ${paystackRef.slice(-8)}`).catch(() => {});
 
   // SMS to customer immediately after purchase — fire and forget
   sendCustomerSMS(phone, orderReceivedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
@@ -757,6 +759,7 @@ export async function POST(request: NextRequest) {
     }
 
     await sendAdminAlert(`${fmtDelivered(paystackRef, phone, bundleMeta.network, actualSize)}\n📡 Provider: Inventor\n${inventorLog}`);
+    mpAlert("✅ Delivered", `${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone} | Ref: ${paystackRef.slice(-8)}`).catch(() => {});
 
     // SMS to customer after delivery confirmed
     sendCustomerSMS(phone, orderConfirmedSMS(name, bundleMeta.network, actualSize, phone, paystackRef)).catch(() => {});
@@ -950,6 +953,7 @@ export async function POST(request: NextRequest) {
   await sendAdminAlert(bothFailedMsg);
   await sendAdminBotMessage(bothFailedMsg, retryKeyboard(paystackRef));
   sendAdminWhatsApp(bothFailedMsg.replace(/<[^>]*>/g, "")).catch(() => {});
+  mpAlert("🔴 Order Failed", `${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → ${phone} | GH₵${chargedAmount.toFixed(2)} | Ref: ${paystackRef.slice(-8)} | Deliver manually`).catch(() => {});
   sendCustomerSMS(phone, orderFailedSMS(name, bundleMeta.network, bundleMeta.size, paystackRef)).catch(() => {});
 
   return Response.json({ success: true, failed: true, reference: paystackRef, network: bundleMeta.network, bundleSize: bundleMeta.size, status: "PROCESSING" });

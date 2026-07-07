@@ -5,6 +5,7 @@ import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { getAgentBundleCost } from "@/lib/agent-pricing";
 import { datacityPurchase, isDatacityEnabled, isInventorEnabled } from "@/lib/datacity";
 import { datifyPurchase, isDatifyEnabled } from "@/lib/datify";
+import { sendAlert as mpAlert } from "@/lib/messagepilot";
 
 const INVENTOR_TIMEOUT_MS = 10_000;
 
@@ -150,6 +151,7 @@ export async function POST(request: NextRequest) {
       `👤 ${agent.name} · <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
       `📡 Provider: Inventor · Ref: <code>${reference}</code>`
     ).catch(() => {});
+    mpAlert("✅ Agent Delivered", `${network.toUpperCase()} ${label} → ${cleaned} | Agent: ${agent.name} | Ref: ${reference.slice(-8)}`).catch(() => {});
 
     return Response.json({
       success: true,
