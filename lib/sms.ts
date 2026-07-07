@@ -1,8 +1,3 @@
-/**
- * Send SMS via Africa's Talking.
- * Normalizes Ghana numbers (024XXXXXXX → +233XXXXXXXX).
- * Fire-and-forget safe — never throws, always resolves.
- */
 function normalizeGhanaPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   if (digits.startsWith("233")) return `+${digits}`;
@@ -25,18 +20,24 @@ export async function sendCustomerSMS(phone: string, message: string): Promise<v
   }).catch(() => {});
 }
 
-export function orderReceivedSMS(name: string, network: string, size: string, phone: string, reference: string): string {
-  const first    = (name || "").split(" ")[0] || "Customer";
-  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
-  return `Hi ${first}! Your ${network.toUpperCase()} ${size} data order (Ref: ${shortRef}) has been received. Delivery in progress to ${phone}. Track: elitedata1.com/track?ref=${shortRef}`;
+function shortRef(reference: string): string {
+  return reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
 }
 
-export function orderDeliveredSMS(name: string, network: string, size: string, phone: string, reference: string): string {
-  const first    = (name || "").split(" ")[0] || "Customer";
-  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
-  return `Hi ${first}! Your ${network.toUpperCase()} ${size} data has been delivered to ${phone}. Ref: ${shortRef}. Thank you for choosing Elite Data!`;
+export function orderReceivedSMS(name: string, network: string, size: string, phone: string, reference: string): string {
+  const first = (name || "").split(" ")[0] || "Customer";
+  return `Hi ${first}! Your ${network.toUpperCase()} ${size} order has been received. Payment confirmed. Ref: ${shortRef(reference)}. Your data will be delivered to ${phone} shortly. Thank you - EliteData1`;
 }
 
 export function orderConfirmedSMS(name: string, network: string, size: string, phone: string, reference: string): string {
-  return orderDeliveredSMS(name, network, size, phone, reference);
+  const first = (name || "").split(" ")[0] || "Customer";
+  return `Hi ${first}! Your ${network.toUpperCase()} ${size} data has been successfully delivered to ${phone}. Ref: ${shortRef(reference)}. Thank you for choosing EliteData1!`;
 }
+
+export function orderFailedSMS(name: string, network: string, size: string, reference: string): string {
+  const first = (name || "").split(" ")[0] || "Customer";
+  return `Hi ${first}! Sorry, your ${network.toUpperCase()} ${size} order (Ref: ${shortRef(reference)}) could not be delivered. Please fill the refund form on our site. Your refund will be processed within 12 hours. - EliteData1`;
+}
+
+// Alias kept for any existing callers
+export const orderDeliveredSMS = orderConfirmedSMS;
