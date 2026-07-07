@@ -951,5 +951,5 @@ export async function POST(request: NextRequest) {
   await sendAdminBotMessage(bothFailedMsg, retryKeyboard(paystackRef));
   sendAdminWhatsApp(bothFailedMsg.replace(/<[^>]*>/g, "")).catch(() => {});
 
-  return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
+  return Response.json({ success: true, failed: true, reference: paystackRef, network: bundleMeta.network, bundleSize: bundleMeta.size, status: "PROCESSING" });
 }

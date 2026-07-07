@@ -31,6 +31,12 @@ type SuccessState = {
   loyalty?: LoyaltyData;
 };
 
+type FailedState = {
+  reference: string;
+  network: string;
+  bundleSize: string;
+};
+
 function usePaystackReady() {
   const [ready, setReady] = useState(false);
 
@@ -73,6 +79,11 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<SuccessState | null>(null);
+  const [failedOrder, setFailedOrder] = useState<FailedState | null>(null);
+  const [waPhone, setWaPhone] = useState("");
+  const [waNote, setWaNote] = useState("");
+  const [waSending, setWaSending] = useState(false);
+  const [waSubmitted, setWaSubmitted] = useState(false);
   const [referralCredit, setReferralCredit] = useState(0);
   const [creditChecked, setCreditChecked] = useState(false);
   const [milestoneCode, setMilestoneCode] = useState<string | null>(null);
@@ -215,7 +226,11 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
                 if (promoResult?.id) {
                   fetch("/api/use-coupon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: promoResult.id }) }).catch(() => {});
                 }
-                setSuccess({ reference: data.reference, loyalty: data.loyalty });
+                if (data.failed) {
+                  setFailedOrder({ reference: data.reference, network: data.network, bundleSize: data.bundleSize });
+                } else {
+                  setSuccess({ reference: data.reference, loyalty: data.loyalty });
+                }
               } else {
                 setError(data.error || "Something went wrong. Please contact support.");
               }
@@ -235,6 +250,92 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
       setLoading(false);
       setError(`Paystack error: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  if (failedOrder) {
+    const shortRef = failedOrder.reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="p-6 text-center border-b border-gray-100">
+            <div className="text-5xl mb-3">⚠️</div>
+            <h2 className="text-xl font-black text-gray-900 mb-1">Automatic Delivery Failed</h2>
+            <p className="text-sm text-gray-500">Your payment was received but we couldn&apos;t deliver automatically. Our team will send your {failedOrder.network.toUpperCase()} {failedOrder.bundleSize} manually.</p>
+          </div>
+
+          <div className="p-6 space-y-4">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <p className="text-xs text-amber-700 font-semibold mb-1">Order Reference</p>
+              <p className="font-mono font-bold text-amber-900 text-sm">{shortRef}</p>
+              <p className="text-xs text-amber-600 mt-1">Keep this — you&apos;ll need it if you contact support.</p>
+            </div>
+
+            {!waSubmitted ? (
+              <>
+                <p className="text-sm font-semibold text-gray-700">Leave your WhatsApp number so we can reach you:</p>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">WhatsApp Number</label>
+                  <input
+                    type="tel"
+                    placeholder="e.g. 0241234567"
+                    value={waPhone}
+                    onChange={e => setWaPhone(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Note (optional)</label>
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. Please send to a different number: 0241234567"
+                    value={waNote}
+                    onChange={e => setWaNote(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 resize-none"
+                  />
+                </div>
+
+                <button
+                  onClick={async () => {
+                    setWaSending(true);
+                    await fetch("/api/orders/manual-request", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        reference: failedOrder.reference,
+                        customerPhone: phone,
+                        customerName: name,
+                        network: failedOrder.network,
+                        bundleSize: failedOrder.bundleSize,
+                        waPhone: waPhone.trim(),
+                        note: waNote.trim(),
+                      }),
+                    }).catch(() => {});
+                    setWaSending(false);
+                    setWaSubmitted(true);
+                  }}
+                  disabled={waSending}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl text-sm disabled:opacity-50"
+                >
+                  {waSending ? "Submitting…" : "Submit for Manual Delivery"}
+                </button>
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <div className="text-4xl mb-2">✅</div>
+                <p className="font-bold text-gray-800">Got it! We&apos;ll contact you soon.</p>
+                <p className="text-sm text-gray-500 mt-1">Delivery is usually within 30 minutes.</p>
+              </div>
+            )}
+
+            <button onClick={onClose} className="w-full border border-gray-200 text-gray-500 font-semibold py-2.5 rounded-xl text-sm hover:bg-gray-50">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (success) {
