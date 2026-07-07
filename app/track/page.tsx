@@ -20,11 +20,20 @@ interface OrderResult {
   inventor_message?: string | null;
 }
 
+interface VerifiedOrder {
+  customer_name: string;
+  network: string;
+  bundle_size: string;
+  amount: number;
+  phone: string;
+}
+
 const STATUS: Record<string, { label: string; color: string; bg: string; icon: string; desc: string }> = {
-  pending:    { label: "Pending",    color: "#f59e0b", bg: "rgba(245,158,11,0.12)",  icon: "⏳", desc: "Order received — waiting to be sent to provider." },
-  processing: { label: "Processing", color: "#3b82f6", bg: "rgba(59,130,246,0.12)",  icon: "🔄", desc: "Provider is delivering your bundle. Usually 1–5 minutes." },
-  completed:  { label: "Delivered",  color: "#22c55e", bg: "rgba(34,197,94,0.12)",   icon: "✅", desc: "Bundle delivered successfully to your phone!" },
-  failed:     { label: "Failed",     color: "#ef4444", bg: "rgba(239,68,68,0.12)",   icon: "❌", desc: "Delivery failed. Contact support on WhatsApp for a refund." },
+  pending:      { label: "Pending",    color: "#f59e0b", bg: "rgba(245,158,11,0.12)",  icon: "⏳", desc: "Order received — waiting to be sent to provider." },
+  processing:   { label: "Processing", color: "#3b82f6", bg: "rgba(59,130,246,0.12)",  icon: "🔄", desc: "Provider is delivering your bundle. Usually 1–5 minutes." },
+  completed:    { label: "Delivered",  color: "#22c55e", bg: "rgba(34,197,94,0.12)",   icon: "✅", desc: "Bundle delivered successfully to your phone!" },
+  failed:       { label: "Failed",     color: "#ef4444", bg: "rgba(239,68,68,0.12)",   icon: "❌", desc: "Delivery failed. Click below to request your refund." },
+  not_on_list:  { label: "Failed",     color: "#ef4444", bg: "rgba(239,68,68,0.12)",   icon: "❌", desc: "Delivery failed. Click below to request your refund." },
 };
 
 function fmtDate(iso: string) {
@@ -44,6 +53,86 @@ function TrackContent() {
   const [order, setOrder]       = useState<OrderResult | null>(null);
   const [orders, setOrders]     = useState<OrderResult[] | null>(null);
   const [notFound, setNotFound] = useState(false);
+
+  // Refund modal
+  const [refundOpen, setRefundOpen]       = useState(false);
+  const [refundStep, setRefundStep]       = useState<1 | 2 | 3>(1);
+  const [verRef, setVerRef]               = useState("");
+  const [verPhone, setVerPhone]           = useState("");
+  const [verifying, setVerifying]         = useState(false);
+  const [verError, setVerError]           = useState("");
+  const [verifiedOrder, setVerifiedOrder] = useState<VerifiedOrder | null>(null);
+  const [momoName, setMomoName]           = useState("");
+  const [momoPhone, setMomoPhone]         = useState("");
+  const [submitting, setSubmitting]       = useState(false);
+  const [submitError, setSubmitError]     = useState("");
+
+  function openRefund(prefillRef?: string, prefillPhone?: string) {
+    setVerRef(prefillRef ?? "");
+    setVerPhone(prefillPhone ?? "");
+    setVerifiedOrder(null);
+    setVerError("");
+    setMomoName("");
+    setMomoPhone("");
+    setSubmitError("");
+    setRefundStep(1);
+    setRefundOpen(true);
+  }
+
+  async function handleVerify(e: React.SyntheticEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setVerifying(true);
+    setVerError("");
+    try {
+      const res = await fetch("/api/orders/verify-refund", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reference: verRef.trim(), phone: verPhone.trim() }),
+      });
+      const data = await res.json();
+      if (data.success && data.order) {
+        setVerifiedOrder(data.order);
+        setRefundStep(2);
+      } else {
+        setVerError(data.error ?? "Verification failed. Check your reference and phone number.");
+      }
+    } catch {
+      setVerError("Network error. Please try again.");
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  async function handleRefundSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const res = await fetch("/api/orders/manual-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reference: verRef.trim(),
+          customerPhone: verifiedOrder?.phone,
+          customerName: verifiedOrder?.customer_name,
+          network: verifiedOrder?.network,
+          bundleSize: verifiedOrder?.bundle_size,
+          refundName: momoName.trim(),
+          refundPhone: momoPhone.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRefundStep(3);
+      } else {
+        setSubmitError("Failed to submit. Please try again.");
+      }
+    } catch {
+      setSubmitError("Network error. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   const searchByRef = useCallback(async (ref: string, silent = false) => {
     const trimmed = ref.trim();
@@ -93,20 +182,26 @@ function TrackContent() {
   const st = order ? (STATUS[order.status?.toLowerCase()] ?? STATUS.pending) : null;
   const isActive = order && ["processing", "pending"].includes(order.status?.toLowerCase());
   const statusKey = order?.status?.toLowerCase() ?? "";
+  const isFailed = statusKey === "failed" || statusKey === "not_on_list";
 
   return (
     <div style={{ background: D.bg, minHeight: "100vh", color: D.text }}>
       <div style={{ maxWidth: 540, margin: "0 auto", padding: "28px 16px 80px" }}>
 
         {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
+        <div style={{ textAlign: "center", marginBottom: 20 }}>
           <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(59,130,246,0.15)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
             <svg width={28} height={28} fill="none" stroke="#3b82f6" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
           </div>
           <h1 style={{ fontSize: 24, fontWeight: 900, color: D.text, margin: "0 0 6px" }}>Track Your Order</h1>
-          <p style={{ fontSize: 13, color: D.muted, margin: 0 }}>Enter your phone number or payment reference</p>
+          <p style={{ fontSize: 13, color: D.muted, margin: "0 0 16px" }}>Enter your phone number or payment reference</p>
+          <button
+            onClick={() => openRefund()}
+            style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171", borderRadius: 20, padding: "7px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+            💸 Request a Refund
+          </button>
         </div>
 
         {/* Search form */}
@@ -144,6 +239,7 @@ function TrackContent() {
             </p>
             {orders.map(o => {
               const s = STATUS[o.status?.toLowerCase()] ?? STATUS.pending;
+              const oFailed = o.status?.toLowerCase() === "failed" || o.status?.toLowerCase() === "not_on_list";
               return (
                 <div key={o.reference} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, overflow: "hidden" }}>
                   <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${D.border}` }}>
@@ -164,13 +260,12 @@ function TrackContent() {
                   <div style={{ padding: "8px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <p style={{ fontSize: 10, color: D.muted, fontFamily: "monospace", margin: 0, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.reference}</p>
                     <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                      {o.status?.toLowerCase() === "failed" && (
-                        <a
-                          href={`https://wa.me/233509794503?text=${encodeURIComponent(`Refund request\nRef: ${o.reference}\nAmount: GH₵${Number(o.amount).toFixed(2)}`)}`}
-                          target="_blank" rel="noreferrer"
-                          style={{ fontSize: 11, fontWeight: 700, color: "#f87171", textDecoration: "none" }}>
+                      {oFailed && (
+                        <button
+                          onClick={() => openRefund(o.reference, query.replace(/\s/g, ""))}
+                          style={{ fontSize: 11, fontWeight: 700, color: "#f87171", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
                           💸 Refund
-                        </a>
+                        </button>
                       )}
                       <button onClick={() => { setQuery(o.reference); searchByRef(o.reference); setOrders(null); }}
                         style={{ fontSize: 11, fontWeight: 700, color: D.blue, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
@@ -218,7 +313,7 @@ function TrackContent() {
             )}
 
             {/* Steps */}
-            {statusKey !== "failed" && (
+            {!isFailed && (
               <div style={{ padding: "16px 20px", borderBottom: `1px solid ${D.border}` }}>
                 {[
                   { label: "Payment confirmed", done: true },
@@ -255,25 +350,21 @@ function TrackContent() {
               ))}
             </div>
 
-            {/* Failed — Refund request card */}
-            {statusKey === "failed" && (
+            {/* Failed — in-app refund */}
+            {isFailed && (
               <div style={{ margin: "0 20px 20px", background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 14, padding: "16px 18px" }}>
-                <p style={{ fontSize: 13, fontWeight: 800, color: "#f87171", margin: "0 0 4px" }}>💸 Refund Available</p>
-                <p style={{ fontSize: 13, color: D.muted, margin: "0 0 14px", lineHeight: 1.5 }}>
+                <p style={{ fontSize: 13, fontWeight: 800, color: "#f87171", margin: "0 0 6px" }}>💸 Refund Available</p>
+                <p style={{ fontSize: 13, color: D.muted, margin: "0 0 16px", lineHeight: 1.5 }}>
                   Your payment of <strong style={{ color: "white" }}>GH₵{Number(order.amount).toFixed(2)}</strong> was charged but the bundle was not delivered.
-                  Send a refund request to the admin on WhatsApp — include your reference number below.
+                  Request your refund below — it will be processed within 12 hours.
                 </p>
-                <div style={{ background: D.bg, borderRadius: 8, padding: "8px 12px", marginBottom: 14, fontFamily: "monospace", fontSize: 11, color: D.muted, wordBreak: "break-all" }}>
-                  Ref: {order.reference}
-                </div>
-                <a
-                  href={`https://wa.me/233509794503?text=${encodeURIComponent(`Hello, I would like a refund for my failed data order.\n\nReference: ${order.reference}\nAmount: GH₵${Number(order.amount).toFixed(2)}\nPhone: ${order.phone ?? ""}\n\nPlease process my refund. Thank you.`)}`}
-                  target="_blank" rel="noreferrer"
-                  style={{ display: "block", width: "100%", textAlign: "center", background: "#16a34a", color: "white", fontWeight: 800, padding: "13px", borderRadius: 12, textDecoration: "none", fontSize: 14, boxSizing: "border-box" }}>
-                  📩 Request Refund on WhatsApp
-                </a>
+                <button
+                  onClick={() => openRefund(order.reference, order.phone ?? "")}
+                  style={{ display: "block", width: "100%", textAlign: "center", background: "#ef4444", color: "white", fontWeight: 800, padding: "13px", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 14, boxSizing: "border-box" }}>
+                  💸 Request Refund
+                </button>
                 <p style={{ fontSize: 11, color: D.muted, margin: "10px 0 0", textAlign: "center" }}>
-                  Refunds are processed manually by the admin within 24 hours.
+                  Refunds are processed within 12 hours. If not received, contact our help line.
                 </p>
               </div>
             )}
@@ -301,6 +392,147 @@ function TrackContent() {
           </a>
         </div>
       </div>
+
+      {/* ── Refund Modal ──────────────────────────────────────────────────────── */}
+      {refundOpen && (
+        <div
+          onClick={e => { if (e.target === e.currentTarget) setRefundOpen(false); }}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div style={{ background: "#161b22", border: "1px solid #21262d", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: "28px 24px 48px", width: "100%", maxWidth: 480 }}>
+
+            {/* Step 1: Verify identity */}
+            {refundStep === 1 && (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+                  <div>
+                    <p style={{ fontSize: 18, fontWeight: 900, color: D.text, margin: "0 0 4px" }}>💸 Request a Refund</p>
+                    <p style={{ fontSize: 12, color: D.muted, margin: 0 }}>Step 1 of 2 · Verify your identity</p>
+                  </div>
+                  <button onClick={() => setRefundOpen(false)} style={{ background: "transparent", border: "none", color: D.muted, fontSize: 24, cursor: "pointer", lineHeight: 1, paddingTop: 2 }}>×</button>
+                </div>
+                <p style={{ fontSize: 13, color: D.muted, marginBottom: 20, lineHeight: 1.6 }}>
+                  To protect your money, enter the <strong style={{ color: D.text }}>reference</strong> of your failed order and the <strong style={{ color: D.text }}>phone number</strong> you used to buy.
+                </p>
+                <form onSubmit={handleVerify} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: D.muted, display: "block", marginBottom: 6 }}>Order Reference</label>
+                    <input
+                      type="text"
+                      placeholder="elite-17123456789"
+                      value={verRef}
+                      onChange={e => setVerRef(e.target.value)}
+                      required
+                      autoCapitalize="none"
+                      style={{ width: "100%", background: D.bg, border: `1px solid ${D.border}`, borderRadius: 10, padding: "12px 14px", fontSize: 14, color: D.text, outline: "none", boxSizing: "border-box" }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: D.muted, display: "block", marginBottom: 6 }}>Phone Number Used to Buy</label>
+                    <input
+                      type="tel"
+                      placeholder="0241234567"
+                      value={verPhone}
+                      onChange={e => setVerPhone(e.target.value)}
+                      required
+                      style={{ width: "100%", background: D.bg, border: `1px solid ${D.border}`, borderRadius: 10, padding: "12px 14px", fontSize: 14, color: D.text, outline: "none", boxSizing: "border-box" }}
+                    />
+                  </div>
+                  {verError && (
+                    <div style={{ fontSize: 13, color: "#f87171", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "10px 14px" }}>
+                      ⚠️ {verError}
+                    </div>
+                  )}
+                  <button type="submit" disabled={verifying} style={{ background: D.blue, color: "white", border: "none", borderRadius: 12, padding: "14px", fontSize: 14, fontWeight: 800, cursor: "pointer", opacity: verifying ? 0.6 : 1, marginTop: 4 }}>
+                    {verifying ? "Verifying…" : "Verify Identity →"}
+                  </button>
+                </form>
+              </>
+            )}
+
+            {/* Step 2: MoMo details */}
+            {refundStep === 2 && verifiedOrder && (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                  <div>
+                    <p style={{ fontSize: 18, fontWeight: 900, color: D.text, margin: "0 0 4px" }}>💸 Refund Details</p>
+                    <p style={{ fontSize: 12, color: D.muted, margin: 0 }}>Step 2 of 2 · Where to send your money</p>
+                  </div>
+                  <button onClick={() => setRefundOpen(false)} style={{ background: "transparent", border: "none", color: D.muted, fontSize: 24, cursor: "pointer", lineHeight: 1, paddingTop: 2 }}>×</button>
+                </div>
+
+                <div style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 12, padding: "12px 14px", marginBottom: 20 }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: "#4ade80", margin: "0 0 6px" }}>✅ Identity verified</p>
+                  <p style={{ fontSize: 13, color: D.text, margin: "0 0 2px", fontWeight: 600 }}>
+                    {(verifiedOrder.network ?? "").toUpperCase()} {verifiedOrder.bundle_size}
+                  </p>
+                  <p style={{ fontSize: 12, color: D.muted, margin: 0 }}>
+                    Refund: <strong style={{ color: "white" }}>GH₵{Number(verifiedOrder.amount).toFixed(2)}</strong>
+                  </p>
+                </div>
+
+                <form onSubmit={handleRefundSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: D.muted, display: "block", marginBottom: 6 }}>MoMo Account Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Kwame Mensah"
+                      value={momoName}
+                      onChange={e => setMomoName(e.target.value)}
+                      required
+                      style={{ width: "100%", background: D.bg, border: `1px solid ${D.border}`, borderRadius: 10, padding: "12px 14px", fontSize: 14, color: D.text, outline: "none", boxSizing: "border-box" }}
+                    />
+                    <p style={{ fontSize: 11, color: D.muted, margin: "4px 0 0" }}>The name on your Mobile Money account</p>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: D.muted, display: "block", marginBottom: 6 }}>MoMo Number</label>
+                    <input
+                      type="tel"
+                      placeholder="0241234567"
+                      value={momoPhone}
+                      onChange={e => setMomoPhone(e.target.value)}
+                      required
+                      style={{ width: "100%", background: D.bg, border: `1px solid ${D.border}`, borderRadius: 10, padding: "12px 14px", fontSize: 14, color: D.text, outline: "none", boxSizing: "border-box" }}
+                    />
+                    <p style={{ fontSize: 11, color: D.muted, margin: "4px 0 0" }}>The number to receive your refund</p>
+                  </div>
+                  {submitError && (
+                    <div style={{ fontSize: 13, color: "#f87171", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "10px 14px" }}>
+                      ⚠️ {submitError}
+                    </div>
+                  )}
+                  <button type="submit" disabled={submitting} style={{ background: "#ef4444", color: "white", border: "none", borderRadius: 12, padding: "14px", fontSize: 14, fontWeight: 800, cursor: "pointer", opacity: submitting ? 0.6 : 1, marginTop: 4 }}>
+                    {submitting ? "Submitting…" : "Submit Refund Request"}
+                  </button>
+                </form>
+              </>
+            )}
+
+            {/* Step 3: Success */}
+            {refundStep === 3 && (
+              <div style={{ textAlign: "center", padding: "12px 0" }}>
+                <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
+                <p style={{ fontSize: 20, fontWeight: 900, color: D.text, margin: "0 0 12px" }}>Refund Request Sent!</p>
+                <p style={{ fontSize: 14, color: D.muted, margin: "0 0 8px", lineHeight: 1.7 }}>
+                  Your refund request has been received. The admin will process your refund within <strong style={{ color: "white" }}>12 hours</strong>.
+                </p>
+                <p style={{ fontSize: 13, color: D.muted, margin: "0 0 28px" }}>
+                  If you do not receive your money after 12 hours, please contact our help line.
+                </p>
+                <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer"
+                  style={{ display: "inline-block", fontSize: 13, color: "#22c55e", textDecoration: "none", fontWeight: 700, marginBottom: 20 }}>
+                  Contact Help Line →
+                </a>
+                <br />
+                <button onClick={() => setRefundOpen(false)}
+                  style={{ background: D.blue, color: "white", border: "none", borderRadius: 12, padding: "13px 36px", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
+                  Close
+                </button>
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
