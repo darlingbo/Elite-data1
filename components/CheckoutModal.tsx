@@ -258,27 +258,24 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div className="p-6 text-center border-b border-gray-100">
-            <div className="text-5xl mb-3">⚠️</div>
-            <h2 className="text-xl font-black text-gray-900 mb-1">Automatic Delivery Failed</h2>
-            <p className="text-sm text-gray-500">Your payment was received but we couldn&apos;t deliver automatically. Our team will send your {failedOrder.network.toUpperCase()} {failedOrder.bundleSize} manually.</p>
+            <div className="text-5xl mb-3">❌</div>
+            <h2 className="text-xl font-black text-gray-900 mb-1">Order Failed</h2>
+            <p className="text-sm text-gray-500">We could not deliver your {failedOrder.network.toUpperCase()} {failedOrder.bundleSize}. Please enter your Mobile Money details below and we will refund you.</p>
           </div>
 
           <div className="p-6 space-y-4">
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-              <p className="text-xs text-amber-700 font-semibold mb-1">Order Reference</p>
-              <p className="font-mono font-bold text-amber-900 text-sm">{shortRef}</p>
-              <p className="text-xs text-amber-600 mt-1">Keep this — you&apos;ll need it if you contact support.</p>
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <p className="text-xs text-red-700 font-semibold mb-1">Order Reference</p>
+              <p className="font-mono font-bold text-red-900 text-sm">{shortRef}</p>
             </div>
 
             {!waSubmitted ? (
               <>
-                <p className="text-sm font-semibold text-gray-700">Leave your WhatsApp number so we can reach you:</p>
-
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">WhatsApp Number</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Mobile Money Name</label>
                   <input
-                    type="tel"
-                    placeholder="e.g. 0241234567"
+                    type="text"
+                    placeholder="Name on your MoMo account"
                     value={waPhone}
                     onChange={e => setWaPhone(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
@@ -286,18 +283,19 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Note (optional)</label>
-                  <textarea
-                    rows={2}
-                    placeholder="e.g. Please send to a different number: 0241234567"
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Mobile Money Number</label>
+                  <input
+                    type="tel"
+                    placeholder="e.g. 0241234567"
                     value={waNote}
                     onChange={e => setWaNote(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 resize-none"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
                   />
                 </div>
 
                 <button
                   onClick={async () => {
+                    if (!waPhone.trim() || !waNote.trim()) return;
                     setWaSending(true);
                     await fetch("/api/orders/manual-request", {
                       method: "POST",
@@ -308,24 +306,25 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
                         customerName: name,
                         network: failedOrder.network,
                         bundleSize: failedOrder.bundleSize,
-                        waPhone: waPhone.trim(),
-                        note: waNote.trim(),
+                        refundName: waPhone.trim(),
+                        refundPhone: waNote.trim(),
                       }),
                     }).catch(() => {});
                     setWaSending(false);
                     setWaSubmitted(true);
                   }}
-                  disabled={waSending}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl text-sm disabled:opacity-50"
+                  disabled={waSending || !waPhone.trim() || !waNote.trim()}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl text-sm disabled:opacity-50"
                 >
-                  {waSending ? "Submitting…" : "Submit for Manual Delivery"}
+                  {waSending ? "Submitting…" : "Submit Refund Request"}
                 </button>
               </>
             ) : (
-              <div className="text-center py-4">
+              <div className="text-center py-4 space-y-2">
                 <div className="text-4xl mb-2">✅</div>
-                <p className="font-bold text-gray-800">Got it! We&apos;ll contact you soon.</p>
-                <p className="text-sm text-gray-500 mt-1">Delivery is usually within 30 minutes.</p>
+                <p className="font-bold text-gray-800">Refund request received!</p>
+                <p className="text-sm text-gray-500">Your refund will be processed within the next <strong>12 hours</strong>.</p>
+                <p className="text-sm text-gray-500">If you do not receive it, please contact our help line.</p>
               </div>
             )}
 
