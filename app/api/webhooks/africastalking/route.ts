@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendAdminAlert } from "@/lib/telegram";
+import { sendSwiftAlert } from "@/lib/telegram";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 
 export async function POST(request: NextRequest) {
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       `💬 Message:\n"${text}"\n\n` +
       `${orderLine}`;
 
-    sendAdminAlert(msg).catch(() => {});
+    sendSwiftAlert(msg).catch(() => {});
     sendAdminWhatsApp(msg.replace(/<[^>]*>/g, "")).catch(() => {});
 
     return new Response("OK", { status: 200 });
