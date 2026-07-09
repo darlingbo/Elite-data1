@@ -581,14 +581,18 @@ export async function POST(request: NextRequest) {
   // SMS to customer immediately after purchase — fire and forget
   sendCustomerSMS(phone, orderReceivedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
 
-  // Mark referral credit as used (fire and forget)
+  // Mark referral credit as used — MUST be awaited so the same credit can't be reused
   if (referralCreditId) {
-    supabase
+    const { error: creditErr } = await supabase
       .from("referral_credits")
       .update({ used: true, used_at: new Date().toISOString(), used_on_reference: paystackRef })
       .eq("id", referralCreditId)
-      .eq("used", false)
-      .then(() => {});
+      .eq("used", false);
+    if (creditErr) {
+      sendAdminAlert(
+        `⚠️ REFERRAL CREDIT NOT MARKED USED\nRef: ${paystackRef}\nPhone: ${phone}\nCredit ID: ${referralCreditId}\nError: ${creditErr.message}\n\nGo to Supabase → referral_credits → set this ID to used=true manually.`
+      ).catch(() => {});
+    }
   }
 
   // Award referral credit to referrer (fire and forget)
