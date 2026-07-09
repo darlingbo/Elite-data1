@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles";
 import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
-import { sendCustomerSMS, orderReceivedSMS, orderConfirmedSMS, orderFailedSMS } from "@/lib/sms";
+import { sendCustomerSMS, orderReceivedSMS, orderConfirmedSMS } from "@/lib/sms";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { sendAlert as mpAlert } from "@/lib/messagepilot";
 import { datacityPurchase, isDatacityEnabled, isInventorEnabled } from "@/lib/datacity";
@@ -960,7 +960,6 @@ export async function POST(request: NextRequest) {
   await sendAdminBotMessage(bothFailedMsg, retryKeyboard(paystackRef));
   sendAdminWhatsApp(bothFailedMsg.replace(/<[^>]*>/g, "")).catch(() => {});
   mpAlert("🔴 Order Failed", `${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → ${phone} | GH₵${chargedAmount.toFixed(2)} | Ref: ${paystackRef.slice(-8)} | Deliver manually`).catch(() => {});
-  sendCustomerSMS(phone, orderFailedSMS(name, bundleMeta.network, bundleMeta.size, paystackRef)).catch(() => {});
 
   return Response.json({ success: true, failed: true, reference: paystackRef, network: bundleMeta.network, bundleSize: bundleMeta.size, status: "PROCESSING" });
 }
