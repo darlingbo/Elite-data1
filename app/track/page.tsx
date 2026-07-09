@@ -21,6 +21,7 @@ interface OrderResult {
 }
 
 interface VerifiedOrder {
+  reference: string;
   customer_name: string;
   network: string;
   bundle_size: string;
@@ -66,6 +67,7 @@ function TrackContent() {
   const [momoPhone, setMomoPhone]         = useState("");
   const [submitting, setSubmitting]       = useState(false);
   const [submitError, setSubmitError]     = useState("");
+  const [multipleOrders, setMultipleOrders] = useState<VerifiedOrder[]>([]);
 
   function openRefund(prefillRef?: string, prefillPhone?: string) {
     setVerRef(prefillRef ?? "");
@@ -75,6 +77,7 @@ function TrackContent() {
     setMomoName("");
     setMomoPhone("");
     setSubmitError("");
+    setMultipleOrders([]);
     setRefundStep(1);
     setRefundOpen(true);
   }
@@ -83,6 +86,7 @@ function TrackContent() {
     e.preventDefault();
     setVerifying(true);
     setVerError("");
+    setMultipleOrders([]);
     try {
       const res = await fetch("/api/orders/verify-refund", {
         method: "POST",
@@ -93,8 +97,10 @@ function TrackContent() {
       if (data.success && data.order) {
         setVerifiedOrder(data.order);
         setRefundStep(2);
+      } else if (data.success && data.multiple) {
+        setMultipleOrders(data.multiple);
       } else {
-        setVerError(data.error ?? "Verification failed. Check your reference and phone number.");
+        setVerError(data.error ?? "Verification failed. Check your phone number and try again.");
       }
     } catch {
       setVerError("Network error. Please try again.");
@@ -112,7 +118,7 @@ function TrackContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          reference: verRef.trim(),
+          reference: verifiedOrder?.reference ?? verRef.trim(),
           customerPhone: verifiedOrder?.phone,
           customerName: verifiedOrder?.customer_name,
           network: verifiedOrder?.network,
@@ -411,23 +417,11 @@ function TrackContent() {
                   <button onClick={() => setRefundOpen(false)} style={{ background: "transparent", border: "none", color: D.muted, fontSize: 24, cursor: "pointer", lineHeight: 1, paddingTop: 2 }}>×</button>
                 </div>
                 <p style={{ fontSize: 13, color: D.muted, marginBottom: 20, lineHeight: 1.6 }}>
-                  To protect your money, enter the <strong style={{ color: D.text }}>reference</strong> of your failed order and the <strong style={{ color: D.text }}>phone number</strong> you used to buy.
+                  Enter the <strong style={{ color: D.text }}>phone number</strong> you used to buy. If you have your reference, add it too — otherwise leave it blank.
                 </p>
                 <form onSubmit={handleVerify} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <div>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: D.muted, display: "block", marginBottom: 6 }}>Order Reference</label>
-                    <input
-                      type="text"
-                      placeholder="elite-17123456789"
-                      value={verRef}
-                      onChange={e => setVerRef(e.target.value)}
-                      required
-                      autoCapitalize="none"
-                      style={{ width: "100%", background: D.bg, border: `1px solid ${D.border}`, borderRadius: 10, padding: "12px 14px", fontSize: 14, color: D.text, outline: "none", boxSizing: "border-box" }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: D.muted, display: "block", marginBottom: 6 }}>Phone Number Used to Buy</label>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: D.muted, display: "block", marginBottom: 6 }}>Phone Number Used to Buy <span style={{ color: "#ef4444" }}>*</span></label>
                     <input
                       type="tel"
                       placeholder="0241234567"
@@ -437,14 +431,52 @@ function TrackContent() {
                       style={{ width: "100%", background: D.bg, border: `1px solid ${D.border}`, borderRadius: 10, padding: "12px 14px", fontSize: 14, color: D.text, outline: "none", boxSizing: "border-box" }}
                     />
                   </div>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: D.muted, display: "block", marginBottom: 6 }}>
+                      Order Reference <span style={{ fontWeight: 400, color: D.muted }}>(optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="elite-17123456789 — leave blank if you don't have it"
+                      value={verRef}
+                      onChange={e => setVerRef(e.target.value)}
+                      autoCapitalize="none"
+                      style={{ width: "100%", background: D.bg, border: `1px solid ${D.border}`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: D.text, outline: "none", boxSizing: "border-box" }}
+                    />
+                    <p style={{ fontSize: 11, color: D.muted, margin: "4px 0 0" }}>Find it in your SMS or order confirmation email</p>
+                  </div>
                   {verError && (
                     <div style={{ fontSize: 13, color: "#f87171", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "10px 14px" }}>
                       ⚠️ {verError}
                     </div>
                   )}
-                  <button type="submit" disabled={verifying} style={{ background: D.blue, color: "white", border: "none", borderRadius: 12, padding: "14px", fontSize: 14, fontWeight: 800, cursor: "pointer", opacity: verifying ? 0.6 : 1, marginTop: 4 }}>
-                    {verifying ? "Verifying…" : "Verify Identity →"}
-                  </button>
+                  {/* Multiple failed orders picker */}
+                  {multipleOrders.length > 0 && (
+                    <div>
+                      <p style={{ fontSize: 13, color: "#fbbf24", margin: "0 0 10px", fontWeight: 700 }}>
+                        ⚠️ We found {multipleOrders.length} failed orders for this number. Pick the one you want refunded:
+                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {multipleOrders.map(o => (
+                          <button
+                            key={o.reference}
+                            type="button"
+                            onClick={() => { setVerifiedOrder(o); setRefundStep(2); }}
+                            style={{ background: D.bg, border: `1px solid ${D.border}`, borderRadius: 10, padding: "12px 14px", textAlign: "left", cursor: "pointer", color: D.text }}>
+                            <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14 }}>
+                              {(o.network ?? "").toUpperCase()} {o.bundle_size} · GH₵{Number(o.amount).toFixed(2)}
+                            </p>
+                            <p style={{ margin: 0, fontSize: 11, color: D.muted }}>Ref: {o.reference}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {multipleOrders.length === 0 && (
+                    <button type="submit" disabled={verifying} style={{ background: D.blue, color: "white", border: "none", borderRadius: 12, padding: "14px", fontSize: 14, fontWeight: 800, cursor: "pointer", opacity: verifying ? 0.6 : 1, marginTop: 4 }}>
+                      {verifying ? "Verifying…" : "Find My Order →"}
+                    </button>
+                  )}
                 </form>
               </>
             )}
