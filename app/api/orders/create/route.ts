@@ -13,6 +13,26 @@ const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
 const LOYALTY_REQUIRED = 4;
 
+async function appendToRefundLog(entry: Record<string, unknown>) {
+  const { data } = await supabase
+    .from("system_settings")
+    .select("value")
+    .eq("key", "refund_log")
+    .maybeSingle();
+  let existing: Record<string, unknown>[] = [];
+  try { existing = JSON.parse(data?.value ?? "[]"); } catch { existing = []; }
+  // Don't duplicate — update if same reference already exists
+  const idx = existing.findIndex(e => e.id === entry.id || e.reference === entry.reference);
+  if (idx >= 0) {
+    existing[idx] = { ...existing[idx], ...entry };
+  } else {
+    existing.push({ ...entry, saved_at: new Date().toISOString() });
+  }
+  await supabase
+    .from("system_settings")
+    .upsert({ key: "refund_log", value: JSON.stringify(existing) }, { onConflict: "key" });
+}
+
 // Inventor must respond within this time — AT ISHARE can be slow, give it 25s
 const INVENTOR_TIMEOUT_MS = 25_000;
 
@@ -538,6 +558,19 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+
+  // Append every new order to the permanent refund log immediately
+  appendToRefundLog({
+    id: paystackRef,
+    reference: paystackRef,
+    customer_name: name,
+    customer_phone: phone,
+    network: bundleMeta.network,
+    bundle_size: bundleMeta.size,
+    amount: chargedAmount,
+    refund_phone: refundPhone ?? null,
+    refund_name: null,
+  }).catch(() => {});
 
   await sendAdminAlert(
     (fastDelivery ? "⚡ FAST DELIVERY\n" : "") +

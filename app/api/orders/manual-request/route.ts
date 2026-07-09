@@ -3,34 +3,33 @@ import { sendSwiftAlert } from "@/lib/telegram";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { supabase } from "@/lib/supabase";
 
-const REFUND_LOG_KEY = "refund_log";
-
-async function appendRefundLog(entry: Record<string, unknown>) {
-  // Read existing log
+async function upsertRefundLog(reference: string, patch: Record<string, unknown>) {
   const { data } = await supabase
     .from("system_settings")
     .select("value")
-    .eq("key", REFUND_LOG_KEY)
+    .eq("key", "refund_log")
     .maybeSingle();
-
   let existing: Record<string, unknown>[] = [];
   try { existing = JSON.parse(data?.value ?? "[]"); } catch { existing = []; }
 
-  existing.push({ ...entry, saved_at: new Date().toISOString() });
+  const idx = existing.findIndex(e => e.reference === reference || e.id === reference);
+  if (idx >= 0) {
+    existing[idx] = { ...existing[idx], ...patch, refund_submitted_at: new Date().toISOString() };
+  } else {
+    existing.push({ id: reference, reference, ...patch, saved_at: new Date().toISOString(), refund_submitted_at: new Date().toISOString() });
+  }
 
   await supabase
     .from("system_settings")
-    .upsert({ key: REFUND_LOG_KEY, value: JSON.stringify(existing) }, { onConflict: "key" });
+    .upsert({ key: "refund_log", value: JSON.stringify(existing) }, { onConflict: "key" });
 }
 
 export async function POST(req: NextRequest) {
   const { reference, customerPhone, customerName, network, bundleSize, refundName, refundPhone } = await req.json();
 
-  // 1. Persist to append-only refund log — never disappears
   if (reference && refundPhone) {
-    appendRefundLog({
-      id: crypto.randomUUID(),
-      reference: String(reference).trim(),
+    // Merge refund details into the existing log entry (created at order time)
+    upsertRefundLog(String(reference).trim(), {
       customer_name: customerName ?? null,
       customer_phone: customerPhone ?? null,
       network: network ?? null,
@@ -39,7 +38,7 @@ export async function POST(req: NextRequest) {
       refund_phone: String(refundPhone).trim(),
     }).catch(() => {});
 
-    // 2. Also update the order record (best effort — log won't disappear even if this fails)
+    // Also update orders table (best effort)
     supabase
       .from("orders")
       .update({ refund_phone: String(refundPhone).trim(), refund_network: null })

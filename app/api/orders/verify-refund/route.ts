@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 
-const REFUNDABLE = ["failed", "not_on_list"];
+// Only block completed orders — everything else can request a refund
+const NOT_REFUNDABLE = ["completed"];
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -28,8 +29,8 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Phone number does not match this order. Enter the number you used to buy." }, { status: 403 });
     }
 
-    if (!REFUNDABLE.includes(order.status?.toLowerCase())) {
-      return Response.json({ error: "This order is not eligible for a refund. Only failed orders can be refunded." }, { status: 400 });
+    if (NOT_REFUNDABLE.includes(order.status?.toLowerCase())) {
+      return Response.json({ error: "This order was delivered successfully and is not eligible for a refund." }, { status: 400 });
     }
 
     return Response.json({
@@ -41,26 +42,26 @@ export async function POST(req: NextRequest) {
         bundle_size: order.bundle_size,
         amount: order.amount,
         phone: order.phone,
+        status: order.status,
       },
     });
   }
 
-  // ── No reference: look up by phone, return most recent failed order ───────
+  // ── No reference: look up by phone, exclude only completed orders ─────────
   const { data: orders } = await supabase
     .from("orders")
     .select("reference, customer_name, network, bundle_size, amount, phone, status, created_at")
     .eq("phone", phone)
-    .in("status", REFUNDABLE)
+    .not("status", "in", `(${NOT_REFUNDABLE.map(s => `"${s}"`).join(",")})`)
     .order("created_at", { ascending: false })
-    .limit(5);
+    .limit(10);
 
   if (!orders || orders.length === 0) {
     return Response.json({
-      error: "No failed orders found for that phone number. Make sure you enter the exact number you used to pay.",
+      error: "No orders found for that phone number. Make sure you enter the exact number you used to pay.",
     }, { status: 404 });
   }
 
-  // If only one failed order, proceed directly
   if (orders.length === 1) {
     const o = orders[0];
     return Response.json({
@@ -72,11 +73,12 @@ export async function POST(req: NextRequest) {
         bundle_size: o.bundle_size,
         amount: o.amount,
         phone: o.phone,
+        status: o.status,
       },
     });
   }
 
-  // Multiple failed orders — return list so the customer can pick
+  // Multiple orders — return list so customer can pick
   return Response.json({
     success: true,
     multiple: orders.map(o => ({
@@ -86,6 +88,7 @@ export async function POST(req: NextRequest) {
       bundle_size: o.bundle_size,
       amount: o.amount,
       phone: o.phone,
+      status: o.status,
     })),
   });
 }
