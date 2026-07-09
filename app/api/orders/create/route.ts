@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles";
 import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
-import { sendCustomerSMS, orderReceivedSMS, orderConfirmedSMS } from "@/lib/sms";
+import { sendCustomerSMS, orderReceivedSMS } from "@/lib/sms";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { sendAlert as mpAlert } from "@/lib/messagepilot";
 import { datacityPurchase, isDatacityEnabled, isInventorEnabled } from "@/lib/datacity";
@@ -767,8 +767,6 @@ export async function POST(request: NextRequest) {
     await sendAdminAlert(`${fmtDelivered(paystackRef, phone, bundleMeta.network, actualSize)}\n📡 Provider: Inventor\n${inventorLog}`);
     mpAlert("✅ Delivered", `${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone} | Ref: ${paystackRef.slice(-8)}`).catch(() => {});
 
-    // SMS to customer after delivery confirmed
-    sendCustomerSMS(phone, orderConfirmedSMS(name, bundleMeta.network, actualSize, phone, paystackRef)).catch(() => {});
 
     // Notify agent on Telegram (fire and forget)
     if (agentTelegramChatId) {
@@ -832,7 +830,6 @@ export async function POST(request: NextRequest) {
       `⚠️ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}`
     ).catch(() => {});
 
-    sendCustomerSMS(phone, orderConfirmedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
 
     if (agentTelegramChatId) {
       sendAgentNotification(agentTelegramChatId,
@@ -877,7 +874,6 @@ export async function POST(request: NextRequest) {
       `⚠️ DataCity: ${dcRes.error ?? "failed"}`
     ).catch(() => {});
 
-    sendCustomerSMS(phone, orderConfirmedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
 
     if (agentTelegramChatId) {
       sendAgentNotification(agentTelegramChatId,
