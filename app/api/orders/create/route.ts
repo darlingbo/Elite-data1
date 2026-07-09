@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles";
-import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
+import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, sendSwiftAlert, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
 import { sendCustomerSMS, orderReceivedSMS } from "@/lib/sms";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { sendAlert as mpAlert } from "@/lib/messagepilot";
@@ -674,7 +674,7 @@ export async function POST(request: NextRequest) {
   const datifyOn   = pinnedProvider ? pinnedProvider === "datify"   && datifyOnRaw   : datifyOnRaw;
 
   if (pinnedProvider) {
-    sendAdminAlert(`📍 Routing ${phone} → ${pinnedProvider.toUpperCase()} (pinned rule)\nRef: ${paystackRef}`).catch(() => {});
+    sendSwiftAlert(`📍 Routing ${phone} → ${pinnedProvider.toUpperCase()} (pinned rule)\nRef: ${paystackRef}`).catch(() => {});
   }
 
   const { ok: invOkRaw, status: inventorHttpStatus, body: inventorBody } = inventorOn

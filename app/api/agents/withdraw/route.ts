@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendAdminAlert } from "@/lib/telegram";
+import { sendSwiftAlert } from "@/lib/telegram";
 
 const methodToBankCode: Record<string, string> = {
   "MTN MoMo": "MTN",
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
   }).then(() => {});
 
   // 4. Notify admin
-  await sendAdminAlert(
+  await sendSwiftAlert(
     `✅ AUTO WITHDRAWAL SENT\n` +
     `👤 ${name} (${referralCode ?? "—"})\n` +
     `💰 GH₵${amt.toFixed(2)} via ${method}\n` +

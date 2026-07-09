@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { sendAdminAlert, sendAdminBotMessage } from "@/lib/telegram";
+import { sendSwiftAlert } from "@/lib/telegram";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { supabase } from "@/lib/supabase";
 
@@ -24,8 +24,7 @@ export async function POST(req: NextRequest) {
     `📲 MoMo Number: <code>${refundPhone}</code>\n\n` +
     `➡️ Send refund via Mobile Money within 12 hours.`;
 
-  sendAdminAlert(msg).catch(() => {});
-  sendAdminBotMessage(msg).catch(() => {});
+  sendSwiftAlert(msg).catch(() => {});
   sendAdminWhatsApp(msg.replace(/<[^>]*>/g, "")).catch(() => {});
 
   return Response.json({ success: true });
