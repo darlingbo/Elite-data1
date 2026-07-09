@@ -201,12 +201,20 @@ function TrackContent() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
           </div>
-          <h1 style={{ fontSize: 24, fontWeight: 900, color: D.text, margin: "0 0 6px" }}>Track Your Order</h1>
-          <p style={{ fontSize: 13, color: D.muted, margin: "0 0 16px" }}>Enter your phone number or payment reference</p>
+          <h1 style={{ fontSize: 24, fontWeight: 900, color: D.text, margin: "0 0 4px" }}>Track Your Order</h1>
+          <p style={{ fontSize: 13, color: D.muted, margin: 0 }}>Enter your phone number or payment reference</p>
+        </div>
+
+        {/* Refund banner */}
+        <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 16, padding: "16px 20px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 800, color: "#f87171", margin: "0 0 2px" }}>💸 Need a Refund?</p>
+            <p style={{ fontSize: 12, color: "#8b949e", margin: 0 }}>Didn't receive your data? Request a refund — processed within 12 hours.</p>
+          </div>
           <button
             onClick={() => openRefund()}
-            style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171", borderRadius: 20, padding: "7px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-            💸 Request a Refund
+            style={{ background: "#ef4444", color: "white", border: "none", borderRadius: 12, padding: "10px 18px", fontSize: 13, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+            Request Refund
           </button>
         </div>
 
