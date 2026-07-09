@@ -7,6 +7,7 @@ import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { sendAlert as mpAlert } from "@/lib/messagepilot";
 import { datacityPurchase, isDatacityEnabled, isInventorEnabled } from "@/lib/datacity";
 import { datifyPurchase, isDatifyEnabled } from "@/lib/datify";
+import { getRoutingRules, matchPhone } from "@/lib/phone-routing";
 
 const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
@@ -657,10 +658,24 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
   }
 
-  // ─── Sequential fallback: Inventor → DataCity → Datify ──────────────────
-  // Each provider is only called if the previous one definitively failed.
-  // This prevents double delivery and unnecessary charges.
-  const [inventorOn, datacityOn, datifyOn] = await Promise.all([isInventorEnabled(), isDatacityEnabled(), isDatifyEnabled()]);
+  // ─── Number routing: check if this phone is pinned to a specific provider ──
+  // If a rule matches, call ONLY that provider — no fallback chain.
+  const [routingRules, inventorOnRaw, datacityOnRaw, datifyOnRaw] = await Promise.all([
+    getRoutingRules(),
+    isInventorEnabled(),
+    isDatacityEnabled(),
+    isDatifyEnabled(),
+  ]);
+  const pinnedProvider = matchPhone(phone, routingRules);
+
+  // When pinned: override enabled flags so only the pinned provider is called.
+  const inventorOn = pinnedProvider ? pinnedProvider === "inventor" && inventorOnRaw : inventorOnRaw;
+  const datacityOn = pinnedProvider ? pinnedProvider === "datacity" && datacityOnRaw : datacityOnRaw;
+  const datifyOn   = pinnedProvider ? pinnedProvider === "datify"   && datifyOnRaw   : datifyOnRaw;
+
+  if (pinnedProvider) {
+    sendAdminAlert(`📍 Routing ${phone} → ${pinnedProvider.toUpperCase()} (pinned rule)\nRef: ${paystackRef}`).catch(() => {});
+  }
 
   const { ok: invOkRaw, status: inventorHttpStatus, body: inventorBody } = inventorOn
     ? await callInventorAPI({

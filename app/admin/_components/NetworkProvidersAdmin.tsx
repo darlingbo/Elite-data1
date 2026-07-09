@@ -3,6 +3,15 @@ import { useState, useEffect } from "react";
 
 const CARD = "#111827", BORDER = "#1f2937";
 
+type RoutedProvider = "inventor" | "datacity" | "datify";
+interface RoutingRule { id: string; match: string; provider: RoutedProvider; label?: string; }
+
+const PROVIDER_META: Record<RoutedProvider, { icon: string; label: string; color: string }> = {
+  inventor: { icon: "🚀", label: "Inventor",  color: "#4ade80" },
+  datacity: { icon: "🌍", label: "DataCity",  color: "#60a5fa" },
+  datify:   { icon: "📡", label: "Datify",    color: "#a78bfa" },
+};
+
 interface ProviderData {
   inventorBalance:  number | null;
   datacityBalance:  number | null;
@@ -51,13 +60,55 @@ export default function NetworkProvidersAdmin() {
   const [saving, setSaving] = useState<string | null>(null);
   const [toast, setToast] = useState("");
 
+  // Number routing state
+  const [rules, setRules]               = useState<RoutingRule[]>([]);
+  const [rulesLoading, setRulesLoading] = useState(true);
+  const [newMatch, setNewMatch]         = useState("");
+  const [newProvider, setNewProvider]   = useState<RoutedProvider>("inventor");
+  const [newLabel, setNewLabel]         = useState("");
+  const [rulesSaving, setRulesSaving]   = useState(false);
+
   async function load() {
     setLoading(true);
     const r = await fetch("/api/admin/network-providers").then(r => r.json());
     setData(r);
     setLoading(false);
   }
-  useEffect(() => { load(); }, []);
+
+  async function loadRules() {
+    setRulesLoading(true);
+    const r = await fetch("/api/admin/phone-routing").then(r => r.json()).catch(() => ({ rules: [] }));
+    setRules(r.rules ?? []);
+    setRulesLoading(false);
+  }
+
+  async function addRule() {
+    if (!newMatch.trim()) return;
+    setRulesSaving(true);
+    const r = await fetch("/api/admin/phone-routing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ match: newMatch.trim(), provider: newProvider, label: newLabel.trim() || undefined }),
+    }).then(r => r.json());
+    setRules(r.rules ?? rules);
+    setNewMatch(""); setNewLabel("");
+    setRulesSaving(false);
+    setToast("Rule added");
+    setTimeout(() => setToast(""), 2500);
+  }
+
+  async function deleteRule(id: string) {
+    setRules(prev => prev.filter(r => r.id !== id));
+    await fetch("/api/admin/phone-routing", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setToast("Rule removed");
+    setTimeout(() => setToast(""), 2500);
+  }
+
+  useEffect(() => { load(); loadRules(); }, []);
 
   async function toggleProvider(key: "inventorEnabled" | "datacityEnabled" | "datifyEnabled", value: boolean) {
     if (!data) return;
@@ -210,6 +261,78 @@ export default function NetworkProvidersAdmin() {
             </div>
           );
         })}
+      </div>
+
+      {/* Number Routing */}
+      <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+        <h2 className="font-bold text-white mb-1">📍 Number Routing</h2>
+        <p className="text-sm mb-5" style={{ color: "#64748b" }}>
+          Pin a phone number or prefix to one provider. Those numbers skip the fallback chain — only that provider is called.
+        </p>
+
+        {/* Add rule */}
+        <div className="flex flex-col gap-2 mb-5">
+          <div className="flex gap-2 flex-wrap">
+            <input
+              placeholder="Number or prefix — e.g. 0241234567 or 024"
+              value={newMatch}
+              onChange={e => setNewMatch(e.target.value)}
+              style={{ flex: 1, minWidth: 180, background: "#0d1117", border: "1px solid #374151", borderRadius: 10, padding: "10px 14px", fontSize: 14, color: "white", outline: "none" }}
+            />
+            <select
+              value={newProvider}
+              onChange={e => setNewProvider(e.target.value as RoutedProvider)}
+              style={{ background: "#0d1117", border: "1px solid #374151", borderRadius: 10, padding: "10px 14px", fontSize: 14, color: "white", outline: "none" }}>
+              <option value="inventor">🚀 Inventor</option>
+              <option value="datacity">🌍 DataCity</option>
+              <option value="datify">📡 Datify</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <input
+              placeholder="Note (optional) — e.g. MTN corporate SIM"
+              value={newLabel}
+              onChange={e => setNewLabel(e.target.value)}
+              style={{ flex: 1, background: "#0d1117", border: "1px solid #374151", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "white", outline: "none" }}
+            />
+            <button
+              onClick={addRule}
+              disabled={rulesSaving || !newMatch.trim()}
+              style={{ background: "#3b82f6", color: "white", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: rulesSaving || !newMatch.trim() ? 0.5 : 1, whiteSpace: "nowrap" }}>
+              {rulesSaving ? "Saving…" : "+ Add Rule"}
+            </button>
+          </div>
+        </div>
+
+        {/* Rules list */}
+        {rulesLoading ? (
+          <p style={{ color: "#64748b", fontSize: 13 }}>Loading…</p>
+        ) : rules.length === 0 ? (
+          <div style={{ background: "#0d1117", border: "1px solid #1f2937", borderRadius: 12, padding: "20px", textAlign: "center" }}>
+            <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>No routing rules. All numbers use the sequential fallback chain.</p>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {rules.map(rule => {
+              const pm = PROVIDER_META[rule.provider];
+              return (
+                <div key={rule.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "#0d1117", border: "1px solid #1f2937", borderRadius: 12, padding: "12px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                    <span style={{ fontFamily: "monospace", fontWeight: 800, color: "white", fontSize: 14 }}>{rule.match}</span>
+                    <span style={{ color: "#4b5563" }}>→</span>
+                    <span style={{ fontWeight: 700, color: pm.color }}>{pm.icon} {pm.label}</span>
+                    {rule.label && <span style={{ fontSize: 11, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rule.label}</span>}
+                  </div>
+                  <button
+                    onClick={() => deleteRule(rule.id)}
+                    style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171", borderRadius: 8, padding: "4px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+                    ✕ Remove
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* How it works */}
