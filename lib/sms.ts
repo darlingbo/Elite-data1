@@ -22,9 +22,8 @@ export async function sendCustomerSMS(phone: string, message: string): Promise<v
     username,
     to: normalizeGhanaPhone(phone),
     message,
+    from: "Elitedata1",
   });
-  // Do NOT send sender ID — AT silently drops messages when sender ID is pending
-  // Add it back only after AT confirms it is fully live
 
   try {
     const res = await fetch("https://api.africastalking.com/version1/messaging", {
