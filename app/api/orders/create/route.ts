@@ -8,6 +8,7 @@ import { sendAlert as mpAlert } from "@/lib/messagepilot";
 import { datacityPurchase, isDatacityEnabled, isInventorEnabled } from "@/lib/datacity";
 import { datifyPurchase, isDatifyEnabled } from "@/lib/datify";
 import { getRoutingRules, matchPhone } from "@/lib/phone-routing";
+import { getSurcharge, clearSurcharge } from "@/lib/surcharge";
 
 const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
@@ -292,7 +293,7 @@ async function callInventorAPI(
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { name, email, phone, bundleId, paystackRef, agentCode, applyReferralCredit, referralVia, fastDelivery, refundPhone, refundNetwork } = body;
+  const { name, email, phone, bundleId, paystackRef, agentCode, applyReferralCredit, referralVia, fastDelivery, refundPhone, refundNetwork, surcharge: clientSurcharge } = body;
 
   if (!name || !email || !phone || !bundleId || !paystackRef) {
     return Response.json({ error: "Missing required fields." }, { status: 400 });
@@ -444,10 +445,10 @@ export async function POST(request: NextRequest) {
   const txnStatus = (psData.data as Record<string, unknown>)?.status;
   const txnAmount = Number((psData.data as Record<string, unknown>)?.amount ?? 0);
 
-  // Floor: customer must pay at least 80% of the selling price.
-  // 80% allows for referral credits and promo discounts (max ~20% off),
-  // but blocks anyone paying only the cost price to steal admin profit.
-  const minKobo = Math.round(pricing.price * 0.80 * 100);
+  // Floor: customer must pay at least 80% of the selling price + any surcharge.
+  const pendingSurcharge = await getSurcharge(phone);
+  const surchargeKobo = Math.round(pendingSurcharge * 100);
+  const minKobo = Math.round(pricing.price * 0.80 * 100) + surchargeKobo;
   const paid =
     psData.status === true &&
     txnStatus === "success" &&
@@ -593,6 +594,11 @@ export async function POST(request: NextRequest) {
         `⚠️ REFERRAL CREDIT NOT MARKED USED\nRef: ${paystackRef}\nPhone: ${phone}\nCredit ID: ${referralCreditId}\nError: ${creditErr.message}\n\nGo to Supabase → referral_credits → set this ID to used=true manually.`
       ).catch(() => {});
     }
+  }
+
+  // Clear surcharge now that it has been paid
+  if (pendingSurcharge > 0) {
+    clearSurcharge(phone).catch(() => {});
   }
 
   // Award referral credit to referrer (fire and forget)

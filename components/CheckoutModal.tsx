@@ -96,6 +96,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const [promoApplying, setPromoApplying] = useState(false);
   const [promoResult, setPromoResult] = useState<{ discount: number; code: string; id: string; label: string } | null>(null);
   const [promoError, setPromoError] = useState("");
+  const [surcharge, setSurcharge] = useState(0);
   const paystackReady = usePaystackReady();
   const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -103,7 +104,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const feeAmount = parseFloat((bundle.price * PLATFORM_FEE_RATE).toFixed(2));
   const baseTotal = parseFloat((bundle.price + feeAmount).toFixed(2));
   const promoDiscount = promoResult?.discount ?? 0;
-  const totalAmount = parseFloat(Math.max(baseTotal - referralCredit - promoDiscount + (fastDelivery ? FAST_DELIVERY_FEE : 0), 0).toFixed(2));
+  const totalAmount = parseFloat(Math.max(baseTotal - referralCredit - promoDiscount + surcharge + (fastDelivery ? FAST_DELIVERY_FEE : 0), 0).toFixed(2));
 
   async function applyPromo() {
     if (!promoCode.trim()) return;
@@ -119,28 +120,30 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
     finally { setPromoApplying(false); }
   }
 
-  // Check referral credits when phone is entered
+  // Check referral credits + surcharge when phone is entered
   useEffect(() => {
     const cleaned = phone.replace(/\s/g, "");
     if (!/^0[2-5][0-9]{8}$/.test(cleaned)) {
       setReferralCredit(0);
       setCreditChecked(false);
+      setSurcharge(0);
       return;
     }
     if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current);
     phoneCheckTimer.current = setTimeout(() => {
-      fetch(`/api/referral/check?phone=${encodeURIComponent(cleaned)}`)
-        .then((r) => r.json())
-        .then((data) => {
-          setReferralCredit(data.credits ?? 0);
-          setCreditChecked(true);
-          setReferralUsesLeft(data.usesLeft ?? null);
-          if (data.milestoneCode && !promoResult) {
-            setPromoCode(data.milestoneCode);
-            setMilestoneCode(data.milestoneCode);
-          }
-        })
-        .catch(() => {});
+      Promise.all([
+        fetch(`/api/referral/check?phone=${encodeURIComponent(cleaned)}`).then(r => r.json()).catch(() => ({})),
+        fetch(`/api/orders/pending-surcharge?phone=${encodeURIComponent(cleaned)}`).then(r => r.json()).catch(() => ({ surcharge: 0 })),
+      ]).then(([data, sc]) => {
+        setReferralCredit(data.credits ?? 0);
+        setCreditChecked(true);
+        setReferralUsesLeft(data.usesLeft ?? null);
+        setSurcharge(sc.surcharge ?? 0);
+        if (data.milestoneCode && !promoResult) {
+          setPromoCode(data.milestoneCode);
+          setMilestoneCode(data.milestoneCode);
+        }
+      });
     }, 600);
     return () => { if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current); };
   }, [phone]);
@@ -215,6 +218,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
               fastDelivery: fastDelivery,
               promoCode: promoResult?.code ?? null,
               promoDiscount: promoDiscount > 0 ? promoDiscount : null,
+              surcharge: surcharge > 0 ? surcharge : null,
               refundPhone: refundPhone.replace(/\s/g, ""),
               refundNetwork,
             }),
@@ -455,6 +459,12 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
                 <div className="flex items-center gap-2 text-xs text-emerald-600 font-semibold">
                   <span>🎁 Referral credit</span>
                   <span>−GH₵{referralCredit.toFixed(2)}</span>
+                </div>
+              )}
+              {surcharge > 0 && (
+                <div className="flex items-center gap-2 text-xs text-red-600 font-semibold">
+                  <span>⚠️ Outstanding balance</span>
+                  <span>+GH₵{surcharge.toFixed(2)}</span>
                 </div>
               )}
               {promoResult && (
