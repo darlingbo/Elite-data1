@@ -63,6 +63,7 @@ function CopyBtn({ text, label }: { text: string; label?: string }) {
 export default function RefundNumbers() {
   const [rows, setRows] = useState<RefundRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [migrationNeeded, setMigrationNeeded] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "failed" | "processing" | "pending" | "completed">("all");
   const [search, setSearch] = useState("");
   const [copiedAll, setCopiedAll] = useState(false);
@@ -73,6 +74,7 @@ export default function RefundNumbers() {
       const res = await fetch("/api/admin/refund-numbers");
       const d = await res.json();
       setRows(d.orders ?? []);
+      setMigrationNeeded(!!d.migration_needed);
     } catch {
       // silent
     } finally {
@@ -133,6 +135,22 @@ export default function RefundNumbers() {
           </button>
         </div>
       </div>
+
+      {/* Migration warning */}
+      {migrationNeeded && (
+        <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.4)", borderRadius: 14, padding: "16px 20px" }}>
+          <p style={{ fontSize: 14, fontWeight: 800, color: "#fbbf24", margin: "0 0 8px" }}>⚠️ Database columns missing</p>
+          <p style={{ fontSize: 13, color: "#8b949e", margin: "0 0 12px", lineHeight: 1.6 }}>
+            The <code style={{ background: "rgba(255,255,255,0.07)", padding: "2px 6px", borderRadius: 4 }}>refund_phone</code> and <code style={{ background: "rgba(255,255,255,0.07)", padding: "2px 6px", borderRadius: 4 }}>refund_network</code> columns don&apos;t exist yet in your Supabase orders table.
+            Run this SQL in your <strong style={{ color: "#e6edf3" }}>Supabase SQL Editor</strong>:
+          </p>
+          <pre style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#4ade80", margin: 0, overflowX: "auto", fontFamily: "monospace" }}>
+{`ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_phone TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_network TEXT;`}
+          </pre>
+          <p style={{ fontSize: 12, color: "#8b949e", margin: "10px 0 0" }}>After running it, click ↻ Refresh above.</p>
+        </div>
+      )}
 
       {/* Status filter pills */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

@@ -1,9 +1,19 @@
 import { NextRequest } from "next/server";
 import { sendAdminAlert, sendAdminBotMessage } from "@/lib/telegram";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
+import { supabase } from "@/lib/supabase";
 
 export async function POST(req: NextRequest) {
   const { reference, customerPhone, customerName, network, bundleSize, refundName, refundPhone } = await req.json();
+
+  // Save refund phone to the order record so it shows in MoMo Refunds tab
+  if (reference && refundPhone) {
+    supabase
+      .from("orders")
+      .update({ refund_phone: refundPhone, refund_network: null })
+      .eq("reference", String(reference).trim())
+      .then(() => {});
+  }
 
   const msg =
     `💸 <b>REFUND REQUEST</b>\n\n` +
