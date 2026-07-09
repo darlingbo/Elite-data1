@@ -5,6 +5,7 @@ interface RefundRow {
   reference: string;
   customer_name: string | null;
   phone: string | null;
+  refund_name: string | null;
   refund_phone: string | null;
   refund_network: string | null;
   network: string | null;
@@ -98,7 +99,7 @@ export default function RefundNumbers() {
 
   function copyAll() {
     const lines = filtered.map(r =>
-      `${r.customer_name ?? "Unknown"} | ${MOMO_LABELS[r.refund_network ?? ""] ?? r.refund_network ?? "?"} | ${r.refund_phone ?? "—"} | ${(r.network ?? "").toUpperCase()} ${r.bundle_size ?? ""} | GH₵${Number(r.amount).toFixed(2)} | ${r.status} | Ref: ${r.reference}`
+      `${r.customer_name ?? "Unknown"} | ${MOMO_LABELS[r.refund_network ?? ""] ?? r.refund_network ?? "?"} | MoMo Name: ${r.refund_name ?? "—"} | ${r.refund_phone ?? "—"} | ${(r.network ?? "").toUpperCase()} ${r.bundle_size ?? ""} | GH₵${Number(r.amount).toFixed(2)} | ${r.status} | Ref: ${r.reference}`
     ).join("\n");
     navigator.clipboard?.writeText(lines).catch(() => {});
     setCopiedAll(true);
@@ -183,7 +184,7 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_network TEXT;`}
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: D.bg, borderBottom: `1px solid ${D.border}` }}>
-                {["#", "Customer", "Order Phone", "MoMo Network", "MoMo Number", "Bundle", "Amount", "Status", "Date", ""].map(h => (
+                {["#", "Customer", "Order Phone", "MoMo Network", "MoMo Name", "MoMo Number", "Bundle", "Amount", "Status", "Date", ""].map(h => (
                   <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: D.muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
@@ -205,6 +206,7 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_network TEXT;`}
                         {MOMO_LABELS[r.refund_network ?? ""] ?? r.refund_network ?? "—"}
                       </span>
                     </td>
+                    <td style={{ padding: "12px 14px", color: D.text, fontWeight: 600 }}>{r.refund_name ?? "—"}</td>
                     <td style={{ padding: "12px 14px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontFamily: "monospace", fontWeight: 800, color: D.text, fontSize: 14 }}>{r.refund_phone ?? "—"}</span>
