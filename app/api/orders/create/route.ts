@@ -97,6 +97,8 @@ async function saveOrder(fields: Record<string, unknown>): Promise<{ error: bool
     admin_commission: fields.admin_commission,
     agent_commission: fields.agent_commission,
     agent_id: fields.agent_id,
+    refund_phone: fields.refund_phone ?? null,
+    refund_network: fields.refund_network ?? null,
     status: fields.status,
   };
   const { error: e2 } = await supabase.from("orders").insert(minimal);
@@ -115,6 +117,8 @@ async function saveOrder(fields: Record<string, unknown>): Promise<{ error: bool
       cost_price: fields.cost_price,
       admin_commission: fields.admin_commission,
       agent_commission: fields.agent_commission,
+      refund_phone: fields.refund_phone ?? null,
+      refund_network: fields.refund_network ?? null,
       status: fields.status,
     };
     const { error: e25 } = await supabase.from("orders").insert(withoutAgent);
@@ -129,6 +133,8 @@ async function saveOrder(fields: Record<string, unknown>): Promise<{ error: bool
     network: fields.network ?? null,
     bundle_size: fields.bundle_size ?? null,
     amount: fields.amount,
+    refund_phone: fields.refund_phone ?? null,
+    refund_network: fields.refund_network ?? null,
     status: String(fields.status).toLowerCase(),
   };
   const { error: e3 } = await supabase.from("orders").insert(bare);
