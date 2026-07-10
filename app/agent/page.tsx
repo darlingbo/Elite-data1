@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 const MARGIN = 1.82;
-const PRO_FEE = 40; // GH₵
+const PRO_FEE = 100; // GH₵
 
 const EyeIcon = ({ open }: { open: boolean }) =>
   open ? (
