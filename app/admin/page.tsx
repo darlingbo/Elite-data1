@@ -1325,6 +1325,7 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
   const [actionLoading, setActionLoading] = useState(false);
   const [pricesAgent, setPricesAgent] = useState<{ id: string; name: string } | null>(null);
   const [switchModal, setSwitchModal] = useState<{ id: string; name: string; currentType: string } | null>(null);
+  const [switchTarget, setSwitchTarget] = useState<"commission" | "custom_price" | "pro" | null>(null);
   const [switching, setSwitching] = useState(false);
   const [switchMsg, setSwitchMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [planModal, setPlanModal] = useState<{ id: string; name: string; currentPlan: "free" | "pro" } | null>(null);
@@ -1333,17 +1334,16 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
   useEffect(() => { setAgentTab(defaultTab); }, [defaultTab]);
 
   async function handleSwitchMode() {
-    if (!switchModal) return;
+    if (!switchModal || !switchTarget) return;
     setSwitching(true);
-    // Toggle between commission (Free) and pro — custom_price agents are protected server-side
-    const newType = switchModal.currentType === "pro" ? "commission" : "pro";
     try {
-      const res = await fetch("/api/admin/agents/switch-mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: switchModal.id, agentType: newType }) });
+      const res = await fetch("/api/admin/agents/switch-mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: switchModal.id, agentType: switchTarget }) });
       const d = await res.json();
-      if (d.success) { setSwitchMsg({ text: `✓ ${switchModal.name} is now ${newType === "pro" ? "⭐ Pro" : "Free"}`, ok: true }); onRefresh(); }
+      const label = switchTarget === "pro" ? "⭐ Pro" : switchTarget === "custom_price" ? "Price Mode" : "Free";
+      if (d.success) { setSwitchMsg({ text: `✓ ${switchModal.name} → ${label}`, ok: true }); onRefresh(); }
       else setSwitchMsg({ text: d.error ?? "Failed", ok: false });
     } catch { setSwitchMsg({ text: "Network error", ok: false }); }
-    finally { setSwitching(false); setSwitchModal(null); setTimeout(() => setSwitchMsg(null), 5000); }
+    finally { setSwitching(false); setSwitchModal(null); setSwitchTarget(null); setTimeout(() => setSwitchMsg(null), 5000); }
   }
 
   async function handlePlanChange() {
@@ -1425,7 +1425,7 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
                         </button>
                       </td>
                       <td className="px-4 py-3.5">
-                        <button onClick={() => a.agent_type !== "custom_price" && setSwitchModal({ id: a.id, name: a.name, currentType: a.agent_type ?? "commission" })} title={a.agent_type === "custom_price" ? "Custom price agent — locked" : "Click to switch Free ↔ Pro"} className="hover:opacity-70 transition-opacity" disabled={a.agent_type === "custom_price"}>
+                        <button onClick={() => { setSwitchTarget(null); setSwitchModal({ id: a.id, name: a.name, currentType: a.agent_type ?? "commission" }); }} title="Change agent type" className="hover:opacity-70 transition-opacity">
                           {a.agent_type === "pro" ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.3)" }}>⭐ Pro ⇄</span> : a.agent_type === "custom_price" ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>Price Mode 🔒</span> : <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", border: "1px solid rgba(16,185,129,0.25)" }}>Free ⇄</span>}
                         </button>
                       </td>
@@ -1523,11 +1523,35 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
       {switchModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="rounded-2xl shadow-2xl w-full max-w-sm p-6 border" style={{ background: CARD, borderColor: BORDER }}>
-            <h3 className="font-black text-white text-lg mb-2">Switch Agent Type</h3>
-            <p className="text-sm text-slate-400 mb-5">Switch <span className="text-white font-bold">{switchModal.name}</span> to <span className="font-bold" style={{ color: switchModal.currentType === "pro" ? "#4ade80" : "#fbbf24" }}>{switchModal.currentType === "pro" ? "Free Agent" : "⭐ Pro Agent"}</span>?</p>
+            <h3 className="font-black text-white text-lg mb-1">Change Agent Type</h3>
+            <p className="text-sm text-slate-400 mb-4">Select new type for <span className="text-white font-bold">{switchModal.name}</span></p>
+            <div className="flex flex-col gap-2 mb-5">
+              {([
+                { type: "commission",   label: "Free Agent",   desc: "Earns % commission split",          color: "#60a5fa", bg: "rgba(59,130,246,0.12)",  border: "rgba(59,130,246,0.35)" },
+                { type: "custom_price", label: "Price Mode",   desc: "Tops up wallet, sets own prices",   color: "#a78bfa", bg: "rgba(124,58,237,0.12)", border: "rgba(124,58,237,0.35)" },
+                { type: "pro",          label: "⭐ Pro Agent",  desc: "Paystack direct, sets own prices",  color: "#fbbf24", bg: "rgba(245,158,11,0.12)",  border: "rgba(245,158,11,0.35)" },
+              ] as { type: "commission" | "custom_price" | "pro"; label: string; desc: string; color: string; bg: string; border: string }[]).map(opt => {
+                const isCurrent = switchModal.currentType === opt.type;
+                const isSelected = switchTarget === opt.type;
+                return (
+                  <button key={opt.type} onClick={() => !isCurrent && setSwitchTarget(opt.type)} disabled={isCurrent}
+                    className="w-full text-left rounded-xl px-4 py-3 border-2 transition-all"
+                    style={{ background: isSelected ? opt.bg : "transparent", borderColor: isSelected ? opt.color : isCurrent ? opt.border : BORDER, opacity: isCurrent ? 0.5 : 1, cursor: isCurrent ? "default" : "pointer" }}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-bold text-sm" style={{ color: opt.color }}>{opt.label}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{opt.desc}</p>
+                      </div>
+                      {isCurrent && <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: opt.bg, color: opt.color }}>Current</span>}
+                      {isSelected && !isCurrent && <span className="text-xs font-bold text-white">✓</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
             <div className="flex gap-3">
-              <button onClick={() => setSwitchModal(null)} disabled={switching} className="flex-1 border text-slate-400 font-semibold py-2.5 rounded-xl text-sm" style={{ borderColor: BORDER }}>Cancel</button>
-              <button onClick={handleSwitchMode} disabled={switching} className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: switchModal.currentType === "pro" ? "linear-gradient(90deg,#059669,#10b981)" : "linear-gradient(90deg,#f59e0b,#d97706)" }}>{switching ? "Switching…" : "Confirm"}</button>
+              <button onClick={() => { setSwitchModal(null); setSwitchTarget(null); }} disabled={switching} className="flex-1 border text-slate-400 font-semibold py-2.5 rounded-xl text-sm" style={{ borderColor: BORDER }}>Cancel</button>
+              <button onClick={handleSwitchMode} disabled={switching || !switchTarget} className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-40" style={{ background: "linear-gradient(90deg,#3b82f6,#7c3aed)" }}>{switching ? "Switching…" : "Confirm"}</button>
             </div>
           </div>
         </div>
