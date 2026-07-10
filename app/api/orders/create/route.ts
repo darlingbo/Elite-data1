@@ -1,19 +1,45 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles";
-import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
-import { sendCustomerSMS, orderReceivedSMS, orderConfirmedSMS } from "@/lib/sms";
+import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, sendSwiftAlert, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
+import { sendCustomerSMS, orderReceivedSMS } from "@/lib/sms";
+import { sendAdminWhatsApp } from "@/lib/whatsapp";
+import { sendAlert as mpAlert } from "@/lib/messagepilot";
+import { datacityPurchase, isDatacityEnabled, isInventorEnabled } from "@/lib/datacity";
+import { datifyPurchase, isDatifyEnabled } from "@/lib/datify";
+import { getRoutingRules, matchPhone } from "@/lib/phone-routing";
+import { getSurcharge, clearSurcharge } from "@/lib/surcharge";
 
 const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
 const LOYALTY_REQUIRED = 4;
 
-// Inventor must respond within this time — if not, order stays "pending" for monitor to pick up
-const INVENTOR_TIMEOUT_MS = 7_000;
+async function appendToRefundLog(entry: Record<string, unknown>) {
+  const { data } = await supabase
+    .from("system_settings")
+    .select("value")
+    .eq("key", "refund_log")
+    .maybeSingle();
+  let existing: Record<string, unknown>[] = [];
+  try { existing = JSON.parse(data?.value ?? "[]"); } catch { existing = []; }
+  // Don't duplicate — update if same reference already exists
+  const idx = existing.findIndex(e => e.id === entry.id || e.reference === entry.reference);
+  if (idx >= 0) {
+    existing[idx] = { ...existing[idx], ...entry };
+  } else {
+    existing.push({ ...entry, saved_at: new Date().toISOString() });
+  }
+  await supabase
+    .from("system_settings")
+    .upsert({ key: "refund_log", value: JSON.stringify(existing) }, { onConflict: "key" });
+}
+
+// Inventor must respond within this time — AT ISHARE can be slow, give it 25s
+const INVENTOR_TIMEOUT_MS = 25_000;
 
 type BundleMeta = { id: string; network: Network; size: string; sizeGB: number };
 type BundlePricing = { price: number; costPrice: number; sizeGB: number };
-type BundleInfo = { meta: BundleMeta; pricing: BundlePricing } | null;
+type BundleInfo = { meta: BundleMeta; pricing: BundlePricing; isMashup: boolean } | null;
 
 // Extract a numeric GB value from a label like "4GB" or "500MB"
 function parseSizeGbFromLabel(label: string | null | undefined): number | null {
@@ -30,15 +56,15 @@ async function getBundleInfo(bundleId: string): Promise<BundleInfo> {
   // Check static bundles first (no DB needed)
   const staticBundle = bundles.find((b) => b.id === bundleId);
 
-  const { data } = await supabase
-    .from("bundle_prices")
-    .select("id, network, size_label, size_gb, price, cost_price")
-    .eq("id", bundleId)
-    .eq("active", true)
-    .maybeSingle();
+  const [bundlePriceResult, mashupResult] = await Promise.all([
+    supabase.from("bundle_prices").select("id, network, size_label, size_gb, price, cost_price")
+      .eq("id", bundleId).eq("active", true).maybeSingle(),
+    supabase.from("mashup_bundles").select("id, name, data_value, data_unit, minutes, price, cost_price, network")
+      .eq("id", bundleId).eq("active", true).maybeSingle(),
+  ]);
 
+  const data = bundlePriceResult.data;
   if (data) {
-    // network is null for default bundles (implied by ID) — fall back to static
     const network = (data.network as Network | null) ?? staticBundle?.network;
     if (network) {
       const sizeGB = data.size_gb ?? parseSizeGbFromLabel(data.size_label) ?? staticBundle?.sizeGB ?? 1;
@@ -46,8 +72,24 @@ async function getBundleInfo(bundleId: string): Promise<BundleInfo> {
       return {
         meta: { id: data.id, network, size, sizeGB },
         pricing: { price: data.price, costPrice: data.cost_price, sizeGB },
+        isMashup: false,
       };
     }
+  }
+
+  // Check mashup bundles — manually fulfilled by admin
+  const mashup = mashupResult.data;
+  if (mashup) {
+    const sizeGB = mashup.data_unit === "MB" ? mashup.data_value / 1024 : Number(mashup.data_value);
+    const size = mashup.minutes > 0
+      ? `${mashup.data_value}${mashup.data_unit} + ${mashup.minutes}min`
+      : `${mashup.data_value}${mashup.data_unit}`;
+    const mashupNetwork = (mashup.network as Network | null) ?? "mtn";
+    return {
+      meta: { id: mashup.id, network: mashupNetwork, size, sizeGB },
+      pricing: { price: mashup.price, costPrice: mashup.cost_price, sizeGB },
+      isMashup: true,
+    };
   }
 
   // Fall back to static bundle
@@ -55,6 +97,7 @@ async function getBundleInfo(bundleId: string): Promise<BundleInfo> {
     return {
       meta: staticBundle,
       pricing: { price: staticBundle.price, costPrice: staticBundle.costPrice, sizeGB: staticBundle.sizeGB },
+      isMashup: false,
     };
   }
 
@@ -76,6 +119,8 @@ async function saveOrder(fields: Record<string, unknown>): Promise<{ error: bool
     admin_commission: fields.admin_commission,
     agent_commission: fields.agent_commission,
     agent_id: fields.agent_id,
+    refund_phone: fields.refund_phone ?? null,
+    refund_network: fields.refund_network ?? null,
     status: fields.status,
   };
   const { error: e2 } = await supabase.from("orders").insert(minimal);
@@ -94,6 +139,8 @@ async function saveOrder(fields: Record<string, unknown>): Promise<{ error: bool
       cost_price: fields.cost_price,
       admin_commission: fields.admin_commission,
       agent_commission: fields.agent_commission,
+      refund_phone: fields.refund_phone ?? null,
+      refund_network: fields.refund_network ?? null,
       status: fields.status,
     };
     const { error: e25 } = await supabase.from("orders").insert(withoutAgent);
@@ -108,6 +155,8 @@ async function saveOrder(fields: Record<string, unknown>): Promise<{ error: bool
     network: fields.network ?? null,
     bundle_size: fields.bundle_size ?? null,
     amount: fields.amount,
+    refund_phone: fields.refund_phone ?? null,
+    refund_network: fields.refund_network ?? null,
     status: String(fields.status).toLowerCase(),
   };
   const { error: e3 } = await supabase.from("orders").insert(bare);
@@ -198,6 +247,22 @@ async function processLoyalty(
   }
 }
 
+async function creditAgent(agentId: string, commission: number, revenue: number) {
+  if (!agentId || !commission) return;
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("commission_balance, total_sales, total_revenue")
+    .eq("id", agentId)
+    .maybeSingle();
+  if (!agent) return;
+  await supabase.from("agents").update({
+    commission_balance: (Number(agent.commission_balance) || 0) + commission,
+    total_sales: (Number(agent.total_sales) || 0) + 1,
+    total_revenue: (Number(agent.total_revenue) || 0) + revenue,
+    updated_at: new Date().toISOString(),
+  }).eq("id", agentId);
+}
+
 // Inventor API call — single attempt with tight timeout
 // If it doesn't respond in time, order stays "pending" and the monitor delivers it
 async function callInventorAPI(
@@ -228,7 +293,7 @@ async function callInventorAPI(
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { name, email, phone, bundleId, paystackRef, agentCode, applyReferralCredit, referralVia } = body;
+  const { name, email, phone, bundleId, paystackRef, agentCode, applyReferralCredit, referralVia, fastDelivery, refundPhone, refundNetwork, surcharge: clientSurcharge } = body;
 
   if (!name || !email || !phone || !bundleId || !paystackRef) {
     return Response.json({ error: "Missing required fields." }, { status: 400 });
@@ -239,7 +304,7 @@ export async function POST(request: NextRequest) {
   if (!bundleInfo) {
     return Response.json({ error: "Invalid bundle." }, { status: 400 });
   }
-  const { meta: bundleMeta, pricing } = bundleInfo;
+  const { meta: bundleMeta, pricing, isMashup } = bundleInfo;
 
   // ─── OPTIMISATION 3: run idempotency check + agent lookup + referral
   //     credit lookup all at the same time instead of one-by-one ──────────
@@ -380,10 +445,10 @@ export async function POST(request: NextRequest) {
   const txnStatus = (psData.data as Record<string, unknown>)?.status;
   const txnAmount = Number((psData.data as Record<string, unknown>)?.amount ?? 0);
 
-  // Floor: customer must pay at least cost price (prevents £0 fraud).
-  // We do NOT enforce exact match — Paystack already charged what the client showed,
-  // and custom-agent prices and referral credits cause legitimate "mismatches".
-  const minKobo = Math.round(pricing.costPrice * 100);
+  // Floor: customer must pay at least 80% of the selling price + any surcharge.
+  const pendingSurcharge = await getSurcharge(phone);
+  const surchargeKobo = Math.round(pendingSurcharge * 100);
+  const minKobo = Math.round(pricing.price * 0.80 * 100) + surchargeKobo;
   const paid =
     psData.status === true &&
     txnStatus === "success" &&
@@ -423,10 +488,12 @@ export async function POST(request: NextRequest) {
   }
 
   // Use Paystack as source of truth for the charged amount.
-  // Derive effective selling price by reversing the fee + credit.
+  // Strip fast delivery fee before commission calc — it goes entirely to admin.
   const chargedAmount = parseFloat((txnAmount / 100).toFixed(2));
+  const fastDeliveryFee = fastDelivery === true ? 0.50 : 0;
+  const chargedForCommission = parseFloat((chargedAmount - fastDeliveryFee).toFixed(2));
   const effectivePriceFromPayment = parseFloat(
-    ((chargedAmount + creditAmount) / (1 + PLATFORM_FEE_RATE)).toFixed(2)
+    ((chargedForCommission + creditAmount) / (1 + PLATFORM_FEE_RATE)).toFixed(2)
   );
 
   // Resolve commission split — global default then per-agent override
@@ -449,13 +516,14 @@ export async function POST(request: NextRequest) {
     agentCommission = 0;
     adminCommission = parseFloat(Math.max(0, effectivePriceFromPayment - pricing.costPrice).toFixed(2));
   } else if (agentType === "custom_price") {
-    // Agent keeps markup above admin tier price; admin keeps tier price minus Inventor cost
-    agentCommission = parseFloat(Math.max(0, chargedAmount - adminTierPrice).toFixed(2));
-    adminCommission = parseFloat(Math.max(0, adminTierPrice - pricing.costPrice).toFixed(2));
+    // Agent keeps markup above admin tier price; fast delivery fee excluded
+    agentCommission = parseFloat(Math.max(0, chargedForCommission - adminTierPrice).toFixed(2));
+    adminCommission = parseFloat(Math.max(0, adminTierPrice - pricing.costPrice).toFixed(2)) + fastDeliveryFee;
   } else {
     const profit = Math.max(0, effectivePriceFromPayment - pricing.costPrice);
     agentCommission = parseFloat((profit * agentSplitRate).toFixed(2));
-    adminCommission = parseFloat((profit * (1 - agentSplitRate)).toFixed(2));
+    // Fast delivery fee goes entirely to admin, not split with agent
+    adminCommission = parseFloat((profit * (1 - agentSplitRate) + fastDeliveryFee).toFixed(2));
   }
   const profit = agentCommission + adminCommission;
 
@@ -473,6 +541,8 @@ export async function POST(request: NextRequest) {
     admin_commission: adminCommission,
     agent_commission: agentCommission,
     agent_id: agentId,
+    refund_phone: refundPhone ?? null,
+    refund_network: refundNetwork ?? null,
     status: "pending",
   });
 
@@ -490,39 +560,174 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Append every new order to the permanent refund log immediately
+  appendToRefundLog({
+    id: paystackRef,
+    reference: paystackRef,
+    customer_name: name,
+    customer_phone: phone,
+    network: bundleMeta.network,
+    bundle_size: bundleMeta.size,
+    amount: chargedAmount,
+    refund_phone: refundPhone ?? null,
+    refund_name: null,
+  }).catch(() => {});
+
   await sendAdminAlert(
+    (fastDelivery ? "⚡ FAST DELIVERY\n" : "") +
     fmtOrder({ ref: paystackRef, network: bundleMeta.network, size: bundleMeta.size, phone, amount: chargedAmount, profit, agentName })
   );
+  mpAlert("🛒 New Order", `${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → ${phone} | GH₵${chargedAmount.toFixed(2)}${agentName ? ` | Agent: ${agentName}` : ""} | Ref: ${paystackRef.slice(-8)}`).catch(() => {});
 
   // SMS to customer immediately after purchase — fire and forget
   sendCustomerSMS(phone, orderReceivedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
 
-  // Mark referral credit as used (fire and forget)
+  // Mark referral credit as used — MUST be awaited so the same credit can't be reused
   if (referralCreditId) {
-    supabase
+    const { error: creditErr } = await supabase
       .from("referral_credits")
       .update({ used: true, used_at: new Date().toISOString(), used_on_reference: paystackRef })
       .eq("id", referralCreditId)
-      .eq("used", false)
-      .then(() => {});
+      .eq("used", false);
+    if (creditErr) {
+      sendAdminAlert(
+        `⚠️ REFERRAL CREDIT NOT MARKED USED\nRef: ${paystackRef}\nPhone: ${phone}\nCredit ID: ${referralCreditId}\nError: ${creditErr.message}\n\nGo to Supabase → referral_credits → set this ID to used=true manually.`
+      ).catch(() => {});
+    }
+  }
+
+  // Clear surcharge now that it has been paid
+  if (pendingSurcharge > 0) {
+    clearSurcharge(phone).catch(() => {});
   }
 
   // Award referral credit to referrer (fire and forget)
   const safeVia = typeof referralVia === "string" ? referralVia.trim() : "";
-  if (safeVia && safeVia !== phone) {
-    supabase
-      .from("referral_credits")
-      .insert({ phone: safeVia, credit_ghc: 1, from_phone: phone })
-      .then(() => {});
+  // Validate referralVia is a plausible Ghana phone number before awarding credit
+  const viaIsValid = /^0[2-5][0-9]{8}$/.test(safeVia);
+  if (safeVia && safeVia !== phone && viaIsValid) {
+    (async () => {
+      // Rate-limit: max 5 credits per referrer per day (prevents bulk promo code farming)
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+      const { count: todayCount } = await supabase.from("referral_credits")
+        .select("id", { count: "exact", head: true })
+        .eq("phone", safeVia)
+        .not("from_phone", "like", "MILESTONE:%")
+        .gte("created_at", todayStart.toISOString());
+      if ((todayCount ?? 0) >= 5) return; // silently skip — abuse prevention
+
+      // Count how many regular credits this referrer has already earned
+      const { count: totalUses } = await supabase
+        .from("referral_credits")
+        .select("id", { count: "exact", head: true })
+        .eq("phone", safeVia)
+        .not("from_phone", "like", "MILESTONE:%");
+
+      const epochPos = (totalUses ?? 0) % 10; // 0–9 position in current 10-use cycle
+
+      // Award GH₵0.20 per referral (down from GH₵1)
+      await supabase.from("referral_credits").insert({ phone: safeVia, credit_ghc: 0.20, from_phone: phone });
+
+      // On the 10th use of each cycle: generate a 20% off promo code for the referrer
+      if (epochPos === 9) {
+        const milestoneCode = `BONUS20-${safeVia.slice(-6)}-${Date.now()}`;
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        try {
+          await supabase.from("promo_codes").insert({
+            code: milestoneCode,
+            discount_type: "percent",
+            discount_value: 20,
+            max_uses: 1,
+            used_count: 0,
+            active: true,
+            expires_at: expiresAt,
+          });
+        } catch { /* promo_codes table may not exist yet */ }
+        try {
+          await supabase.from("referral_credits").insert({
+            phone: safeVia, credit_ghc: 0, from_phone: `MILESTONE:${milestoneCode}`,
+          });
+        } catch { /* ignore */ }
+      }
+    })().catch(() => {});
   }
 
-  // ─── OPTIMISATION 2: Inventor API with 20s timeout + 1 auto-retry ───────
-  const { ok: invOkRaw, status: inventorHttpStatus, body: inventorBody } = await callInventorAPI({
-    network: networkApiName[bundleMeta.network],
-    Phone: phone,
-    Datasize: pricing.sizeGB,
-    reference: paystackRef,
-  });
+  // ─── MASHUP: skip Inventor — admin fulfils manually ─────────────────────
+  if (isMashup) {
+    await supabase
+      .from("orders")
+      .update({ status: "processing", bundle_size: bundleMeta.size, network: bundleMeta.network, customer_name: name })
+      .eq("reference", paystackRef);
+
+    const mashupAlert =
+      `🟡 <b>MASHUP ORDER — SEND DATA MANUALLY</b>\n\n` +
+      `👤 <b>Customer:</b> ${name}\n` +
+      `📱 <b>Phone:</b> <code>${phone}</code>\n` +
+      `📦 <b>Bundle:</b> ${bundleMeta.size}\n` +
+      `💰 <b>Amount Paid:</b> GH₵${chargedAmount.toFixed(2)}\n` +
+      `📎 <b>Ref:</b> <code>${paystackRef}</code>\n\n` +
+      `➡️ Send the bundle to the customer's number then mark the order as completed in the admin panel.`;
+
+    await sendAdminAlert(mashupAlert);
+    await sendAdminBotMessage(mashupAlert, retryKeyboard(paystackRef));
+
+    // WhatsApp alert to admin
+    const waMsg =
+      `🟡 MASHUP ORDER - SEND DATA MANUALLY\n\n` +
+      `Customer: ${name}\n` +
+      `Phone: ${phone}\n` +
+      `Bundle: ${bundleMeta.size}\n` +
+      `Amount Paid: GH${chargedAmount.toFixed(2)}\n` +
+      `Ref: ${paystackRef}\n\n` +
+      `Send the bundle to the customer's number then mark order as completed.`;
+    sendAdminWhatsApp(waMsg).catch(() => {});
+
+    // SMS customer so they know it's being processed
+    sendCustomerSMS(phone, orderReceivedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
+
+    if (agentTelegramChatId) {
+      sendAgentNotification(
+        agentTelegramChatId,
+        `🛒 <b>New Mashup Sale!</b>\n\n` +
+        `📱 ${bundleMeta.size} → <code>${phone}</code>\n` +
+        `💰 Sold for: GH₵${chargedAmount.toFixed(2)}\n` +
+        `💵 Your commission: GH₵${agentCommission.toFixed(2)}\n` +
+        `🔄 Status: Processing (manual delivery)\n` +
+        `📎 Ref: <code>${paystackRef}</code>`
+      ).catch(() => {});
+    }
+
+    processLoyalty(phone, bundleMeta.network, paystackRef).catch(() => {});
+    return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
+  }
+
+  // ─── Number routing: check if this phone is pinned to a specific provider ──
+  // If a rule matches, call ONLY that provider — no fallback chain.
+  const [routingRules, inventorOnRaw, datacityOnRaw, datifyOnRaw] = await Promise.all([
+    getRoutingRules(),
+    isInventorEnabled(),
+    isDatacityEnabled(),
+    isDatifyEnabled(),
+  ]);
+  const pinnedProvider = matchPhone(phone, routingRules);
+
+  // When pinned: override enabled flags so only the pinned provider is called.
+  const inventorOn = pinnedProvider ? pinnedProvider === "inventor" && inventorOnRaw : inventorOnRaw;
+  const datacityOn = pinnedProvider ? pinnedProvider === "datacity" && datacityOnRaw : datacityOnRaw;
+  const datifyOn   = pinnedProvider ? pinnedProvider === "datify"   && datifyOnRaw   : datifyOnRaw;
+
+  if (pinnedProvider) {
+    sendSwiftAlert(`📍 Routing ${phone} → ${pinnedProvider.toUpperCase()} (pinned rule)\nRef: ${paystackRef}`).catch(() => {});
+  }
+
+  const { ok: invOkRaw, status: inventorHttpStatus, body: inventorBody } = inventorOn
+    ? await callInventorAPI({
+        network: networkApiName[bundleMeta.network],
+        Phone: phone,
+        Datasize: pricing.sizeGB,
+        reference: paystackRef,
+      })
+    : { ok: false, status: -1, body: { error: "Inventor disabled" } as Record<string, unknown> };
 
   const inventorLog = `Inventor HTTP ${inventorHttpStatus}: ${JSON.stringify(inventorBody).slice(0, 300)}`;
 
@@ -549,6 +754,9 @@ export async function POST(request: NextRequest) {
     rawInvStatus.includes("dispatch") ||
     rawInvStatus.includes("pending");
 
+  // status -1 = Inventor disabled by admin toggle; status 0 = timed out
+  const inventorDisabled = inventorHttpStatus === -1;
+  const inventorTimedOut = inventorHttpStatus === 0;
   const inventorOk = invOkRaw && !invIsProcessing;
 
   // Process loyalty fire-and-forget — doesn't block response
@@ -614,10 +822,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    await sendAdminAlert(`${fmtDelivered(paystackRef, phone, bundleMeta.network, actualSize)}\n${inventorLog}`);
+    await sendAdminAlert(`${fmtDelivered(paystackRef, phone, bundleMeta.network, actualSize)}\n📡 Provider: Inventor\n${inventorLog}`);
+    mpAlert("✅ Delivered", `${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone} | Ref: ${paystackRef.slice(-8)}`).catch(() => {});
 
-    // SMS to customer after delivery confirmed
-    sendCustomerSMS(phone, orderConfirmedSMS(name, bundleMeta.network, actualSize, phone, paystackRef)).catch(() => {});
 
     // Notify agent on Telegram (fire and forget)
     if (agentTelegramChatId) {
@@ -644,13 +851,106 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
   }
 
-  if (invIsProcessing) {
+  // Extract Inventor error message — needed for fallback alerts
+  const inventorErrorMsg = String(
+    (inventorBody.message as string) ??
+    (inventorBody.error as string) ??
+    (inventorBody.description as string) ??
+    (inventorDisabled ? "Inventor disabled" : "")
+  );
+
+  // ── Check ALL fallback providers BEFORE the processing branch ───────────
+  // This ensures that if DataCity or Datify delivered while Inventor was
+  // still in-flight or disabled, we complete immediately rather than waiting.
+
+  // Inventor failed → try DataCity
+  const dcRes = datacityOn
+    ? await datacityPurchase(bundleMeta.network, phone, pricing.sizeGB)
+    : { success: false as const, error: "DataCity disabled" };
+
+  if (dcRes.success) {
+    await supabase.from("orders").update({
+      status: "completed",
+      bundle_size: bundleMeta.size,
+      network: bundleMeta.network,
+      customer_name: name,
+    }).eq("reference", paystackRef);
+
+    if (agentId && agentCommission > 0) await creditAgent(agentId, agentCommission, chargedAmount);
+
+    sendAdminAlert(
+      `✅ <b>DELIVERED VIA DATACITY</b>\n\n` +
+      `👤 ${name} · <code>${phone}</code>\n` +
+      `📦 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} · GH₵${chargedAmount.toFixed(2)}\n` +
+      `📡 Provider: DataCity\n` +
+      `📎 Paystack: <code>${paystackRef}</code>\n` +
+      `🔗 DataCity ref: <code>${dcRes.reference}</code>\n` +
+      `⚠️ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}`
+    ).catch(() => {});
+
+
+    if (agentTelegramChatId) {
+      sendAgentNotification(agentTelegramChatId,
+        `🛒 <b>New Sale!</b>\n\n📱 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → <code>${phone}</code>\n` +
+        `💰 GH₵${chargedAmount.toFixed(2)} · Commission: GH₵${agentCommission.toFixed(2)}\n✅ Delivered via DataCity\n📎 <code>${paystackRef}</code>`
+      ).catch(() => {});
+    }
+
+    return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
+  }
+
+  // DataCity timed out → stop here, don't try Datify (might still deliver)
+  if (dcRes.timedOut) {
+    await supabase.from("orders").update({ status: "processing", bundle_size: bundleMeta.size, network: bundleMeta.network, customer_name: name }).eq("reference", paystackRef);
+    await sendAdminAlert(`⏳ ORDER PROCESSING\nRef: ${paystackRef}\nPhone: ${phone}\n${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\n⚠️ DataCity timed out — order left as processing`);
+    return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
+  }
+
+  // DataCity also rejected → try Datify
+  const dtRes = datifyOn
+    ? await datifyPurchase(bundleMeta.network, phone, pricing.sizeGB)
+    : { success: false as const, error: "Datify disabled" };
+
+  if (dtRes.success) {
+    await supabase.from("orders").update({
+      status: "completed",
+      bundle_size: bundleMeta.size,
+      network: bundleMeta.network,
+      customer_name: name,
+    }).eq("reference", paystackRef);
+
+    if (agentId && agentCommission > 0) await creditAgent(agentId, agentCommission, chargedAmount);
+
+    sendAdminAlert(
+      `✅ <b>DELIVERED VIA DATIFY</b>\n\n` +
+      `👤 ${name} · <code>${phone}</code>\n` +
+      `📦 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} · GH₵${chargedAmount.toFixed(2)}\n` +
+      `📡 Provider: Datify\n` +
+      `📎 Paystack: <code>${paystackRef}</code>\n` +
+      `🔗 Datify ref: <code>${dtRes.reference}</code>\n` +
+      `⚠️ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}\n` +
+      `⚠️ DataCity: ${dcRes.error ?? "failed"}`
+    ).catch(() => {});
+
+
+    if (agentTelegramChatId) {
+      sendAgentNotification(agentTelegramChatId,
+        `🛒 <b>New Sale!</b>\n\n📱 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → <code>${phone}</code>\n` +
+        `💰 GH₵${chargedAmount.toFixed(2)} · Commission: GH₵${agentCommission.toFixed(2)}\n✅ Delivered via Datify\n📎 <code>${paystackRef}</code>`
+      ).catch(() => {});
+    }
+
+    return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
+  }
+
+  // All 3 failed — check if Inventor is still in-flight
+  if (!inventorDisabled && (invIsProcessing || inventorTimedOut)) {
     await supabase
       .from("orders")
       .update({ status: "processing", bundle_size: actualSize, network: bundleMeta.network, customer_name: name })
       .eq("reference", paystackRef);
     await sendAdminAlert(
-      `⏳ ORDER PROCESSING\nRef: ${paystackRef}\nPhone: ${phone}\n${bundleMeta.network.toUpperCase()} ${actualSize}\n${inventorLog}`
+      `⏳ ORDER PROCESSING\nRef: ${paystackRef}\nPhone: ${phone}\n${bundleMeta.network.toUpperCase()} ${actualSize}\n${inventorTimedOut ? "⚠️ Inventor timed out — order left as processing for monitor to sync" : inventorLog}`
     );
 
     // Deduct wallet for price-mode agents immediately — commission credited when sync confirms delivery
@@ -692,14 +992,28 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
   }
 
-  await supabase.from("orders").update({ status: "failed" }).eq("reference", paystackRef);
+  // All APIs failed — check reason
+  const isBeneficiary = inventorErrorMsg.toLowerCase().includes("beneficiary");
+  const finalStatus = isBeneficiary ? "not_on_list" : "failed";
 
-  const failMsg = `${fmtFailed(paystackRef, phone, bundleMeta.network, bundleMeta.size, pricing.price)}\n\n${inventorLog}`;
-  await sendAdminAlert(failMsg);
-  await sendAdminBotMessage(failMsg, retryKeyboard(paystackRef));
+  await supabase.from("orders")
+    .update({ status: finalStatus, bundle_size: bundleMeta.size, network: bundleMeta.network, customer_name: name })
+    .eq("reference", paystackRef);
 
-  return Response.json(
-    { error: "Bundle delivery failed. Support has been notified. You will be refunded." },
-    { status: 502 }
-  );
+  const bothFailedMsg =
+    `🔴 <b>${isBeneficiary ? "ALL APIS BLOCKED — NOT ON LIST" : "ALL APIS FAILED"}</b>\n\n` +
+    `👤 ${name} · <code>${phone}</code>\n` +
+    `📦 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} · GH₵${chargedAmount.toFixed(2)}\n` +
+    `📎 <code>${paystackRef}</code>\n\n` +
+    `❌ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}\n` +
+    `❌ DataCity: ${dcRes.error ?? "failed"}\n` +
+    `❌ Datify: ${dtRes.error ?? "failed"}\n\n` +
+    `➡️ Deliver manually then mark completed in admin panel.`;
+
+  await sendAdminAlert(bothFailedMsg);
+  await sendAdminBotMessage(bothFailedMsg, retryKeyboard(paystackRef));
+  sendAdminWhatsApp(bothFailedMsg.replace(/<[^>]*>/g, "")).catch(() => {});
+  mpAlert("🔴 Order Failed", `${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → ${phone} | GH₵${chargedAmount.toFixed(2)} | Ref: ${paystackRef.slice(-8)} | Deliver manually`).catch(() => {});
+
+  return Response.json({ success: true, failed: true, reference: paystackRef, network: bundleMeta.network, bundleSize: bundleMeta.size, status: "PROCESSING" });
 }

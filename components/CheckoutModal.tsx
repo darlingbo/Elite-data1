@@ -17,6 +17,7 @@ declare global {
 }
 
 const PLATFORM_FEE_RATE = 0.02;
+const FAST_DELIVERY_FEE = 0.50;
 
 type LoyaltyData = {
   count: number;
@@ -28,6 +29,12 @@ type LoyaltyData = {
 type SuccessState = {
   reference: string;
   loyalty?: LoyaltyData;
+};
+
+type FailedState = {
+  reference: string;
+  network: string;
+  bundleSize: string;
 };
 
 function usePaystackReady() {
@@ -72,13 +79,24 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<SuccessState | null>(null);
+  const [failedOrder, setFailedOrder] = useState<FailedState | null>(null);
+  const [waPhone, setWaPhone] = useState("");
+  const [waNote, setWaNote] = useState("");
+  const [waSending, setWaSending] = useState(false);
+  const [waSubmitted, setWaSubmitted] = useState(false);
   const [referralCredit, setReferralCredit] = useState(0);
   const [creditChecked, setCreditChecked] = useState(false);
+  const [milestoneCode, setMilestoneCode] = useState<string | null>(null);
+  const [referralUsesLeft, setReferralUsesLeft] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [refundPhone, setRefundPhone] = useState("");
+  const [refundNetwork, setRefundNetwork] = useState("mtn");
   const [promoCode, setPromoCode] = useState("");
+  const [fastDelivery, setFastDelivery] = useState(false);
   const [promoApplying, setPromoApplying] = useState(false);
   const [promoResult, setPromoResult] = useState<{ discount: number; code: string; id: string; label: string } | null>(null);
   const [promoError, setPromoError] = useState("");
+  const [surcharge, setSurcharge] = useState(0);
   const paystackReady = usePaystackReady();
   const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -86,7 +104,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const feeAmount = parseFloat((bundle.price * PLATFORM_FEE_RATE).toFixed(2));
   const baseTotal = parseFloat((bundle.price + feeAmount).toFixed(2));
   const promoDiscount = promoResult?.discount ?? 0;
-  const totalAmount = parseFloat(Math.max(baseTotal - referralCredit - promoDiscount, 0).toFixed(2));
+  const totalAmount = parseFloat(Math.max(baseTotal - referralCredit - promoDiscount + surcharge + (fastDelivery ? FAST_DELIVERY_FEE : 0), 0).toFixed(2));
 
   async function applyPromo() {
     if (!promoCode.trim()) return;
@@ -102,23 +120,30 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
     finally { setPromoApplying(false); }
   }
 
-  // Check referral credits when phone is entered
+  // Check referral credits + surcharge when phone is entered
   useEffect(() => {
     const cleaned = phone.replace(/\s/g, "");
     if (!/^0[2-5][0-9]{8}$/.test(cleaned)) {
       setReferralCredit(0);
       setCreditChecked(false);
+      setSurcharge(0);
       return;
     }
     if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current);
     phoneCheckTimer.current = setTimeout(() => {
-      fetch(`/api/referral/check?phone=${encodeURIComponent(cleaned)}`)
-        .then((r) => r.json())
-        .then((data) => {
-          setReferralCredit(data.credits ?? 0);
-          setCreditChecked(true);
-        })
-        .catch(() => {});
+      Promise.all([
+        fetch(`/api/referral/check?phone=${encodeURIComponent(cleaned)}`).then(r => r.json()).catch(() => ({})),
+        fetch(`/api/orders/pending-surcharge?phone=${encodeURIComponent(cleaned)}`).then(r => r.json()).catch(() => ({ surcharge: 0 })),
+      ]).then(([data, sc]) => {
+        setReferralCredit(data.credits ?? 0);
+        setCreditChecked(true);
+        setReferralUsesLeft(data.usesLeft ?? null);
+        setSurcharge(sc.surcharge ?? 0);
+        if (data.milestoneCode && !promoResult) {
+          setPromoCode(data.milestoneCode);
+          setMilestoneCode(data.milestoneCode);
+        }
+      });
     }, 600);
     return () => { if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current); };
   }, [phone]);
@@ -131,6 +156,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
     setError("");
     if (!name.trim()) return setError("Please enter your name.");
     if (!validatePhone(phone)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
+    if (!validatePhone(refundPhone)) return setError("Enter a valid MoMo number for refund purposes (e.g. 0241234567).");
     if (!paystackReady) return setError("Payment is still loading. Please try again in a moment.");
 
     const key = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
@@ -189,8 +215,12 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
               agentCode: agentCode ?? null,
               referralVia: referralVia ?? null,
               applyReferralCredit: referralCredit > 0,
+              fastDelivery: fastDelivery,
               promoCode: promoResult?.code ?? null,
               promoDiscount: promoDiscount > 0 ? promoDiscount : null,
+              surcharge: surcharge > 0 ? surcharge : null,
+              refundPhone: refundPhone.replace(/\s/g, ""),
+              refundNetwork,
             }),
           })
             .then(function(res) { return res.json(); })
@@ -200,7 +230,11 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
                 if (promoResult?.id) {
                   fetch("/api/use-coupon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: promoResult.id }) }).catch(() => {});
                 }
-                setSuccess({ reference: data.reference, loyalty: data.loyalty });
+                if (data.failed) {
+                  setFailedOrder({ reference: data.reference, network: data.network, bundleSize: data.bundleSize });
+                } else {
+                  setSuccess({ reference: data.reference, loyalty: data.loyalty });
+                }
               } else {
                 setError(data.error || "Something went wrong. Please contact support.");
               }
@@ -220,6 +254,91 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
       setLoading(false);
       setError(`Paystack error: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  if (failedOrder) {
+    const shortRef = failedOrder.reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="p-6 text-center border-b border-gray-100">
+            <div className="text-5xl mb-3">❌</div>
+            <h2 className="text-xl font-black text-gray-900 mb-1">Order Failed</h2>
+            <p className="text-sm text-gray-500">We could not deliver your {failedOrder.network.toUpperCase()} {failedOrder.bundleSize}. Please enter your Mobile Money details below and we will refund you.</p>
+          </div>
+
+          <div className="p-6 space-y-4">
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <p className="text-xs text-red-700 font-semibold mb-1">Order Reference</p>
+              <p className="font-mono font-bold text-red-900 text-sm">{shortRef}</p>
+            </div>
+
+            {!waSubmitted ? (
+              <>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Mobile Money Name</label>
+                  <input
+                    type="text"
+                    placeholder="Name on your MoMo account"
+                    value={waPhone}
+                    onChange={e => setWaPhone(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Mobile Money Number</label>
+                  <input
+                    type="tel"
+                    placeholder="e.g. 0241234567"
+                    value={waNote}
+                    onChange={e => setWaNote(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                  />
+                </div>
+
+                <button
+                  onClick={async () => {
+                    if (!waPhone.trim() || !waNote.trim()) return;
+                    setWaSending(true);
+                    await fetch("/api/orders/manual-request", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        reference: failedOrder.reference,
+                        customerPhone: phone,
+                        customerName: name,
+                        network: failedOrder.network,
+                        bundleSize: failedOrder.bundleSize,
+                        refundName: waPhone.trim(),
+                        refundPhone: waNote.trim(),
+                      }),
+                    }).catch(() => {});
+                    setWaSending(false);
+                    setWaSubmitted(true);
+                  }}
+                  disabled={waSending || !waPhone.trim() || !waNote.trim()}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl text-sm disabled:opacity-50"
+                >
+                  {waSending ? "Submitting…" : "Submit Refund Request"}
+                </button>
+              </>
+            ) : (
+              <div className="text-center py-4 space-y-2">
+                <div className="text-4xl mb-2">✅</div>
+                <p className="font-bold text-gray-800">Refund request received!</p>
+                <p className="text-sm text-gray-500">Your refund will be processed within the next <strong>12 hours</strong>.</p>
+                <p className="text-sm text-gray-500">If you do not receive it, please contact our help line.</p>
+              </div>
+            )}
+
+            <button onClick={onClose} className="w-full border border-gray-200 text-gray-500 font-semibold py-2.5 rounded-xl text-sm hover:bg-gray-50">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (success) {
@@ -342,10 +461,22 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
                   <span>−GH₵{referralCredit.toFixed(2)}</span>
                 </div>
               )}
+              {surcharge > 0 && (
+                <div className="flex items-center gap-2 text-xs text-red-600 font-semibold">
+                  <span>⚠️ Outstanding balance</span>
+                  <span>+GH₵{surcharge.toFixed(2)}</span>
+                </div>
+              )}
               {promoResult && (
                 <div className="flex items-center gap-2 text-xs text-purple-600 font-semibold">
                   <span>🏷️ {promoResult.code} ({promoResult.label})</span>
                   <span>−GH₵{promoResult.discount.toFixed(2)}</span>
+                </div>
+              )}
+              {fastDelivery && (
+                <div className="flex items-center gap-2 text-xs text-orange-500 font-semibold">
+                  <span>⚡ Fast delivery</span>
+                  <span>+GH₵{FAST_DELIVERY_FEE.toFixed(2)}</span>
                 </div>
               )}
               <div className={`flex items-center gap-2 text-base font-black ${net.textColor}`}>
@@ -380,6 +511,16 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
             {creditChecked && referralCredit > 0 && (
               <p className="text-xs text-emerald-600 font-semibold mt-1">🎁 GH₵{referralCredit.toFixed(2)} referral credit applied!</p>
             )}
+            {creditChecked && milestoneCode && !promoResult && (
+              <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                <p className="text-xs font-black text-amber-700">🏆 You earned a 20% milestone bonus!</p>
+                <p className="text-xs text-amber-600 mt-0.5">10 people used your referral link. Tap Apply to get 20% off this order.</p>
+                <button onClick={applyPromo} className="mt-1.5 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 px-3 py-1 rounded-md">Apply 20% Off</button>
+              </div>
+            )}
+            {creditChecked && referralUsesLeft !== null && referralUsesLeft > 0 && referralUsesLeft < 10 && (
+              <p className="text-xs text-blue-500 mt-1">🔗 Your referral link: <span className="font-bold">{10 - referralUsesLeft}/10</span> uses · {referralUsesLeft} more to earn 20% off</p>
+            )}
           </div>
 
           {/* Promo code */}
@@ -408,6 +549,51 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
 
           <div className="bg-blue-50 rounded-lg px-3 py-2 text-xs text-blue-700">
             Bundle delivered instantly after payment · Validity: {bundle.validity}
+          </div>
+
+          {/* Fast delivery toggle */}
+          <button
+            type="button"
+            onClick={() => setFastDelivery(v => !v)}
+            className={`w-full flex items-center gap-3 rounded-xl border-2 px-4 py-3 transition-all text-left ${fastDelivery ? "border-orange-400 bg-orange-50" : "border-gray-200 bg-white hover:border-orange-200"}`}
+          >
+            <span className="text-2xl">⚡</span>
+            <div className="flex-1">
+              <p className={`text-sm font-black ${fastDelivery ? "text-orange-600" : "text-gray-700"}`}>Fast Delivery</p>
+              <p className="text-xs text-gray-400">Priority processing · +GH₵0.50</p>
+            </div>
+            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${fastDelivery ? "border-orange-400 bg-orange-400" : "border-gray-300"}`}>
+              {fastDelivery && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+            </div>
+          </button>
+
+          {/* MoMo Refund Number — required */}
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">💳</span>
+              <div>
+                <p className="text-sm font-black text-amber-800">MoMo Refund Number <span className="text-red-500">*</span></p>
+                <p className="text-xs text-amber-600">Required — used to refund you if delivery fails</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <select
+                value={refundNetwork}
+                onChange={e => setRefundNetwork(e.target.value)}
+                className="border border-amber-300 rounded-lg px-2 py-2.5 text-sm font-semibold text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400 shrink-0"
+              >
+                <option value="mtn">MTN MoMo</option>
+                <option value="telecel">Telecel Cash</option>
+                <option value="airteltigo">AirtelTigo Money</option>
+              </select>
+              <input
+                type="tel"
+                placeholder="0241234567"
+                value={refundPhone}
+                onChange={e => setRefundPhone(e.target.value)}
+                className="flex-1 border border-amber-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 text-gray-900 bg-white"
+              />
+            </div>
           </div>
 
           <button onClick={handlePay} disabled={loading || !paystackReady}

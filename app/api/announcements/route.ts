@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabase
     .from("announcements")
-    .select("id, message, target, expires_at, show_from_hour, show_to_hour, created_at")
+    .select("id, message, target, expires_at, show_from_hour, show_to_hour, display_type, link_url, link_text, created_at")
     .eq("active", true)
     .or(orParts)
     .or(`expires_at.is.null,expires_at.gt.${now}`)

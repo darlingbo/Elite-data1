@@ -8,7 +8,7 @@ async function getInventorStatus(reference: string): Promise<{
 }> {
   try {
     const res = await fetch(
-      `${process.env.INVENTOR_API_BASE_URL}/api/developer/order/${encodeURIComponent(reference)}`,
+      `${process.env.INVENTOR_API_BASE_URL}/api/developer/orders/${encodeURIComponent(reference)}`,
       {
         headers: { Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
         signal: AbortSignal.timeout(8000),

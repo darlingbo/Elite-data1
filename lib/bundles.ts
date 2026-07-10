@@ -1,4 +1,4 @@
-export type Network = "mtn" | "telecel" | "airteltigo";
+export type Network = "mtn" | "telecel" | "airteltigo" | "mashup";
 
 export interface Bundle {
   id: string;
@@ -16,6 +16,7 @@ export const networkApiName: Record<Network, string> = {
   mtn: "MTN",
   telecel: "TELECEL",
   airteltigo: "AT ISHARE",
+  mashup: "MASHUP",
 };
 
 // All bundles are managed via the admin panel (bundle_prices table in DB).
@@ -54,5 +55,14 @@ export const networkConfig = {
     borderColor: "border-rose-500",
     bgLight: "bg-rose-50",
     logo: "AT",
+  },
+  mashup: {
+    name: "Mashup",
+    color: "#8b5cf6",
+    bgColor: "bg-purple-500",
+    textColor: "text-purple-600",
+    borderColor: "border-purple-500",
+    bgLight: "bg-purple-50",
+    logo: "MX",
   },
 };

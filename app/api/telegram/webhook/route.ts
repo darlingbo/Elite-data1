@@ -24,6 +24,7 @@ async function answerCb(id: string, text: string) {
 }
 
 const icon: Record<string, string> = { completed: "✅", processing: "🔄", failed: "❌", pending: "⏳" };
+const MOMO_LABELS: Record<string, string> = { mtn: "MTN MoMo", telecel: "Telecel Cash", airteltigo: "AirtelTigo Money" };
 
 async function cmdStatus(chatId: string) {
   const [ordersRes, agentsRes] = await Promise.all([
@@ -486,25 +487,121 @@ async function cmdSend(chatId: string, arg: string) {
   }
 }
 
+async function cmdRefunds(chatId: string) {
+  const { data } = await supabase
+    .from("orders")
+    .select("reference, customer_name, phone, refund_phone, refund_network, network, bundle_size, amount, status")
+    .not("refund_phone", "is", null)
+    .in("status", ["failed", "processing", "pending"])
+    .order("created_at", { ascending: false })
+    .limit(15);
+
+  if (!data?.length) {
+    await reply(chatId, "✅ No failed/pending orders with MoMo numbers on file.\n\nEither all orders completed, or customers haven't filled in their MoMo number yet.");
+    return;
+  }
+
+  const lines = data.map(o =>
+    `${icon[o.status] ?? "❓"} <b>${o.customer_name ?? "Customer"}</b>\n` +
+    `📱 Order phone: <code>${o.phone}</code>\n` +
+    `💳 ${MOMO_LABELS[o.refund_network ?? ""] ?? o.refund_network ?? "MoMo"}: <code>${o.refund_phone}</code>\n` +
+    `📦 ${(o.network ?? "").toUpperCase()} ${o.bundle_size} — GH₵${Number(o.amount).toFixed(2)}\n` +
+    `📎 <code>${(o.reference ?? "").slice(-14)}</code>`
+  ).join("\n\n");
+
+  await reply(chatId,
+    `💳 <b>Pending Refunds — ${data.length} order(s)</b>\n\n${lines}\n\n` +
+    `Tap a number to copy it, then send via MoMo.`
+  );
+}
+
+async function cmdLookup(chatId: string, phone: string) {
+  if (!phone.trim()) {
+    await reply(chatId, "Usage: /lookup [phone]\nExample: /lookup 0241234567\n\nLooks up all orders placed by that number.");
+    return;
+  }
+
+  const cleanPhone = phone.trim();
+  const { data } = await supabase
+    .from("orders")
+    .select("reference, status, network, bundle_size, amount, created_at, agent_id, refund_phone, customer_name")
+    .eq("phone", cleanPhone)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (!data?.length) {
+    await reply(chatId, `📱 No orders found for <code>${cleanPhone}</code>\n\nThis number has never placed an order on Elite Data.`);
+    return;
+  }
+
+  const lines = data.map(o =>
+    `${icon[o.status] ?? "❓"} ${(o.network ?? "").toUpperCase()} ${o.bundle_size} — GH₵${Number(o.amount).toFixed(2)}\n` +
+    `   ${new Date(o.created_at).toLocaleString("en-GH", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })} | ${o.agent_id ? "Via Agent" : "Direct"}\n` +
+    `   <code>${(o.reference ?? "").slice(-14)}</code>` +
+    (o.refund_phone ? `\n   💳 MoMo: <code>${o.refund_phone}</code>` : "")
+  ).join("\n\n");
+
+  const completed = data.filter(o => o.status === "completed").length;
+  const failed = data.filter(o => o.status === "failed").length;
+
+  await reply(chatId,
+    `📱 <b>Orders for ${cleanPhone}</b>\n` +
+    `👤 ${data[0].customer_name ?? "Unknown"} · ${data.length} total · ${completed} completed · ${failed} failed\n\n` +
+    lines
+  );
+}
+
+async function approveAgent(chatId: string, agentId: string) {
+  const { data: agent } = await supabase.from("agents").select("name, phone, email, referral_code").eq("id", agentId).maybeSingle();
+  if (!agent) { await reply(chatId, `❌ Agent not found.`); return; }
+
+  await supabase.from("agents").update({ status: "approved", approved_at: new Date().toISOString() }).eq("id", agentId);
+
+  await reply(chatId,
+    `✅ <b>Agent Approved!</b>\n\n` +
+    `👤 ${agent.name}\n` +
+    `📱 ${agent.phone}\n` +
+    `🔗 Referral code: <code>${agent.referral_code}</code>\n\n` +
+    `They can now log in and start selling.`
+  );
+}
+
+async function rejectAgent(chatId: string, agentId: string) {
+  const { data: agent } = await supabase.from("agents").select("name, phone").eq("id", agentId).maybeSingle();
+  if (!agent) { await reply(chatId, `❌ Agent not found.`); return; }
+
+  await supabase.from("agents").update({ status: "rejected" }).eq("id", agentId);
+
+  await reply(chatId,
+    `❌ <b>Agent Rejected</b>\n\n` +
+    `👤 ${agent.name} (${agent.phone}) has been rejected.\n\n` +
+    `Their application will not be processed.`
+  );
+}
+
 async function cmdHelp(chatId: string) {
   await reply(chatId,
     `👋 <b>Elite Data Admin Bot</b>\n\n` +
     `<b>📦 Orders:</b>\n` +
     `/orders — Last 10 orders\n` +
     `/failed — Failed orders with retry button\n` +
-    `/status — Live stats &amp; profit\n\n` +
+    `/status — Live stats &amp; profit\n` +
+    `/lookup [phone] — All orders for a number\n` +
+    `/refunds — Failed orders with MoMo numbers\n\n` +
     `<b>🔧 Fix &amp; Deliver:</b>\n` +
     `/send [network] [size] [phone] — Manual bundle delivery\n` +
     `/recover [ref] — Recover missed payment &amp; deliver\n` +
     `/retry [ref] — Retry a specific failed order\n` +
     `/sync — Auto-retry all stuck orders\n\n` +
     `<b>👥 Agents:</b>\n` +
-    `/agents — Leaderboard &amp; earnings\n\n` +
+    `/agents — Leaderboard &amp; earnings\n` +
+    `Approve/reject buttons come automatically when someone applies\n\n` +
     `<b>⚡ Examples:</b>\n` +
     `/send mtn 2gb 0241234567\n` +
-    `/recover elite-1779381711689\n` +
+    `/lookup 0241234567\n` +
+    `/refunds\n` +
     `/sync\n\n` +
-    `<b>🔔 Auto alerts:</b> new orders, deliveries, failures, agent applications, auto-retries, agent withdrawals`
+    `<b>🔔 Auto alerts:</b> new orders, deliveries, failures, agent approvals, auto-retries, agent withdrawals`
   );
 }
 
@@ -570,6 +667,12 @@ export async function POST(request: NextRequest) {
       const ref = data.replace("skip_retry:", "");
       await supabase.from("orders").update({ status: "completed" }).eq("reference", ref);
       await reply(chatId, `✅ Marked <code>${ref}</code> as <b>COMPLETED</b> — no re-delivery.`);
+
+    } else if (data?.startsWith("approve_agent:")) {
+      await approveAgent(chatId, data.replace("approve_agent:", ""));
+
+    } else if (data?.startsWith("reject_agent:")) {
+      await rejectAgent(chatId, data.replace("reject_agent:", ""));
     }
 
     return Response.json({ ok: true });
@@ -659,8 +762,14 @@ export async function POST(request: NextRequest) {
     case "/send":
       await cmdSend(chatId, arg);
       break;
+    case "/refunds":
+      await cmdRefunds(chatId);
+      break;
+    case "/lookup":
+      await cmdLookup(chatId, arg);
+      break;
     default:
-      await reply(chatId, `Unknown command. Send /help for the list.\n\nFor advanced features, use the assistant bot.`);
+      await reply(chatId, `Unknown command. Send /help for the full list.`);
   }
 
   return Response.json({ ok: true });

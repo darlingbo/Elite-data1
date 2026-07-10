@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -10,7 +11,7 @@ const navLinks = [
   { href: "/prices", label: "Prices" },
   { href: "/business", label: "Business" },
   { href: "/track", label: "Track Order" },
-
+  { href: "/vouchers", label: "Result Checker" },
 ];
 
 const drawerLinks = [
@@ -56,6 +57,15 @@ const drawerLinks = [
     icon: (
       <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+      </svg>
+    ),
+  },
+  {
+    href: "/vouchers",
+    label: "Result Checker",
+    icon: (
+      <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
       </svg>
     ),
   },
@@ -134,6 +144,11 @@ export default function PublicNav() {
           Buy Data ⚡
         </Link>
 
+        {/* Theme toggle — in the nav bar so it never covers other elements */}
+        <div className="shrink-0">
+          <ThemeToggle />
+        </div>
+
         {/* Mobile hamburger — part of navbar, not floating */}
         <button
           onClick={() => setOpen(true)}
@@ -152,7 +167,7 @@ export default function PublicNav() {
       )}
 
       {/* Slide-out drawer */}
-      <aside className={`fixed top-0 left-0 bottom-0 z-50 w-72 bg-gradient-to-b from-blue-900 to-blue-800 flex flex-col transition-transform duration-300 ${open ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`fixed top-0 left-0 bottom-0 z-50 w-72 bg-linear-to-b from-blue-900 to-blue-800 flex flex-col transition-transform duration-300 ${open ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Header */}
         <div className="px-5 py-5 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">

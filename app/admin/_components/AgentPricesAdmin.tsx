@@ -7,6 +7,7 @@ interface BundleRow {
 }
 interface CustomAgent {
   id: string; name: string; agent_type?: string; total_sales: number;
+  registration_ref?: string | null;
 }
 
 const netBadge: Record<string, { bg: string; color: string }> = {
@@ -38,7 +39,9 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<BundleRow | null>(null);
 
-  const customAgents = allAgents.filter((a) => a.agent_type === "custom_price");
+  const customAgents  = allAgents.filter(a => a.agent_type === "custom_price");
+  const freeAgents    = customAgents.filter(a => a.registration_ref === "FREE");
+  const proAgents     = customAgents.filter(a => a.registration_ref !== "FREE" && a.registration_ref != null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,7 +120,7 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
     if (!addForm.price || isNaN(Number(addForm.price)) || Number(addForm.price) <= 0) return setAddMsg("Valid sell price required.");
     if (!addForm.costPrice || isNaN(Number(addForm.costPrice)) || Number(addForm.costPrice) <= 0) return setAddMsg("Valid cost price required.");
     if (Number(addForm.costPrice) >= Number(addForm.price)) return setAddMsg("Cost price must be less than sell price.");
-    if (addForm.tierPrice && Number(addForm.tierPrice) <= Number(addForm.price)) return setAddMsg("Tier price must be above sell price.");
+    if (addForm.tierPrice && Number(addForm.tierPrice) <= Number(addForm.costPrice)) return setAddMsg("Pro agent price must be above cost price.");
 
     setAddLoading(true);
     const res = await fetch("/api/admin/bundles", {
@@ -187,8 +190,7 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
         <div>
           <h1 className="text-xl font-black text-white">Agent Pricing</h1>
           <p className="text-sm text-slate-500">
-            Edit bundles, prices & set the tier base price for all{" "}
-            <span className="text-purple-400 font-bold">{customAgents.length} custom-price agent{customAgents.length !== 1 ? "s" : ""}</span>
+            Set customer prices, Free agent prices (auto −4%), and Pro agent wholesale prices.
           </p>
         </div>
         <button onClick={() => { setAddOpen((v) => !v); setAddMsg(""); }}
@@ -202,13 +204,19 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         <div className="rounded-xl p-4 border border-[#1e3050]" style={{ background: "#162032" }}>
-          <p className="text-xs text-slate-500 mb-1">Custom Price Agents</p>
-          <p className="text-2xl font-black text-purple-400">{customAgents.length}</p>
+          <p className="text-xs text-slate-500 mb-1">Free Agents</p>
+          <p className="text-2xl font-black text-blue-400">{freeAgents.length}</p>
+          <p className="text-[10px] text-slate-600 mt-0.5">Price: customer −4%</p>
         </div>
         <div className="rounded-xl p-4 border border-[#1e3050]" style={{ background: "#162032" }}>
-          <p className="text-xs text-slate-500 mb-1">Tier Prices Set</p>
+          <p className="text-xs text-slate-500 mb-1">Pro Agents</p>
+          <p className="text-2xl font-black text-purple-400">{proAgents.length}</p>
+          <p className="text-[10px] text-slate-600 mt-0.5">Price: tier table</p>
+        </div>
+        <div className="rounded-xl p-4 border border-[#1e3050]" style={{ background: "#162032" }}>
+          <p className="text-xs text-slate-500 mb-1">Pro Prices Set</p>
           <p className="text-2xl font-black text-white">{Object.keys(tierPrices).length} <span className="text-sm text-slate-500 font-normal">/ {bundles.length}</span></p>
         </div>
         <div className="rounded-xl p-4 border border-[#1e3050]" style={{ background: "#162032" }}>
@@ -223,8 +231,8 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <p className="text-xs text-purple-300 leading-relaxed">
-          <span className="font-bold text-purple-200">Tier Price</span> is the base your custom-price agents see — they add their own markup on top.
-          Your profit = Tier Price − Cost. Agent profit = Their markup − Tier Price. Changes take effect immediately for all agents.
+          <span className="font-bold text-blue-300">Free agents</span> automatically get <b>Customer Price − 4%</b> as their buy price (no setup needed). &nbsp;
+          <span className="font-bold text-purple-200">Pro agents</span> get the <b>Pro Agent Price</b> you set below — they resell at their own chosen price. Changes take effect instantly.
         </p>
       </div>
 
@@ -271,7 +279,7 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
               { label: "Validity", key: "validity", placeholder: "30 days" },
               { label: "Sell Price (GH₵)", key: "price", placeholder: "e.g. 15", type: "number" as const },
               { label: "Cost Price (GH₵)", key: "costPrice", placeholder: "e.g. 11", type: "number" as const },
-              { label: "Tier Price (GH₵)", key: "tierPrice", placeholder: "e.g. 17", type: "number" as const },
+              { label: "Pro Agent Price (GH₵)", key: "tierPrice", placeholder: "e.g. 17", type: "number" as const },
             ].map((f) => (
               <div key={f.label}>
                 <label className={`block text-xs font-semibold mb-1 ${f.key === "tierPrice" ? "text-purple-300" : "text-slate-400"}`}>{f.label}</label>
@@ -312,9 +320,13 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#1e3050] text-xs text-slate-500 uppercase tracking-wider" style={{ background: "#0e1928" }}>
-                {["Network", "Bundle", "Sell Price", "Cost", "Your Profit", "Tier Price", "Agent Profit", "Status", "Actions"].map((h) => (
+                {["Network", "Bundle", "Customer Price", "Your Cost", "Your Profit", "Free Agent Buy Price", "Pro Agent Buy Price", "Status", "Actions"].map((h) => (
                   <th key={h} className="px-4 py-3 text-left font-semibold whitespace-nowrap">
-                    {h === "Tier Price" ? <span className="text-purple-400">{h} ✎</span> : h}
+                    {h === "Free Agent Buy Price"
+                      ? <span className="text-blue-400">{h} <span className="text-blue-600 text-[9px] font-normal">(auto −4%)</span></span>
+                      : h === "Pro Agent Buy Price"
+                      ? <span className="text-purple-400">{h} ✎</span>
+                      : h}
                   </th>
                 ))}
               </tr>
@@ -322,9 +334,9 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
             <tbody>
               {bundles.map((b) => {
                 const nb = netBadge[b.network.toLowerCase()] ?? { bg: "#1e293b", color: "#94a3b8" };
-                const tierPrice = tierPrices[b.id];
-                const adminProfit = b.price - b.costPrice;
-                const agentProfit = tierPrice ? tierPrice - b.price : null;
+                const tierPrice      = tierPrices[b.id];
+                const adminProfit    = b.price - b.costPrice;
+                const freeAgentPrice = parseFloat((b.price * 0.96).toFixed(2));
                 return (
                   <tr key={b.id} className={`border-b border-[#1e3050]/50 last:border-0 transition-colors ${b.active ? "hover:bg-[#1e3050]/30" : "opacity-50 hover:opacity-70"}`}>
                     <td className="px-4 py-3.5">
@@ -340,19 +352,17 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
                         GH₵{adminProfit.toFixed(2)}
                       </span>
                     </td>
+                    {/* Free Agent Buy Price — auto-calculated, read-only */}
                     <td className="px-4 py-3.5">
-                      {tierPrice ? (
+                      <span className="font-bold text-xs text-blue-300 font-mono">GH₵{freeAgentPrice.toFixed(2)}</span>
+                    </td>
+                    {/* Pro Agent Buy Price — admin-set tier price */}
+                    <td className="px-4 py-3.5">
+                      {tierPrice != null ? (
                         <span className="font-bold text-xs text-purple-300 font-mono">GH₵{tierPrice.toFixed(2)}</span>
                       ) : (
                         <span className="text-slate-600 text-xs italic">Not set</span>
                       )}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      {agentProfit !== null ? (
-                        <span className="font-black text-xs" style={{ color: agentProfit > 0 ? "#a78bfa" : "#f87171" }}>
-                          GH₵{agentProfit.toFixed(2)}
-                        </span>
-                      ) : <span className="text-slate-600 text-xs">—</span>}
                     </td>
                     <td className="px-4 py-3.5">
                       <button onClick={() => handleToggleActive(b)} disabled={togglingId === b.id}
@@ -409,7 +419,7 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
               <h3 className="font-black text-white text-lg">Edit Bundle</h3>
             </div>
             <p className="text-xs text-slate-500 mb-4">
-              Sets the base price custom-price agents see. Does <span className="text-white font-bold">not</span> affect commission agents or customer prices.
+              <span className="text-blue-300 font-bold">Free agents</span> auto-get customer price −4%. &nbsp;<span className="text-purple-300 font-bold">Pro agents</span> pay the Pro Agent Price you set here.
             </p>
             <div className="space-y-3">
               {/* Editable: sell price */}
@@ -434,24 +444,29 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
                   style={{ background: "#0e1928" }} />
               </div>
 
-              {/* Editable: tier price */}
+              {/* Editable: pro agent price */}
               <div>
                 <label className="block text-xs font-semibold text-purple-300 mb-1">
-                  Tier Price (GH₵) — <span className="text-slate-500 font-normal">what custom-price agents pay as their base</span>
+                  Pro Agent Price (GH₵) — <span className="text-slate-500 font-normal">wholesale price Pro agents pay you</span>
                 </label>
                 <input type="number" step="0.01" min="0.01" value={editPrice.tierPrice}
                   onChange={(e) => setEditPrice((p) => ({ ...p, tierPrice: e.target.value }))}
                   className="w-full rounded-lg px-3 py-2.5 text-sm text-white border border-purple-700/60 focus:outline-none focus:border-purple-500"
                   style={{ background: "#0e1928" }} />
+                {editPrice.price && !isNaN(parseFloat(editPrice.price)) && (
+                  <p className="text-xs text-blue-400 mt-1.5">
+                    Free agent price (auto): GH₵{(parseFloat(editPrice.price) * 0.96).toFixed(2)} <span className="text-slate-600">(customer −4%)</span>
+                  </p>
+                )}
               </div>
               {editPrice.price && editPrice.costPrice && !isNaN(parseFloat(editPrice.price)) && !isNaN(parseFloat(editPrice.costPrice)) && parseFloat(editPrice.price) > parseFloat(editPrice.costPrice) && (
                 <div className="rounded-lg px-3 py-2 text-xs space-y-1" style={{ background: "rgba(139,92,246,0.08)" }}>
                   <p className="text-green-400">
-                    Platform margin: GH₵{(parseFloat(editPrice.price) - parseFloat(editPrice.costPrice)).toFixed(2)}
+                    Platform margin on direct sales: GH₵{(parseFloat(editPrice.price) - parseFloat(editPrice.costPrice)).toFixed(2)}
                   </p>
                   {editPrice.tierPrice && !isNaN(parseFloat(editPrice.tierPrice)) && parseFloat(editPrice.tierPrice) > parseFloat(editPrice.costPrice) && (
                     <p className="text-purple-300">
-                      Your profit at tier price: GH₵{(parseFloat(editPrice.tierPrice) - parseFloat(editPrice.costPrice)).toFixed(2)}
+                      Your profit on Pro agent sale: GH₵{(parseFloat(editPrice.tierPrice) - parseFloat(editPrice.costPrice)).toFixed(2)}
                     </p>
                   )}
                 </div>

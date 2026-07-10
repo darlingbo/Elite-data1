@@ -49,28 +49,28 @@ export async function PATCH() {
 
   if (!due?.length) return Response.json({ processed: 0 });
 
-  const apiKey = process.env.AT_API_KEY;
+  const apiKey   = process.env.AT_API_KEY;
   const username = process.env.AT_USERNAME;
   if (!apiKey || !username) return Response.json({ error: "SMS not configured" }, { status: 500 });
 
-  let processed = 0;
-  for (const job of due) {
-    const phones: string[] = job.phones ?? [];
-    const normalised = phones.map((p: string) => {
+  function normalizePhones(phones: string[]): string {
+    return phones.map((p: string) => {
       const d = p.replace(/\D/g, "");
       if (d.startsWith("233")) return `+${d}`;
       if (d.startsWith("0")) return `+233${d.slice(1)}`;
       return `+${d}`;
     }).join(",");
+  }
 
-    const body = new URLSearchParams({ username, to: normalised, message: job.message });
+  let processed = 0;
+  for (const job of due) {
+    const body = new URLSearchParams({ username, to: normalizePhones(job.phones ?? []), message: job.message });
     const res = await fetch("https://api.africastalking.com/version1/messaging", {
       method: "POST",
       headers: { apiKey, "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body: body.toString(),
-    });
-    const status = res.ok ? "sent" : "failed";
-    await supabase.from("sms_scheduled").update({ status }).eq("id", job.id);
+    }).catch(() => null);
+    await supabase.from("sms_scheduled").update({ status: res?.ok ? "sent" : "failed" }).eq("id", job.id);
     processed++;
   }
   return Response.json({ processed });

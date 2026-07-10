@@ -3,7 +3,8 @@ import { headers } from "next/headers";
 import PublicNav from "@/components/PublicNav";
 import Footer from "@/components/Footer";
 import WhatsAppButton from "@/components/WhatsAppButton";
-import ChatWidget from "@/components/ChatWidget";
+import WelcomePopup from "@/components/WelcomePopup";
+import ThemeToggle from "@/components/ThemeToggle";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,6 +18,12 @@ export const metadata: Metadata = {
   ],
   metadataBase: new URL("https://www.elitedata1.com"),
   alternates: { canonical: "/" },
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Elite Data",
+  },
   openGraph: {
     title: "Elite Data — Cheap Data Bundles in Ghana",
     description: "MTN, Telecel & AirtelTigo bundles at the best prices. Instant delivery, secure payment.",
@@ -42,14 +49,23 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en">
+      <head>
+        <meta name="theme-color" content="#3b82f6" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <link rel="apple-touch-icon" href="/logo.png" />
+      </head>
       <body className="min-h-screen flex flex-col bg-gray-50 text-gray-900">
         {!isStandalone && <PublicNav />}
         <main className="flex-1">{children}</main>
         {!isStandalone && <Footer />}
         {!isStandalone && <WhatsAppButton />}
-        {!isStandalone && <ChatWidget />}
-        {/* Aura AI chat widget */}
-        <script src="https://my-ai-backend-itf0.onrender.com/widget.js?biz=elitedata" async />
+        {!isStandalone && <WelcomePopup />}
+        {/* On standalone pages (admin/agent) the nav is absent so we float the toggle */}
+        {isStandalone && (
+          <div style={{ position: "fixed", top: 14, right: 16, zIndex: 99999 }}>
+            <ThemeToggle />
+          </div>
+        )}
       </body>
     </html>
   );

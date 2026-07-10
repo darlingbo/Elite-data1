@@ -12,7 +12,10 @@ export async function POST(req: NextRequest) {
     .eq("active", true)
     .maybeSingle();
 
-  if (error || !data) return Response.json({ error: "Invalid promo code" }, { status: 404 });
+  if (error?.code === "42P01") {
+    return Response.json({ error: "Promo code system not set up yet. Ask admin to visit the Coupons tab to initialise." }, { status: 500 });
+  }
+  if (error || !data) return Response.json({ error: "Invalid or expired promo code" }, { status: 404 });
 
   if (data.expires_at && new Date(data.expires_at) < new Date())
     return Response.json({ error: "This promo code has expired" }, { status: 400 });

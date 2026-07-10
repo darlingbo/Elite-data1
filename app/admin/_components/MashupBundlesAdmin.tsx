@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 const BG = "#0b1120", CARD = "#111827", BORDER = "#1f2937";
 const inp = "w-full rounded-xl px-3 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500";
 
-interface Bundle { id: string; name: string; data_value: number; data_unit: string; minutes: number; price: number; cost_price: number; active: boolean; created_at: string }
+interface Bundle { id: string; name: string; data_value: number; data_unit: string; minutes: number; price: number; cost_price: number; active: boolean; network: string; created_at: string }
 
 const SQL = `CREATE TABLE IF NOT EXISTS mashup_bundles (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -15,13 +15,16 @@ const SQL = `CREATE TABLE IF NOT EXISTS mashup_bundles (
   price numeric NOT NULL,
   cost_price numeric NOT NULL DEFAULT 0,
   active boolean NOT NULL DEFAULT true,
+  network text NOT NULL DEFAULT 'airteltigo',
   created_at timestamp with time zone DEFAULT now()
-);`;
+);
+-- If table already exists, add the column:
+ALTER TABLE mashup_bundles ADD COLUMN IF NOT EXISTS network text NOT NULL DEFAULT 'mtn';`;
 
 export default function MashupBundlesAdmin() {
   const [bundles, setBundles] = useState<Bundle[]>([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ name: "", data_value: "", data_unit: "GB", minutes: "0", price: "", cost_price: "" });
+  const [form, setForm] = useState({ name: "", data_value: "", data_unit: "GB", minutes: "0", price: "", cost_price: "", network: "mtn" });
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
@@ -39,11 +42,11 @@ export default function MashupBundlesAdmin() {
 
   async function save() {
     setSaving(true);
-    const body = { name: form.name, data_value: parseFloat(form.data_value), data_unit: form.data_unit, minutes: parseInt(form.minutes), price: parseFloat(form.price), cost_price: parseFloat(form.cost_price || "0") };
+    const body = { name: form.name, data_value: parseFloat(form.data_value), data_unit: form.data_unit, minutes: parseInt(form.minutes), price: parseFloat(form.price), cost_price: parseFloat(form.cost_price || "0"), network: form.network };
     const method = editId ? "PATCH" : "POST";
     const payload = editId ? { id: editId, ...body } : body;
     const r = await fetch("/api/admin/mashup-bundles", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    if (r.ok) { toast3(editId ? "Updated!" : "Bundle added!"); setForm({ name: "", data_value: "", data_unit: "GB", minutes: "0", price: "", cost_price: "" }); setEditId(null); load(); }
+    if (r.ok) { toast3(editId ? "Updated!" : "Bundle added!"); setForm({ name: "", data_value: "", data_unit: "GB", minutes: "0", price: "", cost_price: "", network: "mtn" }); setEditId(null); load(); }
     else { const d = await r.json(); toast3(d.error ?? "Failed"); }
     setSaving(false);
   }
@@ -61,7 +64,7 @@ export default function MashupBundlesAdmin() {
 
   function startEdit(b: Bundle) {
     setEditId(b.id);
-    setForm({ name: b.name, data_value: String(b.data_value), data_unit: b.data_unit, minutes: String(b.minutes), price: String(b.price), cost_price: String(b.cost_price) });
+    setForm({ name: b.name, data_value: String(b.data_value), data_unit: b.data_unit, minutes: String(b.minutes), price: String(b.price), cost_price: String(b.cost_price), network: b.network ?? "mashup" });
   }
 
   if (loading) return <div className="flex items-center justify-center py-32"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
@@ -83,16 +86,25 @@ export default function MashupBundlesAdmin() {
       <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
         <h2 className="font-bold text-white mb-4">{editId ? "Edit Bundle" : "+ Add Bundle"}</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-          {[["Bundle Name", "name", "e.g. MTN 2GB + 20min"], ["Data (GB)", "data_value", "2"], ["Minutes", "minutes", "20"], ["Sell Price (GH₵)", "price", "9.50"], ["Cost Price (GH₵)", "cost_price", "8.30"]].map(([label, key, ph]) => (
+          {[["Bundle Name", "name", "e.g. Special 2GB"], ["Data Value", "data_value", "2"], ["Minutes", "minutes", "0"], ["Sell Price (GH₵)", "price", "9.50"], ["Cost Price (GH₵)", "cost_price", "8.30"]].map(([label, key, ph]) => (
             <div key={key}>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">{label}</label>
               <input className={inp} style={{ background: BG, borderColor: BORDER }} placeholder={ph}
                 value={(form as Record<string, string>)[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
             </div>
           ))}
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Delivers via</label>
+            <select className={inp} style={{ background: BG, borderColor: BORDER }} value={form.network} onChange={e => setForm(f => ({ ...f, network: e.target.value }))}>
+              <option value="mashup">Mashup / Combo (sends MASHUP to Inventor)</option>
+              <option value="mtn">MTN</option>
+              <option value="airteltigo">AirtelTigo (AT ISHARE)</option>
+              <option value="telecel">Telecel</option>
+            </select>
+          </div>
         </div>
         <div className="flex gap-3">
-          {editId && <button onClick={() => { setEditId(null); setForm({ name: "", data_value: "", data_unit: "GB", minutes: "0", price: "", cost_price: "" }); }} className="border text-slate-400 font-semibold py-2.5 px-5 rounded-xl text-sm hover:text-white" style={{ borderColor: BORDER }}>Cancel</button>}
+          {editId && <button onClick={() => { setEditId(null); setForm({ name: "", data_value: "", data_unit: "GB", minutes: "0", price: "", cost_price: "", network: "mtn" }); }} className="border text-slate-400 font-semibold py-2.5 px-5 rounded-xl text-sm hover:text-white" style={{ borderColor: BORDER }}>Cancel</button>}
           <button onClick={save} disabled={saving || !form.name || !form.data_value || !form.price}
             className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-50"
             style={{ background: saving ? "#334155" : "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
@@ -115,7 +127,7 @@ export default function MashupBundlesAdmin() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-xs text-slate-500 uppercase tracking-wider" style={{ background: BG, borderColor: BORDER }}>
-                  {["Bundle", "Data", "Minutes", "Sell Price", "Cost", "Profit", "Status", "Actions"].map(h => (
+                  {["Bundle", "Delivers via", "Data", "Minutes", "Sell Price", "Cost", "Profit", "Status", "Actions"].map(h => (
                     <th key={h} className="px-4 py-3 text-left font-semibold">{h}</th>
                   ))}
                 </tr>
@@ -127,6 +139,14 @@ export default function MashupBundlesAdmin() {
                   return (
                     <tr key={b.id} className="border-b last:border-0 hover:bg-white/[0.02]" style={{ borderColor: BORDER }}>
                       <td className="px-4 py-3.5 font-semibold text-white">{b.name}</td>
+                      <td className="px-4 py-3.5">
+                        <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{
+                          background: b.network === "mtn" ? "rgba(245,158,11,0.15)" : b.network === "telecel" ? "rgba(239,68,68,0.15)" : b.network === "mashup" ? "rgba(139,92,246,0.15)" : "rgba(59,130,246,0.15)",
+                          color: b.network === "mtn" ? "#f59e0b" : b.network === "telecel" ? "#ef4444" : b.network === "mashup" ? "#a78bfa" : "#60a5fa"
+                        }}>
+                          {b.network === "mtn" ? "MTN" : b.network === "telecel" ? "Telecel" : b.network === "mashup" ? "MASHUP" : "AT ISHARE"}
+                        </span>
+                      </td>
                       <td className="px-4 py-3.5 text-slate-300">{b.data_value}{b.data_unit}</td>
                       <td className="px-4 py-3.5 text-slate-300">{b.minutes} min</td>
                       <td className="px-4 py-3.5 font-bold text-white">GH₵{Number(b.price).toFixed(2)}</td>

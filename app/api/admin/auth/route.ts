@@ -34,7 +34,9 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 async function verifyAdminPassword(password: string): Promise<boolean> {
-  // Check DB-stored hash first (set via Change Password feature)
+  const sessionToken = process.env.ADMIN_SESSION_TOKEN ?? ""; // used as hash salt below
+
+  // Check DB-stored hash first (set via Change Password / Reset Password feature)
   try {
     const { data } = await supabase
       .from("system_settings")
@@ -42,7 +44,7 @@ async function verifyAdminPassword(password: string): Promise<boolean> {
       .eq("key", "admin_password_hash")
       .maybeSingle();
     if (data && (data as { value: string }).value) {
-      const salt = process.env.ADMIN_SESSION_TOKEN ?? "elite-data-salt";
+      const salt = sessionToken || "elite-data-salt";
       const candidateHash = createHash("sha256").update(salt + password).digest("hex");
       const storedHash = (data as { value: string }).value;
       try {

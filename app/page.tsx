@@ -75,12 +75,12 @@ export default function Home() {
           <p className="text-blue-100 text-lg md:text-xl mb-8 max-w-xl mx-auto">
             MTN, Telecel &amp; AirtelTigo bundles at the lowest prices. Delivered in minutes. No account needed.
           </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
-            <Link href="/buy" className="bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-8 py-4 rounded-xl text-lg transition-all shadow-lg hover:shadow-yellow-400/30 hover:-translate-y-0.5">
+          <div className="flex flex-col items-center gap-3 mb-8">
+            <Link href="/buy" className="bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-8 py-4 rounded-xl text-lg transition-all shadow-lg hover:shadow-yellow-400/30 hover:-translate-y-0.5 w-full sm:w-auto text-center">
               Buy Data Now ⚡
             </Link>
-            <Link href="/prices" className="bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-4 rounded-xl transition-colors border border-white/30 backdrop-blur">
-              View All Prices
+            <Link href="/vouchers" className="bg-white/10 hover:bg-white/20 text-white font-black px-6 py-4 rounded-xl transition-colors border border-white/30 backdrop-blur w-full sm:w-auto text-center">
+              📋 Result Checker Vouchers
             </Link>
           </div>
           <div className="flex flex-wrap justify-center gap-4 text-sm text-blue-200">
@@ -127,6 +127,25 @@ export default function Home() {
                 </span>
               </Link>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Result Checker Vouchers banner */}
+      <section className="py-10 px-4 bg-gray-50">
+        <div className="max-w-5xl mx-auto">
+          <div className="rounded-2xl bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-700 p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-lg">
+            <div className="flex items-center gap-5">
+              <div className="text-5xl shrink-0">📋</div>
+              <div>
+                <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-1">Ghana Education Service</p>
+                <h2 className="text-white font-black text-xl md:text-2xl leading-tight">BECE &amp; WASSCE Result Checker Vouchers</h2>
+                <p className="text-blue-200 text-sm mt-1">Buy your result checker PIN instantly · Delivered via SMS · GH₵18 each</p>
+              </div>
+            </div>
+            <Link href="/vouchers" className="shrink-0 bg-white hover:bg-gray-100 text-indigo-700 font-black px-8 py-3.5 rounded-xl transition-colors shadow-lg whitespace-nowrap text-sm">
+              Buy Voucher →
+            </Link>
           </div>
         </div>
       </section>

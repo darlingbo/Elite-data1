@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { supabase } from "@/lib/supabase";
-import { sendAdminAlert } from "@/lib/telegram";
+import { sendAdminAlert, agentApprovalKeyboard } from "@/lib/telegram";
 
-const PRO_FEE_GHC = 50;
+const PRO_FEE_GHC = 40;
 
 async function generateUniqueReferralCode(name: string): Promise<string> {
   const prefix = name.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, "X");
@@ -103,13 +103,19 @@ export async function POST(request: NextRequest) {
     total_revenue: 0,
   };
 
-  const { error: err1 } = await supabase.from("agents").insert(insertPayload);
+  const { data: inserted, error: err1 } = await supabase.from("agents").insert(insertPayload).select("id").maybeSingle();
 
   if (!err1) {
     if (plan === "pro") {
-      await sendAdminAlert(`⚡ <b>New Pro Agent Registered</b>\n\n👤 ${name.trim()}\n📧 ${email.trim()}\n📞 ${phone.trim()}\n🔗 Code: <code>${referral_code}</code>\n💰 Paid GH₵${PRO_FEE_GHC}\n📎 Ref: ${paystackRef}`);
+      await sendAdminAlert(
+        `⚡ <b>New Pro Agent Registered</b>\n\n👤 ${name.trim()}\n📧 ${email.trim()}\n📞 ${phone.trim()}\n🔗 Code: <code>${referral_code}</code>\n💰 Paid GH₵${PRO_FEE_GHC}\n📎 Ref: ${paystackRef}`
+      );
     } else {
-      await sendAdminAlert(`📋 <b>New Free Agent Application</b>\n\n👤 ${name.trim()}\n📧 ${email.trim()}\n📞 ${phone.trim()}\n🔗 Code: <code>${referral_code}</code>\n⏳ Awaiting your approval`);
+      const agentId = (inserted as { id: string } | null)?.id ?? "";
+      await sendAdminAlert(
+        `📋 <b>New Agent Application</b>\n\n👤 ${name.trim()}\n📧 ${email.trim()}\n📞 ${phone.trim()}\n🔗 Code: <code>${referral_code}</code>\n⏳ Tap below to approve or reject:`,
+        agentId ? agentApprovalKeyboard(agentId) : undefined
+      );
     }
     return Response.json({ success: true, referral_code });
   }

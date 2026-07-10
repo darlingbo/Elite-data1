@@ -91,7 +91,7 @@ export default function AdminLogin() {
       if (msg.includes("cancel") || msg.includes("abort") || msg.includes("NotAllowed")) {
         setError("Cancelled. Try again or use password.");
       } else {
-        setError("Biometric error. Try password instead.");
+        setError("Fingerprint not set up on this device. Log in with password, then set up fingerprint from admin settings.");
       }
     } finally {
       setLoading(false);

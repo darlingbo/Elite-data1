@@ -22,7 +22,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { message, target, expires_at, show_from_hour, show_to_hour } = await request.json();
+  const { message, target, expires_at, show_from_hour, show_to_hour, display_type, link_url, link_text } = await request.json();
   if (!message?.trim()) return Response.json({ error: "Message is required." }, { status: 400 });
   if (!["all", "customers", "agents"].includes(target)) {
     return Response.json({ error: "target must be: all, customers, or agents" }, { status: 400 });
@@ -37,6 +37,9 @@ export async function POST(request: NextRequest) {
       active: true,
       show_from_hour: show_from_hour ?? null,
       show_to_hour: show_to_hour ?? null,
+      display_type: display_type ?? "banner",
+      link_url: link_url?.trim() || null,
+      link_text: link_text?.trim() || null,
     })
     .select()
     .single();

@@ -8,6 +8,9 @@ interface Announcement {
   expires_at: string | null;
   show_from_hour: number | null;
   show_to_hour: number | null;
+  display_type?: "banner" | "popup";
+  link_url?: string | null;
+  link_text?: string | null;
   active: boolean;
   created_at: string;
 }
@@ -36,13 +39,19 @@ CREATE TABLE IF NOT EXISTS announcements (
   expires_at timestamptz,
   show_from_hour integer,
   show_to_hour integer,
+  display_type text DEFAULT 'banner',
+  link_url text,
+  link_text text,
   active boolean DEFAULT true,
   created_at timestamptz DEFAULT now()
 );
 
 -- If the table already exists, add the new columns:
 ALTER TABLE announcements ADD COLUMN IF NOT EXISTS show_from_hour integer;
-ALTER TABLE announcements ADD COLUMN IF NOT EXISTS show_to_hour integer;`;
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS show_to_hour integer;
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS display_type text DEFAULT 'banner';
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS link_url text;
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS link_text text;`;
 
 function timeLeft(expires_at: string | null): string {
   if (!expires_at) return "Never expires";
@@ -69,6 +78,9 @@ export default function AnnouncementsAdmin() {
   const [target, setTarget] = useState<"all" | "customers" | "agents" | "agents_commission" | "agents_custom_price">("all");
   const [duration, setDuration] = useState("168");
   const [hourSchedule, setHourSchedule] = useState<HourSchedule>("always");
+  const [displayType, setDisplayType] = useState<"banner" | "popup">("banner");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkText, setLinkText] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -115,6 +127,9 @@ export default function AnnouncementsAdmin() {
         expires_at,
         show_from_hour: sched.from,
         show_to_hour: sched.to,
+        display_type: displayType,
+        link_url: linkUrl.trim() || null,
+        link_text: linkText.trim() || null,
       }),
     });
     const data = await res.json();
@@ -124,6 +139,9 @@ export default function AnnouncementsAdmin() {
       setDuration("168");
       setTarget("all");
       setHourSchedule("always");
+      setDisplayType("banner");
+      setLinkUrl("");
+      setLinkText("");
       load();
     } else {
       setError(data.error ?? "Failed to post.");
@@ -337,6 +355,51 @@ export default function AnnouncementsAdmin() {
           )}
         </div>
 
+        {/* Display Type */}
+        <div style={{ marginTop: 14 }}>
+          <p style={{ color: "#94a3b8", fontSize: 11, fontWeight: 700, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Display Style</p>
+          <div style={{ display: "flex", gap: 8 }}>
+            {([
+              { id: "banner" as const, icon: "📢", label: "Banner", sub: "Shown at top of page" },
+              { id: "popup" as const,  icon: "💬", label: "Popup",  sub: "Appears when store opens" },
+            ]).map((opt) => (
+              <button key={opt.id} onClick={() => setDisplayType(opt.id)}
+                style={{
+                  flex: 1, padding: "10px 12px", borderRadius: 10, border: "1px solid", cursor: "pointer", textAlign: "left", transition: "all .15s",
+                  borderColor: displayType === opt.id ? "#3b82f6" : "#1e3050",
+                  background: displayType === opt.id ? "#1e3a5f" : "#0e1928",
+                }}>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: displayType === opt.id ? "#60a5fa" : "#94a3b8" }}>{opt.icon} {opt.label}</p>
+                <p style={{ margin: 0, fontSize: 11, color: displayType === opt.id ? "#3b82f6" : "#475569" }}>{opt.sub}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Optional link (button inside banner/popup) */}
+        <div style={{ marginTop: 14 }}>
+          <p style={{ color: "#94a3b8", fontSize: 11, fontWeight: 700, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Button Link (optional)</p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input
+              type="url"
+              placeholder="https://t.me/yourchannel"
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              style={{ flex: 2, minWidth: 180, background: "#0e1928", border: "1px solid #1e3050", borderRadius: 8, padding: "9px 12px", color: "#f1f5f9", fontSize: 13, outline: "none" }}
+            />
+            <input
+              type="text"
+              placeholder='Button label (e.g. "Join Channel")'
+              value={linkText}
+              onChange={(e) => setLinkText(e.target.value)}
+              style={{ flex: 1, minWidth: 140, background: "#0e1928", border: "1px solid #1e3050", borderRadius: 8, padding: "9px 12px", color: "#f1f5f9", fontSize: 13, outline: "none" }}
+            />
+          </div>
+          <p style={{ color: "#475569", fontSize: 11, marginTop: 4 }}>
+            Leave blank for no button. For a Telegram channel: paste the t.me link.
+          </p>
+        </div>
+
         <button onClick={handlePost} disabled={saving || !message.trim()}
           style={{ marginTop: 16, width: "100%", background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", color: "#fff", border: "none", borderRadius: 10, padding: "12px 0", fontWeight: 700, fontSize: 14, cursor: "pointer", opacity: saving || !message.trim() ? 0.6 : 1 }}>
           {saving ? "Posting…" : "📢 Post Announcement"}
@@ -381,13 +444,24 @@ function AnnouncementRow({ a, onToggle, onDelete, deleting }: {
   const tl = TARGET_LABELS[a.target];
   const expired = a.expires_at ? new Date(a.expires_at) < new Date() : false;
   const sched = scheduleLabel(a);
+  const isPopup = a.display_type === "popup";
 
   return (
     <div style={{ padding: "14px 18px", borderBottom: "1px solid #1e3050", display: "flex", gap: 14, alignItems: "flex-start" }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ color: a.active && !expired ? "#f1f5f9" : "#64748b", fontSize: 14, margin: 0, lineHeight: 1.5 }}>{a.message}</p>
+        {a.link_url && (
+          <p style={{ fontSize: 12, color: "#3b82f6", margin: "4px 0 0", wordBreak: "break-all" }}>
+            🔗 {a.link_text || "Button"} → {a.link_url}
+          </p>
+        )}
         <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
           <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: tl.bg, color: tl.color }}>{tl.label}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
+            background: isPopup ? "#2e1065" : "#0e2010",
+            color: isPopup ? "#a855f7" : "#4ade80" }}>
+            {isPopup ? "💬 Popup" : "📢 Banner"}
+          </span>
           {sched && (
             <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: "#292015", color: "#fbbf24" }}>{sched}</span>
           )}

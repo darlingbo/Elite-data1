@@ -46,12 +46,37 @@ const NET_COLOR: Record<string, string> = {
   airteltigo: "#3b82f6",
 };
 
+function getProfitByPeriod(orders: Order[]) {
+  const now = new Date();
+  function startOf(period: "day" | "week" | "month" | "year") {
+    const d = new Date(now);
+    if (period === "day")   { d.setHours(0, 0, 0, 0); }
+    if (period === "week")  { d.setDate(d.getDate() - d.getDay()); d.setHours(0, 0, 0, 0); }
+    if (period === "month") { d.setDate(1); d.setHours(0, 0, 0, 0); }
+    if (period === "year")  { d.setMonth(0, 1); d.setHours(0, 0, 0, 0); }
+    return d;
+  }
+  function calc(period: "day" | "week" | "month" | "year") {
+    const start = startOf(period);
+    const slice = orders.filter(o => (o.status ?? "").toLowerCase() === "completed" && new Date(o.created_at) >= start);
+    return {
+      profit:  slice.reduce((s, o) => s + (Number(o.admin_commission) || 0), 0),
+      revenue: slice.reduce((s, o) => s + (Number(o.amount) || 0), 0),
+      orders:  slice.length,
+    };
+  }
+  return { day: calc("day"), week: calc("week"), month: calc("month"), year: calc("year") };
+}
+
 export default function PnLView({ orders, agents = [] }: { orders: Order[]; agents?: AgentRow[] }) {
   const agentMap = useMemo(() => {
     const m = new Map<string, string>();
     for (const a of agents) m.set(a.id, a.name);
     return m;
   }, [agents]);
+  const [earningPeriod, setEarningPeriod] = useState<"day" | "week" | "month" | "year">("day");
+  const profitPeriods = useMemo(() => getProfitByPeriod(orders), [orders]);
+
   const [ledger, setLedger]     = useState<LedgerEntry[]>([]);
   const [openAmt, setOpenAmt]   = useState("");
   const [closeAmt, setCloseAmt] = useState("");
@@ -136,8 +161,60 @@ export default function PnLView({ orders, agents = [] }: { orders: Order[]; agen
   const hdr  = { padding: "14px 20px", background: "#0e1928", borderBottom: "1px solid #1e3050" };
   const th   = { padding: "10px 14px", color: "#475569", fontWeight: 700 as const, fontSize: 10, textTransform: "uppercase" as const, letterSpacing: "0.06em", whiteSpace: "nowrap" as const };
 
+  const epData   = profitPeriods[earningPeriod];
+  const epLabels: Record<string, string> = { day: "Today", week: "This Week", month: "This Month", year: "This Year" };
+  const epColors: Record<string, string> = { day: "#f59e0b", week: "#3b82f6", month: "#8b5cf6", year: "#22c55e" };
+  const epGrads:  Record<string, string> = { day: "linear-gradient(135deg,#78350f,#d97706)", week: "linear-gradient(135deg,#1e3a8a,#3b82f6)", month: "linear-gradient(135deg,#4c1d95,#8b5cf6)", year: "linear-gradient(135deg,#14532d,#22c55e)" };
+  const epIcons:  Record<string, string> = { day: "☀️", week: "📅", month: "🗓️", year: "🏆" };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* ══════════ EARNINGS BY PERIOD ══════════ */}
+      <div style={{ ...card, overflow: "hidden" }}>
+        <div style={{ ...hdr, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 18 }}>💰</span>
+            <p style={{ color: "#f1f5f9", fontWeight: 800, fontSize: 15, margin: 0 }}>My Earnings</p>
+          </div>
+          {/* Pill tabs */}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: 5, background: "#0a0f1a", border: "1px solid #1e3050", borderRadius: 999, boxShadow: "0 1px 1px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.6)" }}>
+            {(["day", "week", "month", "year"] as const).map(p => (
+              <button key={p} onClick={() => setEarningPeriod(p)} style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                height: 30, padding: "0 14px", borderRadius: 999, fontSize: 13, fontWeight: 600,
+                border: "none", cursor: "pointer",
+                transition: "background 220ms cubic-bezier(.22,1,.36,1), color 220ms cubic-bezier(.22,1,.36,1), box-shadow 220ms cubic-bezier(.22,1,.36,1)",
+                background: earningPeriod === p ? "white" : "transparent",
+                color: earningPeriod === p ? "#0e1116" : "#64748b",
+                boxShadow: earningPeriod === p ? "0 1px 1px rgba(0,0,0,0.15), 0 4px 12px -4px rgba(0,0,0,0.5)" : "none",
+              }}>
+                {p.charAt(0).toUpperCase() + p.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ padding: "20px 20px 16px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ width: 56, height: 56, borderRadius: 18, background: epGrads[earningPeriod], display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0, transition: "background .3s" }}>
+            {epIcons[earningPeriod]}
+          </div>
+          <div>
+            <p style={{ color: "#475569", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 4px" }}>{epLabels[earningPeriod]} · Admin Profit</p>
+            <p style={{ color: epColors[earningPeriod], fontWeight: 900, fontSize: 34, fontFamily: "monospace", margin: 0, transition: "color .3s" }}>+{fmt(epData.profit)}</p>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginLeft: "auto" }}>
+            <div style={{ background: "#0e1928", border: "1px solid #1e3050", borderRadius: 12, padding: "10px 16px", minWidth: 110 }}>
+              <p style={{ color: "#475569", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 4px" }}>Revenue</p>
+              <p style={{ color: "#93c5fd", fontFamily: "monospace", fontWeight: 900, fontSize: 16, margin: 0 }}>{fmt(epData.revenue)}</p>
+            </div>
+            <div style={{ background: "#0e1928", border: "1px solid #1e3050", borderRadius: 12, padding: "10px 16px", minWidth: 110 }}>
+              <p style={{ color: "#475569", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 4px" }}>Orders</p>
+              <p style={{ color: "#f1f5f9", fontFamily: "monospace", fontWeight: 900, fontSize: 16, margin: 0 }}>{epData.orders}</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* ══════════ TODAY ══════════ */}
       <div style={card}>

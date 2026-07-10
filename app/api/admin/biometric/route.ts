@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
-import { supabase } from "@/lib/supabase";
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -13,17 +12,13 @@ import type {
 } from "@simplewebauthn/server";
 
 const RP_NAME = "Elite Data Admin";
-function getRpId() {
-  try {
-    const url = process.env.SITE_URL ?? "https://elitedata1.com";
-    return new URL(url).hostname;
-  } catch { return "elitedata1.com"; }
-}
-function getOrigin() {
-  return process.env.SITE_URL ?? "https://elitedata1.com";
-}
+const RP_ID = "elitedata1.com";
+const VALID_ORIGINS = ["https://www.elitedata1.com", "https://elitedata1.com"];
 const ADMIN_USER_ID = new TextEncoder().encode("elite-admin");
 const CHALLENGE_TTL = 5 * 60 * 1000;
+
+// ── All storage uses httpOnly cookies — no Supabase dependency ───────────────
+// This avoids RLS / anon-key write failures on system_settings.
 
 type StoredCredential = {
   credentialId: string;
@@ -35,48 +30,38 @@ type StoredCredential = {
   createdAt: string;
 };
 
-// Uses system_settings table (same schema as network settings, one table for everything)
-async function getKV(key: string): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("system_settings").select("value").eq("key", key).maybeSingle();
-  if (error) console.error(`[biometric] getKV(${key}) error:`, error.message);
-  return data?.value ?? null;
-}
-
-async function setKV(key: string, value: string): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase
-    .from("system_settings")
-    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
-  if (error) {
-    console.error(`[biometric] setKV(${key}) error:`, error.message);
-    return { ok: false, error: error.message };
-  }
-  return { ok: true };
-}
-
-async function getCredentials(): Promise<StoredCredential[]> {
-  const val = await getKV("biometric_credentials");
-  if (!val) return [];
-  try { return JSON.parse(val) as StoredCredential[]; } catch { return []; }
-}
-
-async function saveCredentials(creds: StoredCredential[]): Promise<{ ok: boolean; error?: string }> {
-  return setKV("biometric_credentials", JSON.stringify(creds));
-}
-
 async function saveChallenge(challenge: string): Promise<void> {
-  await setKV("biometric_challenge", JSON.stringify({ challenge, expiresAt: Date.now() + CHALLENGE_TTL }));
+  const jar = await cookies();
+  jar.set("bm_ch", JSON.stringify({ ch: challenge, exp: Date.now() + CHALLENGE_TTL }), {
+    httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 600,
+  });
 }
 
 async function getAndClearChallenge(): Promise<string | null> {
-  const val = await getKV("biometric_challenge");
-  if (!val) return null;
+  const jar = await cookies();
+  const raw = jar.get("bm_ch")?.value;
+  if (!raw) return null;
   try {
-    const parsed = JSON.parse(val);
-    if (!parsed.challenge || parsed.expiresAt < Date.now()) return null;
-    await setKV("biometric_challenge", JSON.stringify({ challenge: "", expiresAt: 0 }));
-    return parsed.challenge;
+    const { ch, exp } = JSON.parse(raw);
+    jar.delete("bm_ch");
+    if (!ch || exp < Date.now()) return null;
+    return ch as string;
   } catch { return null; }
+}
+
+async function getCredentials(): Promise<StoredCredential[]> {
+  const jar = await cookies();
+  const raw = jar.get("bm_creds")?.value;
+  if (!raw) return [];
+  try { return JSON.parse(raw) as StoredCredential[]; } catch { return []; }
+}
+
+async function saveCredentials(creds: StoredCredential[]): Promise<void> {
+  const jar = await cookies();
+  jar.set("bm_creds", JSON.stringify(creds), {
+    httpOnly: true, secure: true, sameSite: "lax", path: "/",
+    maxAge: 60 * 60 * 24 * 365, // 1 year
+  });
 }
 
 function requireAdminSession(request: NextRequest): boolean {
@@ -86,30 +71,33 @@ function requireAdminSession(request: NextRequest): boolean {
   return session === token;
 }
 
+// Never reflect the request Origin — only trust hardcoded domains
+function getExpectedOrigins(): string[] {
+  return VALID_ORIGINS;
+}
+
+// ── GET ───────────────────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   const action = request.nextUrl.searchParams.get("action");
 
   if (action === "registration-options") {
-    if (!requireAdminSession(request)) {
+    if (!requireAdminSession(request))
       return Response.json({ error: "Unauthorized — please log in first" }, { status: 401 });
-    }
+
     const existingCreds = await getCredentials();
     const options = await generateRegistrationOptions({
       rpName: RP_NAME,
-      rpID: getRpId(),
+      rpID: RP_ID,
       userID: ADMIN_USER_ID,
       userName: "admin",
       userDisplayName: "Elite Data Admin",
       attestationType: "none",
       authenticatorSelection: {
         authenticatorAttachment: "platform",
-        userVerification: "required",
+        userVerification: "preferred",
         residentKey: "preferred",
       },
-      excludeCredentials: existingCreds.map(c => ({
-        id: c.credentialId,
-        transports: c.transports,
-      })),
+      excludeCredentials: existingCreds.map(c => ({ id: c.credentialId, transports: c.transports })),
     });
     await saveChallenge(options.challenge);
     return Response.json(options);
@@ -119,9 +107,9 @@ export async function GET(request: NextRequest) {
     const creds = await getCredentials();
     if (!creds.length) return Response.json({ error: "No credentials registered" }, { status: 404 });
     const options = await generateAuthenticationOptions({
-      rpID: getRpId(),
-      userVerification: "required",
-      allowCredentials: creds.map(c => ({ id: c.credentialId, transports: c.transports })),
+      rpID: RP_ID,
+      userVerification: "preferred",
+      allowCredentials: [], // empty = any passkey on device works
     });
     await saveChallenge(options.challenge);
     return Response.json(options);
@@ -141,6 +129,7 @@ export async function GET(request: NextRequest) {
   return Response.json({ error: "Unknown action" }, { status: 400 });
 }
 
+// ── POST ──────────────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   const action = request.nextUrl.searchParams.get("action");
 
@@ -155,21 +144,19 @@ export async function POST(request: NextRequest) {
       verification = await verifyRegistrationResponse({
         response: body,
         expectedChallenge,
-        expectedOrigin: getOrigin(),
-        expectedRPID: getRpId(),
-        requireUserVerification: true,
+        expectedOrigin: getExpectedOrigins(),
+        expectedRPID: RP_ID,
+        requireUserVerification: false,
       });
     } catch (e) {
       return Response.json({ error: `Verification error: ${String(e)}` }, { status: 400 });
     }
 
-    if (!verification.verified || !verification.registrationInfo) {
+    if (!verification.verified || !verification.registrationInfo)
       return Response.json({ error: "Biometric verification failed." }, { status: 400 });
-    }
 
     const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
     const creds = await getCredentials();
-
     const newCred: StoredCredential = {
       credentialId: credential.id,
       publicKey: Buffer.from(credential.publicKey).toString("base64url"),
@@ -179,12 +166,7 @@ export async function POST(request: NextRequest) {
       transports: body.response?.transports ?? [],
       createdAt: new Date().toISOString(),
     };
-
-    const updated = [...creds.filter(c => c.credentialId !== newCred.credentialId), newCred];
-    const saved = await saveCredentials(updated);
-    if (!saved.ok) {
-      return Response.json({ error: `Could not save credential: ${saved.error}. Run SQL in Supabase: CREATE TABLE IF NOT EXISTS system_settings (key text PRIMARY KEY, value text NOT NULL, updated_at timestamptz DEFAULT now());` }, { status: 500 });
-    }
+    await saveCredentials([...creds.filter(c => c.credentialId !== newCred.credentialId), newCred]);
     return Response.json({ success: true });
   }
 
@@ -195,16 +177,16 @@ export async function POST(request: NextRequest) {
 
     const creds = await getCredentials();
     const matchedCred = creds.find(c => c.credentialId === body.id);
-    if (!matchedCred) return Response.json({ error: "Credential not recognised — re-register in Settings" }, { status: 400 });
+    if (!matchedCred) return Response.json({ error: "Credential not recognised — log in with password and re-register fingerprint" }, { status: 400 });
 
     let verification;
     try {
       verification = await verifyAuthenticationResponse({
         response: body,
         expectedChallenge,
-        expectedOrigin: getOrigin(),
-        expectedRPID: getRpId(),
-        requireUserVerification: true,
+        expectedOrigin: getExpectedOrigins(),
+        expectedRPID: RP_ID,
+        requireUserVerification: false,
         credential: {
           id: matchedCred.credentialId,
           publicKey: Buffer.from(matchedCred.publicKey, "base64url"),
@@ -218,22 +200,19 @@ export async function POST(request: NextRequest) {
 
     if (!verification.verified) return Response.json({ error: "Biometric verification failed." }, { status: 401 });
 
-    const updated = creds.map(c =>
+    // Update counter
+    await saveCredentials(creds.map(c =>
       c.credentialId === matchedCred.credentialId
         ? { ...c, counter: verification.authenticationInfo.newCounter }
         : c
-    );
-    await saveCredentials(updated);
+    ));
 
     const token = process.env.ADMIN_SESSION_TOKEN;
-    if (!token) return Response.json({ error: "ADMIN_SESSION_TOKEN not set in Vercel env vars" }, { status: 500 });
-    const cookieStore = await cookies();
-    cookieStore.set("admin_session", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 5,
+    if (!token) return Response.json({ error: "ADMIN_SESSION_TOKEN not set" }, { status: 500 });
+    const jar = await cookies();
+    jar.set("admin_session", token, {
+      httpOnly: true, secure: process.env.NODE_ENV === "production",
+      sameSite: "lax", path: "/", maxAge: 60 * 60 * 5,
     });
     return Response.json({ success: true });
   }
