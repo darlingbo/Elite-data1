@@ -1,70 +1,38 @@
-import { sendAdminAlert } from "./telegram";
-
-function normalizeGhanaPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.startsWith("233")) return `+${digits}`;
-  if (digits.startsWith("0"))   return `+233${digits.slice(1)}`;
-  return `+${digits}`;
-}
-
+/**
+ * Send an SMS to a customer via Africa's Talking.
+ * Normalises Ghana numbers (024XXXXXXX → +233XXXXXXXX).
+ * Fire-and-forget safe — never throws, always resolves.
+ */
 export async function sendCustomerSMS(phone: string, message: string): Promise<void> {
-  const apiKey   = process.env.AT_API_KEY;
+  const apiKey  = process.env.AT_API_KEY;
   const username = process.env.AT_USERNAME;
+  if (!apiKey || !username) return;
 
-  if (!apiKey || !username) {
-    sendAdminAlert(
-      "📵 SMS NOT WORKING\nAT_API_KEY or AT_USERNAME missing in Vercel env vars.\nAdd:\n• AT_API_KEY\n• AT_USERNAME = Darlingboy99"
-    ).catch(() => {});
-    return;
-  }
+  const digits = phone.replace(/\D/g, "");
+  const normalised = digits.startsWith("233") ? `+${digits}` : digits.startsWith("0") ? `+233${digits.slice(1)}` : `+${digits}`;
 
-  const body = new URLSearchParams({
-    username,
-    to: normalizeGhanaPhone(phone),
-    message,
-    from: "Elitedata1",
-  });
+  const body = new URLSearchParams({ username, to: normalised, message });
+  if (process.env.AT_SENDER_ID) body.set("from", process.env.AT_SENDER_ID);
 
-  try {
-    const res = await fetch("https://api.africastalking.com/version1/messaging", {
-      method: "POST",
-      headers: {
-        apiKey,
-        "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "application/json",
-      },
-      body: body.toString(),
-      signal: AbortSignal.timeout(12_000),
-    });
-    const text = await res.text().catch(() => "");
-    if (!res.ok) {
-      sendAdminAlert(
-        `📵 SMS FAILED\nTo: ${phone}\nStatus: ${res.status}\n${text.slice(0, 300)}`
-      ).catch(() => {});
-    }
-  } catch (err) {
-    sendAdminAlert(`📵 SMS ERROR\nTo: ${phone}\n${String(err).slice(0, 200)}`).catch(() => {});
-  }
-}
-
-function shortRef(reference: string): string {
-  return reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
+  await fetch("https://api.africastalking.com/version1/messaging", {
+    method: "POST",
+    headers: { apiKey, "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    body: body.toString(),
+  }).catch(() => {});
 }
 
 export function orderReceivedSMS(name: string, network: string, size: string, phone: string, reference: string): string {
   const first = (name || "").split(" ")[0] || "Customer";
-  return `Hi ${first}! Your ${network.toUpperCase()} ${size} order has been received. Payment confirmed. Ref: ${shortRef(reference)}. Your data will be delivered to ${phone} shortly. Thank you - EliteData1`;
+  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
+  return `Hi ${first}! Your ${network.toUpperCase()} ${size} data order (Ref: ${shortRef}) has been received. Delivery is in progress to ${phone}. Thank you for choosing Elite Data!`;
+}
+
+export function orderDeliveredSMS(name: string, network: string, size: string, phone: string, reference: string): string {
+  const first = (name || "").split(" ")[0] || "Customer";
+  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
+  return `Hi ${first}! Your ${network.toUpperCase()} ${size} data has been delivered to ${phone}. Ref: ${shortRef}. Thank you for choosing Elite Data!`;
 }
 
 export function orderConfirmedSMS(name: string, network: string, size: string, phone: string, reference: string): string {
-  const first = (name || "").split(" ")[0] || "Customer";
-  return `Hi ${first}! Your ${network.toUpperCase()} ${size} data has been successfully delivered to ${phone}. Ref: ${shortRef(reference)}. Thank you for choosing EliteData1!`;
+  return orderDeliveredSMS(name, network, size, phone, reference);
 }
-
-export function orderFailedSMS(name: string, network: string, size: string, reference: string): string {
-  const first = (name || "").split(" ")[0] || "Customer";
-  return `Hi ${first}! Sorry, your ${network.toUpperCase()} ${size} order (Ref: ${shortRef(reference)}) could not be delivered. Please fill the refund form on our site. Your refund will be processed within 12 hours. - EliteData1`;
-}
-
-// Alias kept for any existing callers
-export const orderDeliveredSMS = orderConfirmedSMS;
