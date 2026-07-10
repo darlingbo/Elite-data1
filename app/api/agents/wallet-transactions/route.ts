@@ -2,8 +2,18 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 
 export async function GET(request: NextRequest) {
-  const agentId = request.nextUrl.searchParams.get("agentId");
-  if (!agentId) return Response.json({ error: "agentId required" }, { status: 400 });
+  const agentId      = request.nextUrl.searchParams.get("agentId");
+  const referralCode = request.nextUrl.searchParams.get("referralCode");
+  if (!agentId || !referralCode) return Response.json({ error: "agentId and referralCode required" }, { status: 400 });
+
+  // Verify ownership before returning financial data
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("id")
+    .eq("id", agentId)
+    .eq("referral_code", referralCode.toUpperCase())
+    .maybeSingle();
+  if (!agent) return Response.json({ error: "Unauthorized." }, { status: 403 });
 
   const { data, error } = await supabase
     .from("agent_wallet_transactions")

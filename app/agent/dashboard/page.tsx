@@ -19,7 +19,7 @@ interface AgentData {
   id: string; name: string; email: string; phone?: string | null; referral_code: string;
   wallet_balance: number; commission_balance: number; paystack_wallet_balance?: number; pending_commission?: number;
   total_sales: number; total_revenue: number;
-  agent_type: "commission" | "custom_price" | null;
+  agent_type: "commission" | "custom_price" | "pro" | null;
   registration_ref?: string | null;
   business_name?: string | null;
   orders: Order[];
@@ -573,7 +573,7 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
       {/* Store link banner */}
       {(() => {
         const origin = typeof window !== "undefined" ? window.location.origin : "https://elitedata1.com";
-        const link = `${origin}/shop/${data.referral_code}`;
+        const link = `${origin}/store/${data.referral_code}`;
         const [copied, setCopied] = useState(false);
         return (
           <div style={{ background: "linear-gradient(135deg,rgba(245,158,11,0.12),rgba(139,92,246,0.08))", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 18, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
@@ -918,7 +918,7 @@ function CustomersPage({ orders }: { orders: Order[] }) {
 function WalletPage({ data, onAddFunds, onWithdraw }: { data: AgentData; onAddFunds: () => void; onWithdraw: () => void }) {
   const [txns, setTxns] = useState<WalletTx[]>([]); const [loading, setLoading] = useState(true);
   useEffect(() => {
-    fetch(`/api/agents/wallet-transactions?agentId=${data.id}`).then(r => r.json()).then(d => { setTxns(d.transactions ?? []); setLoading(false); }).catch(() => setLoading(false));
+    fetch(`/api/agents/wallet-transactions?agentId=${data.id}&referralCode=${encodeURIComponent(data.referral_code)}`).then(r => r.json()).then(d => { setTxns(d.transactions ?? []); setLoading(false); }).catch(() => setLoading(false));
   }, [data.id]);
   const totalDep = txns.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const totalWith = txns.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
@@ -1807,7 +1807,7 @@ function ApiPage({ data }: { data: AgentData }) {
   const siteUrl = typeof window !== "undefined" ? window.location.origin : "https://www.elitedata1.com";
 
   useEffect(() => {
-    fetch(`/api/agents/api-key?agentId=${data.id}`)
+    fetch(`/api/agents/api-key?agentId=${data.id}&referralCode=${encodeURIComponent(data.referral_code)}`)
       .then(r => r.json())
       .then(d => { setApiKey(d.key ?? null); setWalletBalance(Number(d.wallet_balance ?? 0)); })
       .finally(() => setLoading(false));
@@ -2009,7 +2009,7 @@ function AffiliatePage({ data }: { data: AgentData }) {
 
   const totalEarned = (data.commission_balance ?? 0) + (data.paystack_wallet_balance ?? 0);
   const siteUrl = typeof window !== "undefined" ? window.location.origin : "https://elitedata1.com";
-  const storeLink = `${siteUrl}/shop/${data.referral_code}`;
+  const storeLink = `${siteUrl}/store/${data.referral_code}`;
   const isActive = data.referral_code && (data.total_sales ?? 0) > 0;
   const minWithdraw = 30;
 
@@ -2357,111 +2357,452 @@ function SupportPage() {
 
 // ─── Pro Features Page ────────────────────────────────────────────────────────
 function ProPage({ data, onNavigate }: { data: AgentData; onNavigate: (p: Page) => void }) {
-  const isPro = !!(data.registration_ref && data.registration_ref !== "FREE");
+  const isPro = data.agent_type === "pro";
+  const [tab, setTab] = useState<"overview" | "store" | "prices" | "api">("overview");
+  const [upgrading, setUpgrading] = useState(false);
+  const [upgradeMsg, setUpgradeMsg] = useState("");
+  const [upgradeOk, setUpgradeOk] = useState(false);
 
-  const proFeatures = [
-    { icon: "⚡", title: "Lower Reward Thresholds", free: "30 sales/day for 1GB", pro: "20 sales/day for 2GB — double the data, less work" },
-    { icon: "🏷️", title: "Wholesale Data Pricing", free: "4% discount off customer price", pro: "Admin wholesale prices — maximum profit margin" },
-    { icon: "⭐", title: "Verified Seller Badge", free: "No badge", pro: "Gold 'Verified Pro Seller' badge on your storefront" },
-    { icon: "📊", title: "Full Sales Analytics", free: "Basic order history only", pro: "30-day chart, network breakdown, top customers, daily average" },
-    { icon: "💬", title: "Priority WhatsApp Support", free: "General queue (up to 60 min)", pro: "Priority line — response within 5 minutes" },
-    { icon: "💰", title: "Higher Weekly Reward", free: "120 sales/week for 3GB", pro: "70 sales/week for 5GB" },
-    { icon: "🏆", title: "Faster Milestone Rewards", free: "Every 300 sales for 2GB", pro: "Every 150 sales for 3GB" },
-    { icon: "📁", title: "Export Customer Data", free: "View only", pro: "Download full order history as CSV" },
-  ];
+  // Store settings
+  const [shopName, setShopName] = useState(data.business_name ?? data.name ?? "");
+  const [tagline, setTagline] = useState("");
+  const [storeColor, setStoreColor] = useState("#3b82f6");
+  const [storeMsg, setStoreMsg] = useState("");
+  const [savingStore, setSavingStore] = useState(false);
+
+  // Prices
+  const [priceBundles, setPriceBundles] = useState<{ id: string; network: string; size: string; price: number }[]>([]);
+  const [agentPrices, setAgentPrices] = useState<Record<string, number>>({});
+  const [savingPrice, setSavingPrice] = useState<string | null>(null);
+  const [priceMsg, setPriceMsg] = useState("");
+
+  // API key
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
+  const [apiKeyCopied, setApiKeyCopied] = useState(false);
+
+  useEffect(() => {
+    if (isPro && tab === "store") {
+      fetch(`/api/agents/shop?agentId=${data.id}`)
+        .then(r => r.json())
+        .then(d => { if (d.shop_name) setShopName(d.shop_name); if (d.tagline) setTagline(d.tagline ?? ""); if (d.store_color) setStoreColor(d.store_color); })
+        .catch(() => {});
+    }
+    if (isPro && tab === "prices") {
+      fetch(`/api/bundles`).then(r => r.json()).then(d => setPriceBundles(d.bundles ?? [])).catch(() => {});
+      fetch(`/api/agents/prices?agentId=${data.id}`).then(r => r.json()).then(d => {
+        const map: Record<string, number> = {};
+        for (const p of d.prices ?? []) map[p.bundle_id] = Number(p.custom_price);
+        setAgentPrices(map);
+      }).catch(() => {});
+    }
+    if (isPro && tab === "api" && !apiKey) {
+      setApiLoading(true);
+      fetch(`/api/agents/api-key?agentId=${data.id}&referralCode=${data.referral_code}`)
+        .then(r => r.json())
+        .then(d => { if (d.key) setApiKey(d.key); })
+        .catch(() => {})
+        .finally(() => setApiLoading(false));
+    }
+  }, [isPro, tab, data.id, data.referral_code, apiKey]);
+
+  function handleUpgrade() {
+    const ps = (window as unknown as { PaystackPop?: { setup: (o: Record<string, unknown>) => { openIframe: () => void } } }).PaystackPop;
+    if (!ps) { setUpgradeMsg("Payment gateway not ready. Please refresh and try again."); return; }
+    setUpgrading(true); setUpgradeMsg("");
+    try {
+      const handler = ps.setup({
+        key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
+        email: data.email,
+        amount: 10000,
+        currency: "GHS",
+        ref: `pro-upgrade-${data.id}-${Date.now()}`,
+        label: "Pro Agent Upgrade",
+        callback: (response: { reference: string }) => {
+          fetch("/api/agents/upgrade-to-pro", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId: data.id, referralCode: data.referral_code, paystackRef: response.reference }),
+          })
+            .then(r => r.json())
+            .then(d => {
+              if (d.success) { setUpgradeOk(true); setUpgradeMsg("You are now a Pro Agent! Refreshing…"); setTimeout(() => window.location.reload(), 2000); }
+              else { setUpgradeMsg(d.error ?? "Upgrade failed. Contact support."); setUpgrading(false); }
+            })
+            .catch(() => { setUpgradeMsg("Network error. Contact support with your payment reference."); setUpgrading(false); });
+        },
+        onClose: () => setUpgrading(false),
+      });
+      handler.openIframe();
+    } catch (err) { setUpgradeMsg(`Could not open payment: ${String(err)}`); setUpgrading(false); }
+  }
+
+  async function saveStoreSettings() {
+    setSavingStore(true); setStoreMsg("");
+    try {
+      const r = await fetch("/api/agents/shop", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: data.id, shopName, tagline, storeColor, referralCode: data.referral_code }),
+      });
+      const d = await r.json();
+      setStoreMsg(d.success ? "✓ Store settings saved!" : d.error ?? "Failed to save.");
+    } catch { setStoreMsg("Network error."); }
+    finally { setSavingStore(false); }
+  }
+
+  async function savePrice(bundleId: string, price: number, adminPrice: number) {
+    if (price < adminPrice) { setPriceMsg(`Price must be at least GH₵${adminPrice.toFixed(2)} (admin base).`); return; }
+    setSavingPrice(bundleId); setPriceMsg("");
+    try {
+      const r = await fetch("/api/agents/prices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: data.id, bundleId, customPrice: price, active: true, referralCode: data.referral_code }),
+      });
+      const d = await r.json();
+      if (d.success) { setAgentPrices(prev => ({ ...prev, [bundleId]: price })); setPriceMsg("✓ Price saved!"); }
+      else setPriceMsg(d.error ?? "Failed.");
+    } catch { setPriceMsg("Network error."); }
+    finally { setSavingPrice(null); setTimeout(() => setPriceMsg(""), 3000); }
+  }
+
+  const storeUrl = typeof window !== "undefined" ? `${window.location.origin}/store/${data.referral_code}` : `/store/${data.referral_code}`;
+
+  void onNavigate; // suppress unused warning — kept for future nav
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 680 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 720 }}>
       {/* Header */}
-      <div style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)", borderRadius: 20, padding: "32px 28px", position: "relative", overflow: "hidden" }}>
+      <div style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)", borderRadius: 20, padding: "28px 24px", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -20, right: -20, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.06)" }} />
-        <div style={{ position: "absolute", bottom: -30, right: 30, width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }} />
         <div style={{ position: "relative" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-            <span style={{ fontSize: 36 }}>⭐</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+            <span style={{ fontSize: 32 }}>⭐</span>
             <div>
-              <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, margin: 0 }}>Pro Agent Status</p>
-              <p style={{ color: "white", fontSize: 24, fontWeight: 900, margin: 0 }}>{isPro ? "You're a Pro Agent" : "Upgrade to Pro"}</p>
+              <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, margin: 0 }}>Pro Agent</p>
+              <p style={{ color: "white", fontSize: 22, fontWeight: 900, margin: 0 }}>{isPro ? "Pro Plan Active" : "Upgrade to Pro"}</p>
             </div>
           </div>
-          <p style={{ color: "rgba(255,255,255,0.8)", fontSize: 14, margin: "0 0 20px", lineHeight: 1.6 }}>
-            {isPro
-              ? "You have access to all Pro features below. Keep selling to unlock more rewards!"
-              : "Pro agents earn more rewards, get wholesale prices, a verified badge, and priority support. One-time fee of GH₵40."}
-          </p>
           {isPro ? (
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.15)", borderRadius: 10, padding: "8px 16px" }}>
-              <span style={{ color: "#fbbf24", fontSize: 16 }}>✓</span>
-              <span style={{ color: "white", fontWeight: 700, fontSize: 14 }}>Pro Plan Active</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ background: "rgba(255,255,255,0.15)", color: "white", borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 700 }}>✓ Pro Agent</span>
+              <a href={storeUrl} target="_blank" rel="noreferrer" style={{ background: "#fbbf24", color: "#1e1b4b", borderRadius: 8, padding: "6px 14px", fontSize: 13, fontWeight: 800, textDecoration: "none" }}>🏪 View My Store →</a>
             </div>
           ) : (
-            <a href="/agent#register" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#fbbf24", color: "#1e1b4b", textDecoration: "none", borderRadius: 12, padding: "12px 24px", fontSize: 15, fontWeight: 800 }}>
-              ⭐ Upgrade to Pro — GH₵40
-            </a>
+            <div>
+              <p style={{ color: "rgba(255,255,255,0.8)", fontSize: 13, margin: "0 0 16px", lineHeight: 1.6 }}>Set your own prices, get a public store link, and withdraw every day. One-time GH₵100 — never charged again.</p>
+              {upgradeMsg && <p style={{ color: upgradeOk ? "#4ade80" : "#f87171", fontSize: 13, fontWeight: 700, margin: "0 0 12px" }}>{upgradeMsg}</p>}
+              <button onClick={handleUpgrade} disabled={upgrading}
+                style={{ background: "#fbbf24", color: "#1e1b4b", border: "none", borderRadius: 12, padding: "13px 26px", fontSize: 15, fontWeight: 800, cursor: upgrading ? "not-allowed" : "pointer", opacity: upgrading ? 0.7 : 1 }}>
+                {upgrading ? "Opening payment…" : "⭐ Upgrade to Pro — GH₵100"}
+              </button>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Features comparison */}
-      <div style={{ background: M.card, borderRadius: 18, border: `1px solid ${M.border}`, overflow: "hidden" }}>
-        <div style={{ padding: "20px 24px", borderBottom: `1px solid ${M.border}` }}>
-          <p style={{ color: M.text, fontWeight: 800, fontSize: 16, margin: 0 }}>Feature Comparison</p>
-        </div>
-        {/* Table header */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0, background: "rgba(124,58,237,0.08)", padding: "12px 24px", borderBottom: `1px solid ${M.border}` }}>
-          <span style={{ color: M.muted, fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>Feature</span>
-          <span style={{ color: "#60a5fa", fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>Free</span>
-          <span style={{ color: "#a78bfa", fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>⭐ Pro</span>
-        </div>
-        {proFeatures.map((f, i) => (
-          <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0, padding: "16px 24px", borderBottom: i < proFeatures.length - 1 ? `1px solid ${M.border}` : "none", alignItems: "start" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 18 }}>{f.icon}</span>
-              <span style={{ color: M.text, fontSize: 13, fontWeight: 700 }}>{f.title}</span>
-            </div>
-            <p style={{ color: M.muted, fontSize: 12, margin: 0, lineHeight: 1.5, paddingRight: 12 }}>{f.free}</p>
-            <p style={{ color: "#a78bfa", fontSize: 12, fontWeight: 600, margin: 0, lineHeight: 1.5 }}>{f.pro}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Pro-only quick links */}
+      {/* Tabs — shown when Pro */}
       {isPro && (
-        <div style={{ background: M.card, borderRadius: 18, border: `1px solid ${M.border}`, padding: "24px" }}>
-          <p style={{ color: M.text, fontWeight: 800, fontSize: 15, margin: "0 0 16px" }}>Your Pro Benefits — Quick Access</p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {[
-              { icon: "📊", label: "Sales Analytics", page: "dashboard" as Page },
-              { icon: "🎁", label: "Pro Rewards", page: "referrals" as Page },
-              { icon: "💬", label: "Priority Support", href: "https://wa.me/233509794503?text=Hi%2C+I%27m+a+Pro+Agent+and+need+priority+support" },
-              { icon: "🏪", label: "My Store & Prices", page: "affiliate" as Page },
-            ].map((item, i) => (
-              item.href ? (
-                <a key={i} href={item.href} target="_blank" rel="noreferrer"
-                  style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.2)", borderRadius: 12, padding: "14px 18px", textDecoration: "none" }}>
-                  <span style={{ fontSize: 20 }}>{item.icon}</span>
-                  <span style={{ color: M.text, fontWeight: 700, fontSize: 14 }}>{item.label}</span>
-                </a>
-              ) : (
-                <button key={i} onClick={() => onNavigate(item.page!)}
-                  style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.2)", borderRadius: 12, padding: "14px 18px", cursor: "pointer" }}>
-                  <span style={{ fontSize: 20 }}>{item.icon}</span>
-                  <span style={{ color: M.text, fontWeight: 700, fontSize: 14 }}>{item.label}</span>
-                </button>
-              )
-            ))}
+        <div style={{ display: "flex", gap: 8 }}>
+          {([{ key: "overview", label: "Overview" }, { key: "store", label: "🏪 Store Settings" }, { key: "prices", label: "💰 My Prices" }, { key: "api", label: "🔌 API Access" }] as const).map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              style={{ padding: "10px 18px", borderRadius: 10, border: `1px solid ${tab === t.key ? "rgba(124,58,237,0.5)" : M.border}`, background: tab === t.key ? "rgba(124,58,237,0.12)" : M.card, color: tab === t.key ? "#a78bfa" : M.muted, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Overview / feature list */}
+      {(!isPro || tab === "overview") && (
+        <div style={{ background: M.card, borderRadius: 18, border: `1px solid ${M.border}`, overflow: "hidden" }}>
+          <div style={{ padding: "18px 22px", borderBottom: `1px solid ${M.border}` }}>
+            <p style={{ color: M.text, fontWeight: 800, fontSize: 15, margin: 0 }}>What you get with Pro</p>
+          </div>
+          {[
+            { icon: "💰", title: "Set Your Own Prices", desc: "Add any markup on top of admin's base price and earn more per sale." },
+            { icon: "🏪", title: "Public Store Link", desc: "Share your store. Customers buy directly — orders and earnings are yours." },
+            { icon: "📅", title: "Withdraw Every Day", desc: "Mon–Sun, 6AM–6PM. Free agents can only withdraw on weekdays." },
+            { icon: "⬇️", title: "Lower Minimum Withdrawal", desc: "Withdraw from GH₵40 (Free agents: GH₵20 but weekdays only)." },
+            { icon: "🎨", title: "Custom Store Design", desc: "Set your store name, colour, and tagline to match your brand." },
+          ].map((f, i) => (
+            <div key={i} style={{ display: "flex", gap: 14, padding: "16px 22px", borderBottom: i < 4 ? `1px solid ${M.border}` : "none", alignItems: "flex-start" }}>
+              <span style={{ fontSize: 22, flexShrink: 0 }}>{f.icon}</span>
+              <div style={{ flex: 1 }}>
+                <p style={{ color: M.text, fontWeight: 700, fontSize: 13, margin: "0 0 3px" }}>{f.title}</p>
+                <p style={{ color: M.muted, fontSize: 12, margin: 0, lineHeight: 1.5 }}>{f.desc}</p>
+              </div>
+              {isPro && <span style={{ color: "#4ade80", fontSize: 13, fontWeight: 800, flexShrink: 0 }}>✓</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Store Settings tab */}
+      {isPro && tab === "store" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: "20px 22px" }}>
+            <p style={{ color: M.text, fontWeight: 800, fontSize: 14, margin: "0 0 8px" }}>🔗 Your Store Link</p>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ fontFamily: "monospace", color: "#60a5fa", fontSize: 13, background: "rgba(59,130,246,0.08)", padding: "8px 14px", borderRadius: 8, flex: 1, wordBreak: "break-all" }}>{storeUrl}</span>
+              <button onClick={() => navigator.clipboard?.writeText(storeUrl).catch(() => {})}
+                style={{ background: "rgba(59,130,246,0.12)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                📋 Copy
+              </button>
+              <a href={storeUrl} target="_blank" rel="noreferrer"
+                style={{ background: "rgba(124,58,237,0.12)", color: "#a78bfa", border: "1px solid rgba(124,58,237,0.3)", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}>
+                Open →
+              </a>
+            </div>
+          </div>
+          <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: "20px 22px" }}>
+            <p style={{ color: M.text, fontWeight: 800, fontSize: 14, margin: "0 0 18px" }}>✏️ Customize Your Store</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {[["Store Name", shopName, setShopName, "e.g. King Data Shop", 50], ["Tagline", tagline, setTagline, "e.g. Cheapest data in Accra!", 80]].map(([label, val, set, ph, max]) => (
+                <div key={String(label)}>
+                  <p style={{ color: M.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 6px" }}>{String(label)}</p>
+                  <input value={String(val)} onChange={e => (set as (v: string) => void)(e.target.value)} placeholder={String(ph)} maxLength={Number(max)}
+                    style={{ width: "100%", background: M.bg, border: `1px solid ${M.border}`, borderRadius: 10, padding: "11px 14px", color: M.text, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                </div>
+              ))}
+              <div>
+                <p style={{ color: M.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Theme Colour</p>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {["#3b82f6", "#7c3aed", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#0ea5e9"].map(c => (
+                    <button key={c} onClick={() => setStoreColor(c)}
+                      style={{ width: 34, height: 34, borderRadius: 8, background: c, border: storeColor === c ? "3px solid white" : "3px solid transparent", cursor: "pointer", outline: storeColor === c ? `2px solid ${c}` : "none" }} />
+                  ))}
+                </div>
+              </div>
+              {storeMsg && <p style={{ color: storeMsg.startsWith("✓") ? "#4ade80" : M.red, fontSize: 13, fontWeight: 700, margin: 0 }}>{storeMsg}</p>}
+              <button onClick={saveStoreSettings} disabled={savingStore}
+                style={{ background: "linear-gradient(90deg,#7c3aed,#4f46e5)", color: "white", border: "none", borderRadius: 12, padding: "13px 22px", fontSize: 14, fontWeight: 800, cursor: savingStore ? "not-allowed" : "pointer", opacity: savingStore ? 0.7 : 1 }}>
+                {savingStore ? "Saving…" : "Save Store Settings"}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Free agent upgrade CTA */}
-      {!isPro && (
-        <div style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 18, padding: "24px" }}>
-          <p style={{ color: M.amber, fontWeight: 800, fontSize: 15, margin: "0 0 8px" }}>💡 Why upgrade now?</p>
-          <p style={{ color: M.muted, fontSize: 13, margin: "0 0 16px", lineHeight: 1.6 }}>Pro agents earn 2x more reward data, get the lowest wholesale prices, and a verified badge that builds trust with customers. GH₵40 one-time — no monthly fees.</p>
-          <a href="/agent#register" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "linear-gradient(135deg,#f59e0b,#d97706)", color: "black", textDecoration: "none", borderRadius: 12, padding: "12px 24px", fontSize: 14, fontWeight: 800 }}>
-            Upgrade to Pro — GH₵40
-          </a>
+      {/* Prices tab */}
+      {isPro && tab === "prices" && (
+        <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, overflow: "hidden" }}>
+          <div style={{ padding: "18px 22px", borderBottom: `1px solid ${M.border}` }}>
+            <p style={{ color: M.text, fontWeight: 800, fontSize: 14, margin: 0 }}>💰 Set Your Sell Prices</p>
+            <p style={{ color: M.muted, fontSize: 12, margin: "4px 0 0" }}>Customers pay these prices. Set any amount ≥ admin's base.</p>
+            {priceMsg && <p style={{ color: priceMsg.startsWith("✓") ? "#4ade80" : M.red, fontSize: 13, fontWeight: 700, margin: "8px 0 0" }}>{priceMsg}</p>}
+          </div>
+          {priceBundles.length === 0 ? (
+            <div style={{ padding: "40px 22px", textAlign: "center", color: M.muted }}>Loading bundles…</div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: M.bg, borderBottom: `1px solid ${M.border}` }}>
+                    {["Network", "Bundle", "Admin Price", "Your Price", "Margin", ""].map(h => (
+                      <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: M.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {priceBundles.map((b, i) => {
+                    const nb = netBadge(b.network);
+                    const myPrice = agentPrices[b.id] ?? b.price;
+                    const margin = Math.max(0, myPrice - b.price);
+                    return (
+                      <tr key={b.id} style={{ borderBottom: i < priceBundles.length - 1 ? `1px solid ${M.border}` : "none" }}>
+                        <td style={{ padding: "10px 14px" }}>
+                          <span style={{ background: nb.bg, color: nb.color, fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 5 }}>{nb.label}</span>
+                        </td>
+                        <td style={{ padding: "10px 14px", color: M.text, fontWeight: 600 }}>{b.size}</td>
+                        <td style={{ padding: "10px 14px", color: M.muted, fontFamily: "monospace" }}>GH₵{Number(b.price).toFixed(2)}</td>
+                        <td style={{ padding: "10px 14px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ color: M.muted, fontSize: 11 }}>GH₵</span>
+                            <input type="number" step="0.50" min={b.price}
+                              value={myPrice}
+                              onChange={e => setAgentPrices(prev => ({ ...prev, [b.id]: Number(e.target.value) }))}
+                              style={{ width: 76, background: M.bg, border: `1px solid ${M.border}`, borderRadius: 8, padding: "6px 8px", color: M.text, fontSize: 13, fontWeight: 700, outline: "none", fontFamily: "monospace" }} />
+                          </div>
+                        </td>
+                        <td style={{ padding: "10px 14px", color: margin > 0 ? "#4ade80" : M.muted, fontWeight: 700, fontFamily: "monospace", fontSize: 12 }}>
+                          {margin > 0 ? `+GH₵${margin.toFixed(2)}` : "—"}
+                        </td>
+                        <td style={{ padding: "10px 14px" }}>
+                          <button onClick={() => savePrice(b.id, myPrice, b.price)} disabled={savingPrice === b.id}
+                            style={{ background: "rgba(124,58,237,0.15)", color: "#a78bfa", border: "1px solid rgba(124,58,237,0.3)", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            {savingPrice === b.id ? "…" : "Save"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* API Access tab */}
+      {isPro && tab === "api" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* API Key card */}
+          <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: "20px 22px" }}>
+            <p style={{ color: M.text, fontWeight: 800, fontSize: 14, margin: "0 0 4px" }}>🔑 Your API Key</p>
+            <p style={{ color: M.muted, fontSize: 12, margin: "0 0 16px" }}>Use this key to place orders from your own app or bot. Keep it secret — anyone with this key can place orders on your account.</p>
+            {apiLoading ? (
+              <div style={{ color: M.muted, fontSize: 13, padding: "12px 0" }}>Loading your API key…</div>
+            ) : apiKey ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <code style={{ flex: 1, background: M.bg, border: `1px solid ${M.border}`, borderRadius: 10, padding: "11px 14px", fontSize: 12, color: "#60a5fa", fontFamily: "monospace", wordBreak: "break-all", minWidth: 0 }}>
+                    {apiKeyVisible ? apiKey : apiKey.slice(0, 10) + "•".repeat(Math.max(0, apiKey.length - 10))}
+                  </code>
+                  <button onClick={() => setApiKeyVisible(v => !v)}
+                    style={{ background: "rgba(255,255,255,0.07)", border: `1px solid ${M.border}`, borderRadius: 8, padding: "9px 14px", fontSize: 12, fontWeight: 700, color: M.muted, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+                    {apiKeyVisible ? "Hide" : "Show"}
+                  </button>
+                  <button onClick={() => { navigator.clipboard?.writeText(apiKey).catch(() => {}); setApiKeyCopied(true); setTimeout(() => setApiKeyCopied(false), 2000); }}
+                    style={{ background: apiKeyCopied ? "rgba(74,222,128,0.15)" : "rgba(59,130,246,0.12)", border: `1px solid ${apiKeyCopied ? "rgba(74,222,128,0.3)" : "rgba(59,130,246,0.3)"}`, borderRadius: 8, padding: "9px 14px", fontSize: 12, fontWeight: 700, color: apiKeyCopied ? "#4ade80" : "#60a5fa", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, transition: "all 0.2s" }}>
+                    {apiKeyCopied ? "✓ Copied!" : "📋 Copy"}
+                  </button>
+                </div>
+                <p style={{ color: "#f59e0b", fontSize: 11, margin: 0, fontWeight: 600 }}>⚠️ Never share this key publicly. Do not put it in client-side JavaScript or a public GitHub repo.</p>
+              </div>
+            ) : (
+              <p style={{ color: M.red, fontSize: 13 }}>Could not load API key. Try refreshing.</p>
+            )}
+          </div>
+
+          {/* Quick start */}
+          <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, padding: "20px 22px" }}>
+            <p style={{ color: M.text, fontWeight: 800, fontSize: 14, margin: "0 0 14px" }}>🚀 Quick Start</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <p style={{ color: M.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 6px" }}>Base URL</p>
+                <code style={{ display: "block", background: M.bg, border: `1px solid ${M.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#a78bfa", fontFamily: "monospace" }}>
+                  https://elitedata1.com
+                </code>
+              </div>
+              <div>
+                <p style={{ color: M.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 6px" }}>Authentication — required on every request</p>
+                <code style={{ display: "block", background: M.bg, border: `1px solid ${M.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#60a5fa", fontFamily: "monospace" }}>
+                  {`Authorization: Bearer YOUR_API_KEY`}
+                </code>
+              </div>
+              <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 10, padding: "12px 14px" }}>
+                <p style={{ color: "#f59e0b", fontWeight: 700, fontSize: 12, margin: "0 0 4px" }}>⚠️ You need wallet balance to place orders</p>
+                <p style={{ color: M.muted, fontSize: 12, margin: 0 }}>Top up your API wallet first using the steps below, then call /purchase. Orders deduct from your wallet, not from your customer.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Wallet top-up steps */}
+          <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, overflow: "hidden" }}>
+            <div style={{ padding: "18px 22px", borderBottom: `1px solid ${M.border}` }}>
+              <p style={{ color: M.text, fontWeight: 800, fontSize: 14, margin: 0 }}>💰 How to Top Up Your API Wallet</p>
+              <p style={{ color: M.muted, fontSize: 12, margin: "4px 0 0" }}>Two API calls — get a Paystack link, pay, then verify to credit your wallet.</p>
+            </div>
+            {[
+              {
+                step: "1", method: "POST", path: "/api/v1/topup/initiate", label: "Get Payment Link",
+                desc: "Generates a Paystack checkout URL. Open payment_url in a browser to pay.",
+                example: `curl -X POST https://elitedata1.com/api/v1/topup/initiate \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{ "amount": 50, "email": "you@example.com" }'`,
+                response: `{\n  "success": true,\n  "payment_url": "https://checkout.paystack.com/...",\n  "reference": "ps_ref_abc123",\n  "amount": 50.00\n}`,
+              },
+              {
+                step: "2", method: "POST", path: "/api/v1/topup/verify", label: "Confirm & Credit Wallet",
+                desc: "After paying, call this with the Paystack reference to credit your wallet.",
+                example: `curl -X POST https://elitedata1.com/api/v1/topup/verify \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{ "reference": "ps_ref_abc123" }'`,
+                response: `{\n  "success": true,\n  "amount_credited": 50.00,\n  "new_balance": 50.00,\n  "currency": "GHS"\n}`,
+              },
+            ].map((ep, i) => (
+              <div key={ep.path} style={{ borderBottom: i === 0 ? `1px solid ${M.border}` : "none" }}>
+                <div style={{ padding: "14px 22px 0" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                    <span style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", fontSize: 10, fontWeight: 900, padding: "2px 7px", borderRadius: 5, flexShrink: 0 }}>STEP {ep.step}</span>
+                    <span style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa", fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 5, fontFamily: "monospace", flexShrink: 0 }}>{ep.method}</span>
+                    <code style={{ color: "#a78bfa", fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>{ep.path}</code>
+                  </div>
+                  <p style={{ color: M.muted, fontSize: 12, margin: "0 0 8px" }}>{ep.desc}</p>
+                </div>
+                <details style={{ padding: "0 22px 14px" }}>
+                  <summary style={{ color: M.muted, fontSize: 12, cursor: "pointer", userSelect: "none", fontWeight: 600 }}>Show example</summary>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+                    <pre style={{ background: M.bg, border: `1px solid ${M.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 11, color: "#e2e8f0", fontFamily: "monospace", margin: 0, overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{ep.example}</pre>
+                    <pre style={{ background: M.bg, border: `1px solid ${M.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 11, color: "#4ade80", fontFamily: "monospace", margin: 0, overflowX: "auto", whiteSpace: "pre-wrap" }}>{ep.response}</pre>
+                  </div>
+                </details>
+              </div>
+            ))}
+          </div>
+
+          {/* Endpoints */}
+          <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, overflow: "hidden" }}>
+            <div style={{ padding: "18px 22px", borderBottom: `1px solid ${M.border}` }}>
+              <p style={{ color: M.text, fontWeight: 800, fontSize: 14, margin: 0 }}>📋 API Endpoints</p>
+            </div>
+            {[
+              {
+                method: "GET", path: "/api/v1/bundles", label: "List Available Bundles",
+                desc: "Returns all active data bundles with prices and sizes.",
+                example: `curl https://elitedata1.com/api/v1/bundles \\\n  -H "Authorization: Bearer YOUR_API_KEY"`,
+                response: `{\n  "bundles": [\n    { "network": "mtn", "size": "1GB", "sizeGB": 1, "price": 8.00 },\n    { "network": "telecel", "size": "2GB", "sizeGB": 2, "price": 14.00 },\n    ...\n  ]\n}`,
+              },
+              {
+                method: "POST", path: "/api/v1/purchase", label: "Purchase Data Bundle",
+                desc: "Buy data for a phone number. Deducts price from your wallet. Provide a unique reference for each order.",
+                example: `curl -X POST https://elitedata1.com/api/v1/purchase \\\n  -H "Authorization: Bearer YOUR_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "network": "MTN",\n    "phone": "0241234567",\n    "datasize": 1,\n    "reference": "my-order-001"\n  }'`,
+                response: `{\n  "success": true,\n  "reference": "my-order-001",\n  "status": "completed",\n  "network": "MTN",\n  "phone": "0241234567",\n  "datasize": "1GB",\n  "amount_charged": 8.00,\n  "wallet_balance": 42.00\n}`,
+              },
+              {
+                method: "GET", path: "/api/v1/balance", label: "Check Wallet Balance",
+                desc: "Returns your current API wallet balance and last 10 transactions.",
+                example: `curl https://elitedata1.com/api/v1/balance \\\n  -H "Authorization: Bearer YOUR_API_KEY"`,
+                response: `{\n  "success": true,\n  "balance": 42.00,\n  "currency": "GHS",\n  "recent_transactions": [\n    { "type": "debit", "amount": 8.00, "description": "MTN 1GB → 0241234567" }\n  ]\n}`,
+              },
+            ].map((ep, i, arr) => (
+              <div key={ep.path} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${M.border}` : "none" }}>
+                <div style={{ padding: "16px 22px 0" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+                    <span style={{ background: ep.method === "GET" ? "rgba(74,222,128,0.15)" : "rgba(59,130,246,0.15)", color: ep.method === "GET" ? "#4ade80" : "#60a5fa", fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 5, fontFamily: "monospace", flexShrink: 0 }}>{ep.method}</span>
+                    <code style={{ color: "#a78bfa", fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>{ep.path}</code>
+                    <span style={{ color: M.text, fontSize: 12, fontWeight: 600 }}>{ep.label}</span>
+                  </div>
+                  <p style={{ color: M.muted, fontSize: 12, margin: "0 0 10px" }}>{ep.desc}</p>
+                </div>
+                <details style={{ padding: "0 22px 16px" }}>
+                  <summary style={{ color: M.muted, fontSize: 12, cursor: "pointer", userSelect: "none", fontWeight: 600 }}>Show example</summary>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+                    <div>
+                      <p style={{ color: M.muted, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 4px" }}>Request</p>
+                      <pre style={{ background: M.bg, border: `1px solid ${M.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 11, color: "#e2e8f0", fontFamily: "monospace", margin: 0, overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{ep.example}</pre>
+                    </div>
+                    <div>
+                      <p style={{ color: M.muted, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 4px" }}>Response</p>
+                      <pre style={{ background: M.bg, border: `1px solid ${M.border}`, borderRadius: 8, padding: "10px 14px", fontSize: 11, color: "#4ade80", fontFamily: "monospace", margin: 0, overflowX: "auto", whiteSpace: "pre-wrap" }}>{ep.response}</pre>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            ))}
+          </div>
+
+          {/* Need help */}
+          <div style={{ background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: 14, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+            <span style={{ fontSize: 22, flexShrink: 0 }}>💬</span>
+            <div style={{ flex: 1 }}>
+              <p style={{ color: M.text, fontWeight: 700, fontSize: 13, margin: "0 0 2px" }}>Need help integrating?</p>
+              <p style={{ color: M.muted, fontSize: 12, margin: 0 }}>Contact admin on WhatsApp — share your use case and we'll walk you through it.</p>
+            </div>
+            <a href="https://wa.me/233509794503?text=Hi%2C+I%27m+a+Pro+Agent+and+need+help+with+API+integration" target="_blank" rel="noreferrer"
+              style={{ background: "#16a34a", color: "white", textDecoration: "none", borderRadius: 10, padding: "9px 16px", fontSize: 12, fontWeight: 800, flexShrink: 0, whiteSpace: "nowrap" }}>
+              WhatsApp Admin
+            </a>
+          </div>
         </div>
       )}
     </div>
@@ -2471,7 +2812,7 @@ function ProPage({ data, onNavigate }: { data: AgentData; onNavigate: (p: Page) 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({ page, setPage, data, onLogout, onWithdraw, open, onClose }: { page: Page; setPage: (p: Page) => void; data: AgentData; onLogout: () => void; onWithdraw: () => void; open: boolean; onClose: () => void }) {
   const isPriceMode = data.agent_type === "custom_price";
-  const isPro = data.registration_ref !== "FREE";
+  const isPro = data.agent_type === "pro";
   const initial1 = (data.name ?? "A").charAt(0).toUpperCase();
   const initial2 = (data.name ?? "").split(" ")[1]?.charAt(0).toUpperCase() ?? "";
 

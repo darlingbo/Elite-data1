@@ -4,14 +4,16 @@ import { randomBytes } from "crypto";
 
 // GET — return the agent's API key (create one if it doesn't exist yet)
 export async function GET(request: NextRequest) {
-  const agentId = request.nextUrl.searchParams.get("agentId");
-  if (!agentId) return Response.json({ error: "agentId required" }, { status: 400 });
+  const agentId      = request.nextUrl.searchParams.get("agentId");
+  const referralCode = request.nextUrl.searchParams.get("referralCode");
+  if (!agentId || !referralCode) return Response.json({ error: "agentId and referralCode required" }, { status: 400 });
 
-  // Verify agent exists and is approved
+  // Verify agent exists, is approved, AND referral code matches — prevents agentId-only enumeration
   const { data: agent } = await supabase
     .from("agents")
-    .select("id, name, business_name, status")
+    .select("id, name, business_name, status, referral_code")
     .eq("id", agentId)
+    .eq("referral_code", referralCode.toUpperCase())
     .eq("status", "approved")
     .maybeSingle();
 

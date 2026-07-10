@@ -173,7 +173,7 @@ async function deliverFreeBundle(phone: string, network: string, triggerRef: str
     mtn: "MTN", telecel: "TELECEL", airteltigo: "AT ISHARE",
   };
   try {
-    await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
+    await fetch(`${(process.env.INVENTOR_API_BASE_URL ?? "").replace(/\/+$/, "")}/api/developer/purchase`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
       body: JSON.stringify({
@@ -272,7 +272,7 @@ async function callInventorAPI(
   const timer = setTimeout(() => controller.abort(), INVENTOR_TIMEOUT_MS);
 
   try {
-    const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
+    const res = await fetch(`${(process.env.INVENTOR_API_BASE_URL ?? "").replace(/\/+$/, "")}/api/developer/purchase`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -519,7 +519,12 @@ export async function POST(request: NextRequest) {
     // Agent keeps markup above admin tier price; fast delivery fee excluded
     agentCommission = parseFloat(Math.max(0, chargedForCommission - adminTierPrice).toFixed(2));
     adminCommission = parseFloat(Math.max(0, adminTierPrice - pricing.costPrice).toFixed(2)) + fastDeliveryFee;
+  } else if (agentType === "pro") {
+    // Pro agent: profit = what they charged above admin selling price; no wallet involved
+    agentCommission = parseFloat(Math.max(0, chargedForCommission - pricing.price).toFixed(2));
+    adminCommission = parseFloat(Math.max(0, pricing.price - pricing.costPrice).toFixed(2)) + fastDeliveryFee;
   } else {
+    // commission type: old percentage split — do not change
     const profit = Math.max(0, effectivePriceFromPayment - pricing.costPrice);
     agentCommission = parseFloat((profit * agentSplitRate).toFixed(2));
     // Fast delivery fee goes entirely to admin, not split with agent

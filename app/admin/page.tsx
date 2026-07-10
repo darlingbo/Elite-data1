@@ -37,6 +37,7 @@ interface Order {
   agent_commission: number; cost_price?: number; customer_name: string; phone: string; network: string;
   bundle_size: string; created_at: string; agent_id: string | null;
   agent_name?: string | null; agent_code?: string | null;
+  refund_phone?: string | null;
   refunded?: boolean; refunded_at?: string | null; refund_amount?: number | null;
 }
 interface Agent {
@@ -918,12 +919,13 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
 
   function handleExport() {
     const rows = [
-      ["Reference", "Status", "Customer", "Phone", "Network", "Bundle", "Amount (GH₵)", "Agent", "Refunded", "Date"],
+      ["Reference", "Status", "Customer", "Phone", "MoMo Refund Number", "Network", "Bundle", "Amount (GH₵)", "Agent", "Refunded", "Date"],
       ...filtered.map(o => [
         o.reference,
         o.status,
         o.customer_name ?? "",
         o.phone ?? "",
+        o.refund_phone ?? "",
         (o.network ?? "").toUpperCase(),
         o.bundle_size ?? "",
         Number(o.amount).toFixed(2),
@@ -1131,7 +1133,7 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-xs text-slate-500 uppercase tracking-wider" style={{ background: BG, borderColor: BORDER }}>
-                {["#", "Customer", "Network", "Phone", "Amount", "Profit", "Source", "Status", "Date", ""].map(h => (
+                {["#", "Customer", "Network", "Phone", "MoMo Refund", "Amount", "Profit", "Source", "Status", "Date", ""].map(h => (
                   <th key={h} className="px-4 py-3 text-left font-semibold">{h}</th>
                 ))}
               </tr>
@@ -1155,6 +1157,13 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
                       </div>
                     </td>
                     <td className="px-4 py-3.5 font-mono text-xs text-slate-400">{o.phone}</td>
+                    <td className="px-4 py-3.5">
+                      {o.refund_phone ? (
+                        <span className="font-mono text-xs font-bold" style={{ color: "#fbbf24" }}>{o.refund_phone}</span>
+                      ) : (
+                        <span className="text-xs text-slate-600">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3.5 font-black text-white">GH₵{Number(o.amount).toFixed(2)}</td>
                     <td className="px-4 py-3.5 font-black" style={{ color: "#4ade80" }}>GH₵{Number(o.admin_commission).toFixed(2)}</td>
                     <td className="px-4 py-3.5">
@@ -1326,11 +1335,12 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
   async function handleSwitchMode() {
     if (!switchModal) return;
     setSwitching(true);
-    const newType = switchModal.currentType === "custom_price" ? "commission" : "custom_price";
+    // Toggle between commission (Free) and pro — custom_price agents are protected server-side
+    const newType = switchModal.currentType === "pro" ? "commission" : "pro";
     try {
       const res = await fetch("/api/admin/agents/switch-mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: switchModal.id, agentType: newType }) });
       const d = await res.json();
-      if (d.success) { setSwitchMsg({ text: `✓ ${switchModal.name} switched to ${newType === "custom_price" ? "Price Mode" : "Commission Mode"}`, ok: true }); onRefresh(); }
+      if (d.success) { setSwitchMsg({ text: `✓ ${switchModal.name} is now ${newType === "pro" ? "⭐ Pro" : "Free"}`, ok: true }); onRefresh(); }
       else setSwitchMsg({ text: d.error ?? "Failed", ok: false });
     } catch { setSwitchMsg({ text: "Network error", ok: false }); }
     finally { setSwitching(false); setSwitchModal(null); setTimeout(() => setSwitchMsg(null), 5000); }
@@ -1415,8 +1425,8 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
                         </button>
                       </td>
                       <td className="px-4 py-3.5">
-                        <button onClick={() => setSwitchModal({ id: a.id, name: a.name, currentType: a.agent_type ?? "commission" })} title="Click to switch" className="hover:opacity-70 transition-opacity">
-                          {a.agent_type === "custom_price" ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>Price Mode ⇄</span> : <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", border: "1px solid rgba(16,185,129,0.25)" }}>Commission ⇄</span>}
+                        <button onClick={() => a.agent_type !== "custom_price" && setSwitchModal({ id: a.id, name: a.name, currentType: a.agent_type ?? "commission" })} title={a.agent_type === "custom_price" ? "Custom price agent — locked" : "Click to switch Free ↔ Pro"} className="hover:opacity-70 transition-opacity" disabled={a.agent_type === "custom_price"}>
+                          {a.agent_type === "pro" ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.3)" }}>⭐ Pro ⇄</span> : a.agent_type === "custom_price" ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>Price Mode 🔒</span> : <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", border: "1px solid rgba(16,185,129,0.25)" }}>Free ⇄</span>}
                         </button>
                       </td>
                       <td className="px-4 py-3.5 font-bold text-white">{a.total_sales}</td>
@@ -1513,11 +1523,11 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
       {switchModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="rounded-2xl shadow-2xl w-full max-w-sm p-6 border" style={{ background: CARD, borderColor: BORDER }}>
-            <h3 className="font-black text-white text-lg mb-2">Switch Agent Mode</h3>
-            <p className="text-sm text-slate-400 mb-5">Switch <span className="text-white font-bold">{switchModal.name}</span> to <span className="font-bold" style={{ color: switchModal.currentType === "custom_price" ? "#4ade80" : "#a78bfa" }}>{switchModal.currentType === "custom_price" ? "Commission Mode" : "Price Mode"}</span>?</p>
+            <h3 className="font-black text-white text-lg mb-2">Switch Agent Type</h3>
+            <p className="text-sm text-slate-400 mb-5">Switch <span className="text-white font-bold">{switchModal.name}</span> to <span className="font-bold" style={{ color: switchModal.currentType === "pro" ? "#4ade80" : "#fbbf24" }}>{switchModal.currentType === "pro" ? "Free Agent" : "⭐ Pro Agent"}</span>?</p>
             <div className="flex gap-3">
               <button onClick={() => setSwitchModal(null)} disabled={switching} className="flex-1 border text-slate-400 font-semibold py-2.5 rounded-xl text-sm" style={{ borderColor: BORDER }}>Cancel</button>
-              <button onClick={handleSwitchMode} disabled={switching} className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: switchModal.currentType === "custom_price" ? "linear-gradient(90deg,#059669,#10b981)" : "linear-gradient(90deg,#7c3aed,#8b5cf6)" }}>{switching ? "Switching…" : "Confirm"}</button>
+              <button onClick={handleSwitchMode} disabled={switching} className="flex-1 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-60" style={{ background: switchModal.currentType === "pro" ? "linear-gradient(90deg,#059669,#10b981)" : "linear-gradient(90deg,#f59e0b,#d97706)" }}>{switching ? "Switching…" : "Confirm"}</button>
             </div>
           </div>
         </div>

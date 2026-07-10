@@ -2,6 +2,14 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { sendSwiftAlert } from "@/lib/telegram";
 
+// Ghana is UTC+0 year-round
+function getGhanaTime() {
+  const now = new Date();
+  const ghHour = now.getUTCHours();
+  const ghDay  = now.getUTCDay(); // 0=Sun, 1=Mon … 6=Sat
+  return { ghHour, ghDay };
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { agentId, referralCode, name, amount, method, accountNumber, accountName } = body;
@@ -11,9 +19,6 @@ export async function POST(request: NextRequest) {
   }
 
   const amt = Number(amount);
-  if (!amt || amt < 50) {
-    return Response.json({ error: "Minimum withdrawal is GH₵50." }, { status: 400 });
-  }
 
   const { data: agent } = await supabase
     .from("agents")
@@ -26,6 +31,36 @@ export async function POST(request: NextRequest) {
 
   if (!referralCode || agent.referral_code?.toUpperCase() !== String(referralCode).toUpperCase()) {
     return Response.json({ error: "Unauthorized." }, { status: 403 });
+  }
+
+  // ── Withdrawal rules by agent type ───────────────────────────────────────
+  // custom_price agents keep original rules (no time restriction, min GH₵50)
+  const agentType = agent.agent_type ?? "commission";
+
+  if (agentType !== "custom_price") {
+    const { ghHour, ghDay } = getGhanaTime();
+    const isPro = agentType === "pro";
+
+    // Hours: 6AM–6PM Ghana time for both types
+    if (ghHour < 6 || ghHour >= 18) {
+      return Response.json({ error: "Withdrawals are only available between 6:00 AM and 6:00 PM Ghana time." }, { status: 400 });
+    }
+
+    // Days: Pro = Mon–Sun (all days). Free = Mon–Fri only (ghDay 1–5)
+    if (!isPro && (ghDay === 0 || ghDay === 6)) {
+      return Response.json({ error: "Free agents can only withdraw Monday to Friday. Upgrade to Pro for weekend withdrawals." }, { status: 400 });
+    }
+
+    // Minimums: Pro = GH₵40, Free = GH₵20
+    const minWithdraw = isPro ? 40 : 20;
+    if (amt < minWithdraw) {
+      return Response.json({ error: `Minimum withdrawal is GH₵${minWithdraw} for ${isPro ? "Pro" : "Free"} agents.` }, { status: 400 });
+    }
+  } else {
+    // Original rule for custom_price agents
+    if (amt < 50) {
+      return Response.json({ error: "Minimum withdrawal is GH₵50." }, { status: 400 });
+    }
   }
 
   const commissionBal = Number(agent.commission_balance ?? 0);

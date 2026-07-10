@@ -7,16 +7,16 @@ export async function GET(request: NextRequest) {
 
   const { data } = await supabase
     .from("agents")
-    .select("shop_name")
+    .select("shop_name, tagline, store_color")
     .eq("id", agentId)
     .maybeSingle();
 
-  return Response.json({ shop_name: data?.shop_name ?? null });
+  return Response.json({ shop_name: data?.shop_name ?? null, tagline: data?.tagline ?? null, store_color: data?.store_color ?? "#3b82f6" });
 }
 
 export async function PATCH(request: NextRequest) {
   const body = await request.json();
-  const { agentId, shopName, referralCode } = body;
+  const { agentId, shopName, tagline, storeColor, referralCode } = body;
 
   if (!agentId || !shopName?.trim() || !referralCode) {
     return Response.json({ error: "agentId, shopName, and referralCode required" }, { status: 400 });
@@ -38,9 +38,13 @@ export async function PATCH(request: NextRequest) {
 
   if (!agent) return Response.json({ error: "Unauthorized." }, { status: 403 });
 
+  const updateFields: Record<string, string> = { shop_name: trimmed };
+  if (tagline !== undefined) updateFields.tagline = String(tagline).slice(0, 80);
+  if (storeColor && /^#[0-9a-fA-F]{6}$/.test(storeColor)) updateFields.store_color = storeColor;
+
   const { error } = await supabase
     .from("agents")
-    .update({ shop_name: trimmed })
+    .update(updateFields)
     .eq("id", agentId);
 
   if (error) return Response.json({ error: error.message }, { status: 500 });

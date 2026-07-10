@@ -1,0 +1,78 @@
+import { NextRequest } from "next/server";
+import { supabase } from "@/lib/supabase";
+import { sendSwiftAlert } from "@/lib/telegram";
+
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+  const { agentId, referralCode, paystackRef } = body;
+
+  if (!agentId || !referralCode || !paystackRef) {
+    return Response.json({ error: "agentId, referralCode, and paystackRef are required." }, { status: 400 });
+  }
+
+  // Verify ownership
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("id, name, agent_type, pro_payment_ref, status, referral_code")
+    .eq("id", agentId)
+    .eq("referral_code", String(referralCode).toUpperCase())
+    .maybeSingle();
+
+  if (!agent) return Response.json({ error: "Agent not found." }, { status: 404 });
+  if (agent.status !== "approved") return Response.json({ error: "Only approved agents can upgrade." }, { status: 403 });
+  if (agent.agent_type === "pro") return Response.json({ error: "You are already a Pro Agent." }, { status: 409 });
+  if (agent.agent_type === "custom_price") return Response.json({ error: "Your account type cannot be changed." }, { status: 403 });
+
+  // Block duplicate payment reference
+  const { data: dupCheck } = await supabase
+    .from("agents")
+    .select("id")
+    .eq("pro_payment_ref", paystackRef)
+    .maybeSingle();
+  if (dupCheck) return Response.json({ error: "This payment has already been used." }, { status: 409 });
+
+  // Verify with Paystack
+  let psData: Record<string, unknown> = {};
+  try {
+    const res = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(paystackRef)}`, {
+      headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    psData = await res.json();
+  } catch (err) {
+    return Response.json({ error: `Paystack verification failed: ${String(err)}` }, { status: 502 });
+  }
+
+  if (psData.status !== true || (psData.data as Record<string, unknown>)?.status !== "success") {
+    return Response.json({ error: "Payment not confirmed by Paystack." }, { status: 400 });
+  }
+
+  const amountKobo = Number((psData.data as Record<string, unknown>)?.amount ?? 0);
+  const amountGhc = Math.round(amountKobo / 100);
+
+  if (amountGhc < 100) {
+    return Response.json({ error: `Payment amount GH₵${amountGhc} is less than the required GH₵100.` }, { status: 400 });
+  }
+
+  // Upgrade agent to pro
+  const { error: updateErr } = await supabase
+    .from("agents")
+    .update({
+      agent_type: "pro",
+      pro_payment_ref: paystackRef,
+      pro_upgraded_at: new Date().toISOString(),
+    })
+    .eq("id", agentId);
+
+  if (updateErr) return Response.json({ error: updateErr.message }, { status: 500 });
+
+  // Alert admin
+  sendSwiftAlert(
+    `⭐ <b>PRO AGENT UPGRADE</b>\n\n` +
+    `👤 ${agent.name} (${agent.referral_code})\n` +
+    `💰 GH₵${amountGhc} paid\n` +
+    `🧾 Ref: <code>${paystackRef}</code>`
+  ).catch(() => {});
+
+  return Response.json({ success: true, message: "Welcome to Pro! Your account has been upgraded." });
+}

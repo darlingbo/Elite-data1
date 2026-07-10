@@ -69,6 +69,7 @@ export async function GET(request: NextRequest) {
         .from("custom_tier_prices")
         .select("bundle_id, price");
       const tierMap = new Map((tierPrices ?? []).map((p: { bundle_id: string; price: number }) => [p.bundle_id, p.price]));
+      void tierMap;
 
       // Get this agent's personal markup prices
       const { data: agentPrices } = await supabase
@@ -82,6 +83,21 @@ export async function GET(request: NextRequest) {
       allBundles = allBundles
         .filter(b => agentMap.has(b.id))
         .map(b => ({ ...b, price: agentMap.get(b.id)! }));
+    }
+
+    if (agent?.agent_type === "pro") {
+      // Pro agent: show all admin bundles, but apply their custom price where set
+      const { data: agentPrices } = await supabase
+        .from("agent_bundle_prices")
+        .select("bundle_id, custom_price")
+        .eq("agent_id", agent.id)
+        .eq("active", true);
+      const agentMap = new Map((agentPrices ?? []).map((p: { bundle_id: string; custom_price: number }) => [p.bundle_id, Number(p.custom_price)]));
+
+      allBundles = allBundles.map(b => ({
+        ...b,
+        price: agentMap.has(b.id) ? agentMap.get(b.id)! : b.price,
+      }));
     }
   }
 

@@ -89,14 +89,13 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const [milestoneCode, setMilestoneCode] = useState<string | null>(null);
   const [referralUsesLeft, setReferralUsesLeft] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
-  const [refundPhone, setRefundPhone] = useState("");
-  const [refundNetwork, setRefundNetwork] = useState("mtn");
   const [promoCode, setPromoCode] = useState("");
   const [fastDelivery, setFastDelivery] = useState(false);
   const [promoApplying, setPromoApplying] = useState(false);
   const [promoResult, setPromoResult] = useState<{ discount: number; code: string; id: string; label: string } | null>(null);
   const [promoError, setPromoError] = useState("");
   const [surcharge, setSurcharge] = useState(0);
+  const [verifying, setVerifying] = useState(false);
   const paystackReady = usePaystackReady();
   const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -156,7 +155,6 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
     setError("");
     if (!name.trim()) return setError("Please enter your name.");
     if (!validatePhone(phone)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
-    if (!validatePhone(refundPhone)) return setError("Enter a valid MoMo number for refund purposes (e.g. 0241234567).");
     if (!paystackReady) return setError("Payment is still loading. Please try again in a moment.");
 
     const key = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
@@ -166,6 +164,29 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
     }
 
     setLoading(true);
+
+    // For MTN bundles: verify the number is on the Inventor beneficiary list before opening Paystack.
+    // This catches ineligible numbers before the customer is charged.
+    if (bundle.network === "mtn") {
+      setVerifying(true);
+      try {
+        const vr = await fetch("/api/verify-mtn-number", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: phone.replace(/\s/g, "") }),
+        });
+        const vd = await vr.json() as { verified: boolean; error?: string };
+        if (!vd.verified) {
+          setLoading(false);
+          setVerifying(false);
+          setError(vd.error ?? "This MTN number is not eligible for data purchase. Please check the number and try again.");
+          return;
+        }
+      } catch {
+        // Network error — let Inventor reject at purchase time if needed
+      }
+      setVerifying(false);
+    }
 
     // For price-mode agent storefronts, check wallet balance before charging the customer
     if (agentCode) {
@@ -219,8 +240,6 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
               promoCode: promoResult?.code ?? null,
               promoDiscount: promoDiscount > 0 ? promoDiscount : null,
               surcharge: surcharge > 0 ? surcharge : null,
-              refundPhone: refundPhone.replace(/\s/g, ""),
-              refundNetwork,
             }),
           })
             .then(function(res) { return res.json(); })
@@ -567,38 +586,9 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
             </div>
           </button>
 
-          {/* MoMo Refund Number — required */}
-          <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">💳</span>
-              <div>
-                <p className="text-sm font-black text-amber-800">MoMo Refund Number <span className="text-red-500">*</span></p>
-                <p className="text-xs text-amber-600">Required — used to refund you if delivery fails</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <select
-                value={refundNetwork}
-                onChange={e => setRefundNetwork(e.target.value)}
-                className="border border-amber-300 rounded-lg px-2 py-2.5 text-sm font-semibold text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400 shrink-0"
-              >
-                <option value="mtn">MTN MoMo</option>
-                <option value="telecel">Telecel Cash</option>
-                <option value="airteltigo">AirtelTigo Money</option>
-              </select>
-              <input
-                type="tel"
-                placeholder="0241234567"
-                value={refundPhone}
-                onChange={e => setRefundPhone(e.target.value)}
-                className="flex-1 border border-amber-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 text-gray-900 bg-white"
-              />
-            </div>
-          </div>
-
           <button onClick={handlePay} disabled={loading || !paystackReady}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl transition-colors text-sm">
-            {loading ? "Processing..." : !paystackReady ? "Initializing payment…" : `Pay GH₵${totalAmount.toFixed(2)} via Paystack`}
+            {verifying ? "Verifying MTN number…" : loading ? "Processing…" : !paystackReady ? "Initializing payment…" : `Pay GH₵${totalAmount.toFixed(2)} via Paystack`}
           </button>
 
           <button onClick={onClose} className="w-full text-gray-500 hover:text-gray-700 text-sm py-1 transition-colors">
