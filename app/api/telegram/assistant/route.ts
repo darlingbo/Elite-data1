@@ -1169,7 +1169,7 @@ Keep REPLY answers under 80 words. Output only ACTION: or REPLY: and nothing els
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${DEEPSEEK_KEY}` },
       body: JSON.stringify({
-        model: "deepseek-reasoner",
+        model: "deepseek-chat",
         max_tokens: 800,
         messages: [
           { role: "system", content: systemPrompt },
@@ -1255,7 +1255,7 @@ Be direct. Under 120 words total.`;
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${DEEPSEEK_KEY}` },
       body: JSON.stringify({
-        model: "deepseek-reasoner",
+        model: "deepseek-chat",
         max_tokens: 1500,
         messages: [
           { role: "system", content: systemPrompt },
