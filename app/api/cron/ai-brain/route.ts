@@ -24,9 +24,10 @@ async function collectState() {
       .from("orders")
       .select("reference, phone, network, bundle_size, bundle_size_gb, agent_id, agent_commission, amount")
       .eq("status", "failed"),
+    // Only count stuck orders — never touch them (sync-orders handles that safely via Inventor check)
     supabase
       .from("orders")
-      .select("reference, phone, network, bundle_size, bundle_size_gb")
+      .select("id")
       .in("status", ["pending", "processing"])
       .lt("created_at", cutoff15),
     supabase
@@ -48,7 +49,7 @@ async function collectState() {
   const today = todayRes.data ?? [];
   return {
     failedOrders: failedRes.data ?? [],
-    stuckOrders: stuckRes.data ?? [],
+    stuckOrderCount: (stuckRes.data ?? []).length,
     pendingAgents: pendingAgentsRes.data ?? [],
     inventorHealthy: inventorCheck.healthy,
     today: {
@@ -61,7 +62,7 @@ async function collectState() {
 }
 
 type State = Awaited<ReturnType<typeof collectState>>;
-type AIAction = "retry_failed" | "sync_stuck" | "alert_agents" | "alert_inventor_down" | "daily_report";
+type AIAction = "retry_failed" | "alert_stuck" | "alert_agents" | "alert_inventor_down" | "daily_report";
 
 // ── Ask DeepSeek what to do ───────────────────────────────────────────────────
 async function decideActions(state: State): Promise<AIAction[]> {
@@ -74,11 +75,11 @@ async function decideActions(state: State): Promise<AIAction[]> {
   const [ghHour, ghMin] = ghTime.split(":").map(Number);
   const isDailyReportTime = ghHour === 7 && ghMin < 15;
 
-  // No DeepSeek key — use rule-based fallback
+  // No DeepSeek key — rule-based fallback
   if (!DEEPSEEK_KEY) {
     const actions: AIAction[] = [];
     if (state.failedOrders.length > 0 && state.inventorHealthy) actions.push("retry_failed");
-    if (state.stuckOrders.length > 0) actions.push("sync_stuck");
+    if (state.stuckOrderCount > 0) actions.push("alert_stuck");
     if (state.pendingAgents.length > 0) actions.push("alert_agents");
     if (!state.inventorHealthy) actions.push("alert_inventor_down");
     if (isDailyReportTime) actions.push("daily_report");
@@ -90,20 +91,20 @@ async function decideActions(state: State): Promise<AIAction[]> {
 Current time (Ghana): ${ghTime}
 System state:
 - Failed orders needing retry: ${state.failedOrders.length}
-- Stuck orders (>15 min, not delivered): ${state.stuckOrders.length}
-- New agent applications waiting for approval: ${state.pendingAgents.length}
-- Inventor API (the data delivery provider) is healthy: ${state.inventorHealthy}
-- Today so far: ${state.today.total} orders | Revenue: GH₵${state.today.revenue.toFixed(2)} | Profit: GH₵${state.today.profit.toFixed(2)} | Failed: ${state.today.failed}
+- Stuck orders (>15 min, still processing): ${state.stuckOrderCount}
+- New agent applications waiting: ${state.pendingAgents.length}
+- Inventor API (data delivery provider) healthy: ${state.inventorHealthy}
+- Today: ${state.today.total} orders | Revenue: GH₵${state.today.revenue.toFixed(2)} | Profit: GH₵${state.today.profit.toFixed(2)} | Failed: ${state.today.failed}
 
-Decide which actions to take RIGHT NOW. Respond with ONLY a JSON array using these exact strings:
-- "retry_failed" — auto-retry all failed orders (only when inventor is healthy)
-- "sync_stuck" — move stuck orders to failed so they can be retried next cycle
-- "alert_agents" — notify admin about new pending agent applications
-- "alert_inventor_down" — alert admin that the data provider API is down
-- "daily_report" — send morning business summary (only between 07:00 and 07:15 Ghana time)
+Choose actions. Respond with ONLY a JSON array:
+- "retry_failed" — retry failed orders (only if inventor healthy)
+- "alert_stuck" — warn admin about stuck orders (do NOT touch them yourself)
+- "alert_agents" — notify admin of new agent applications
+- "alert_inventor_down" — alert admin that data provider is down
+- "daily_report" — morning summary (only 07:00–07:15 Ghana time)
 
-Return ONLY the JSON array. Example: ["retry_failed","sync_stuck"]
-If nothing needs doing: []`;
+Return ONLY the JSON array. Example: ["retry_failed","alert_agents"]
+If nothing to do: []`;
 
   try {
     const res = await fetch("https://api.deepseek.com/chat/completions", {
@@ -127,10 +128,8 @@ If nothing needs doing: []`;
     const actions = JSON.parse(match[0]) as AIAction[];
     return Array.isArray(actions) ? (actions.filter((a) => typeof a === "string") as AIAction[]) : [];
   } catch {
-    // DeepSeek failed — safe fallback
     const fallback: AIAction[] = [];
     if (state.failedOrders.length > 0 && state.inventorHealthy) fallback.push("retry_failed");
-    if (state.stuckOrders.length > 0) fallback.push("sync_stuck");
     return fallback;
   }
 }
@@ -177,17 +176,6 @@ async function doRetryFailed(orders: State["failedOrders"]) {
   return { fixed, stillFailing, fixedLines };
 }
 
-// ── Action: move stuck orders to failed so next cycle retries them ─────────────
-async function doSyncStuck(orders: State["stuckOrders"]) {
-  if (!orders.length) return 0;
-  await supabase
-    .from("orders")
-    .update({ status: "failed" })
-    .in("status", ["pending", "processing"])
-    .lt("created_at", new Date(Date.now() - 15 * 60 * 1000).toISOString());
-  return orders.length;
-}
-
 // ── Main cron handler ─────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   if (!isAuthorized(request)) {
@@ -213,17 +201,16 @@ export async function GET(request: NextRequest) {
       didSomething = true;
     }
     if (stillFailing > 0) {
-      tgMsg += `\n⚠️ ${stillFailing} order(s) still failing — tap ❌ Failed in the bot to review`;
+      tgMsg += `\n⚠️ ${stillFailing} order(s) still failing — send /failed to review`;
       didSomething = true;
     }
     logLines.push(`retry_failed: ${fixed} fixed, ${stillFailing} still failing`);
   }
 
-  // Sync stuck orders
-  if (actions.includes("sync_stuck") && state.stuckOrders.length > 0) {
-    const synced = await doSyncStuck(state.stuckOrders);
-    tgMsg += `\n🧹 <b>Cleared ${synced} stuck order(s)</b> — will auto-retry next cycle`;
-    logLines.push(`sync_stuck: ${synced} cleared`);
+  // Alert about stuck orders — DO NOT touch them, sync-orders handles that
+  if (actions.includes("alert_stuck") && state.stuckOrderCount > 0) {
+    tgMsg += `\n\n⏳ <b>${state.stuckOrderCount} order(s) stuck >15 min</b>\nSync-orders cron is checking them. Send /pending if you want to review now.`;
+    logLines.push(`alert_stuck: ${state.stuckOrderCount}`);
     didSomething = true;
   }
 
@@ -248,7 +235,7 @@ export async function GET(request: NextRequest) {
   // Morning daily report
   if (actions.includes("daily_report")) {
     tgMsg +=
-      `\n\n📊 <b>Good morning! Today's Report</b>\n` +
+      `\n\n📊 <b>Good morning! Daily Report</b>\n` +
       `Orders: <b>${state.today.total}</b>\n` +
       `Revenue: <b>GH₵${state.today.revenue.toFixed(2)}</b>\n` +
       `Profit: <b>GH₵${state.today.profit.toFixed(2)}</b>\n` +
