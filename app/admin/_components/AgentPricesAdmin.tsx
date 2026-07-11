@@ -39,9 +39,8 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<BundleRow | null>(null);
 
-  const customAgents  = allAgents.filter(a => a.agent_type === "custom_price");
-  const freeAgents    = customAgents.filter(a => a.registration_ref === "FREE");
-  const proAgents     = customAgents.filter(a => a.registration_ref !== "FREE" && a.registration_ref != null);
+  const freeAgents = allAgents.filter(a => a.agent_type === "custom_price");
+  const proAgents  = allAgents.filter(a => a.agent_type === "pro");
 
   const load = useCallback(async () => {
     setLoading(true);
