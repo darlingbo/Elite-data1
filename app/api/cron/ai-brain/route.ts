@@ -134,46 +134,24 @@ If nothing to do: []`;
   }
 }
 
-// ── Action: retry failed orders ───────────────────────────────────────────────
-async function doRetryFailed(orders: State["failedOrders"]) {
-  let fixed = 0;
-  let stillFailing = 0;
-  const fixedLines: string[] = [];
+// ── Ask admin before retrying failed orders ───────────────────────────────────
+async function askRetryApproval(orders: State["failedOrders"]) {
+  const lines = orders.slice(0, 8).map(
+    (o) => `• ${(o.network ?? "").toUpperCase()} ${o.bundle_size} → ${o.phone}`
+  ).join("\n");
+  const extra = orders.length > 8 ? `\n...and ${orders.length - 8} more` : "";
 
-  for (const o of orders) {
-    const sizeGb =
-      o.bundle_size_gb ??
-      (() => {
-        const m = (o.bundle_size ?? "").match(/(\d+(?:\.\d+)?)\s*gb/i);
-        return m ? parseFloat(m[1]) : 1;
-      })();
-
-    try {
-      const res = await fetch(`${INVENTOR_BASE}/api/developer/purchase`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${INVENTOR_KEY}` },
-        body: JSON.stringify({
-          network: networkApiName[o.network as keyof typeof networkApiName] ?? o.network.toUpperCase(),
-          Phone: o.phone,
-          Datasize: sizeGb,
-          reference: `${o.reference}-ai`,
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
-
-      if (res.ok) {
-        await supabase.from("orders").update({ status: "processing" }).eq("reference", o.reference);
-        fixedLines.push(`✅ ${(o.network ?? "").toUpperCase()} ${o.bundle_size} → ${o.phone}`);
-        fixed++;
-      } else {
-        stillFailing++;
-      }
-    } catch {
-      stillFailing++;
+  await sendAdminAlert(
+    `🤖 <b>AI Brain — Action Required</b>\n\n` +
+    `❌ <b>${orders.length} failed order(s) found:</b>\n${lines}${extra}\n\n` +
+    `Should I retry them now?`,
+    {
+      inline_keyboard: [[
+        { text: "✅ Yes — Retry All", callback_data: "ai_retry:confirm" },
+        { text: "❌ No — Skip", callback_data: "ai_retry:skip" },
+      ]],
     }
-  }
-
-  return { fixed, stillFailing, fixedLines };
+  );
 }
 
 // ── Main cron handler ─────────────────────────────────────────────────────────
@@ -190,62 +168,51 @@ export async function GET(request: NextRequest) {
   }
 
   const logLines: string[] = [];
-  let tgMsg = `🤖 <b>AI Brain — Auto Action</b>\n`;
-  let didSomething = false;
+  const alertParts: string[] = [];
 
-  // Retry failed orders
+  // Ask admin before retrying failed orders (sends its own Telegram message with buttons)
   if (actions.includes("retry_failed") && state.failedOrders.length > 0) {
-    const { fixed, stillFailing, fixedLines } = await doRetryFailed(state.failedOrders);
-    if (fixed > 0) {
-      tgMsg += `\n🔧 <b>Auto-fixed ${fixed} failed order(s):</b>\n${fixedLines.join("\n")}`;
-      didSomething = true;
-    }
-    if (stillFailing > 0) {
-      tgMsg += `\n⚠️ ${stillFailing} order(s) still failing — send /failed to review`;
-      didSomething = true;
-    }
-    logLines.push(`retry_failed: ${fixed} fixed, ${stillFailing} still failing`);
+    await askRetryApproval(state.failedOrders);
+    logLines.push(`retry_failed: asked admin to approve ${state.failedOrders.length} orders`);
   }
 
-  // Alert about stuck orders — DO NOT touch them, sync-orders handles that
+  // Alert about stuck orders — DO NOT touch them, sync-orders handles that safely
   if (actions.includes("alert_stuck") && state.stuckOrderCount > 0) {
-    tgMsg += `\n\n⏳ <b>${state.stuckOrderCount} order(s) stuck >15 min</b>\nSync-orders cron is checking them. Send /pending if you want to review now.`;
+    alertParts.push(`⏳ <b>${state.stuckOrderCount} order(s) stuck >15 min</b>\nSync-orders cron is checking them. Send /pending to review.`);
     logLines.push(`alert_stuck: ${state.stuckOrderCount}`);
-    didSomething = true;
   }
 
   // Alert about pending agent applications
   if (actions.includes("alert_agents") && state.pendingAgents.length > 0) {
     const names = state.pendingAgents.map((a) => `• ${a.name} (${a.phone})`).join("\n");
-    tgMsg += `\n\n👤 <b>${state.pendingAgents.length} agent application(s) waiting:</b>\n${names}\nSend /agents to approve or reject.`;
+    alertParts.push(`👤 <b>${state.pendingAgents.length} agent application(s) waiting:</b>\n${names}\nSend /agents to approve or reject.`);
     logLines.push(`alert_agents: ${state.pendingAgents.length}`);
-    didSomething = true;
   }
 
   // Alert if Inventor API is down
   if (actions.includes("alert_inventor_down")) {
-    tgMsg +=
-      `\n\n🚨 <b>INVENTOR API IS DOWN!</b>\n` +
+    alertParts.push(
+      `🚨 <b>INVENTOR API IS DOWN!</b>\n` +
       `Data delivery is blocked. New orders will fail until it recovers.\n` +
-      `Check your Inventor dashboard.`;
+      `Check your Inventor dashboard.`
+    );
     logLines.push("alert_inventor_down");
-    didSomething = true;
   }
 
   // Morning daily report
   if (actions.includes("daily_report")) {
-    tgMsg +=
-      `\n\n📊 <b>Good morning! Daily Report</b>\n` +
+    alertParts.push(
+      `📊 <b>Good morning! Daily Report</b>\n` +
       `Orders: <b>${state.today.total}</b>\n` +
       `Revenue: <b>GH₵${state.today.revenue.toFixed(2)}</b>\n` +
       `Profit: <b>GH₵${state.today.profit.toFixed(2)}</b>\n` +
-      `${state.today.failed > 0 ? `⚠️ ${state.today.failed} failed order(s) need attention` : "✅ No failures — running clean!"}`;
+      `${state.today.failed > 0 ? `⚠️ ${state.today.failed} failed order(s) need attention` : "✅ No failures — running clean!"}`
+    );
     logLines.push("daily_report");
-    didSomething = true;
   }
 
-  if (didSomething) {
-    await sendAdminAlert(tgMsg).catch(() => {});
+  if (alertParts.length > 0) {
+    await sendAdminAlert(`🤖 <b>AI Brain</b>\n\n${alertParts.join("\n\n")}`).catch(() => {});
   }
 
   return Response.json({ status: "ok", actions, log: logLines });

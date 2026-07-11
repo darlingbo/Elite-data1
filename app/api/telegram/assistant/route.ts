@@ -1289,6 +1289,58 @@ Be direct. Under 120 words total.`;
   } catch { return false; }
 }
 
+async function execAiRetry(chatId: string) {
+  const { data: failed } = await supabase
+    .from("orders")
+    .select("reference, phone, network, bundle_size, bundle_size_gb")
+    .eq("status", "failed");
+
+  if (!failed?.length) {
+    await send(chatId, `✅ <b>No failed orders found</b> — all clear!`, mainMenu());
+    return;
+  }
+
+  await send(chatId, `🔄 Retrying <b>${failed.length}</b> failed order(s)…`);
+
+  let fixed = 0, stillFailing = 0;
+  const fixedLines: string[] = [];
+
+  for (const o of failed) {
+    const sizeGb = o.bundle_size_gb ?? (() => {
+      const m = (o.bundle_size ?? "").match(/(\d+(?:\.\d+)?)\s*gb/i);
+      return m ? parseFloat(m[1]) : 1;
+    })();
+
+    try {
+      const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
+        body: JSON.stringify({
+          network: networkApiName[o.network as keyof typeof networkApiName] ?? o.network.toUpperCase(),
+          Phone: o.phone,
+          Datasize: sizeGb,
+          reference: `${o.reference}-ai`,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (res.ok) {
+        await supabase.from("orders").update({ status: "processing" }).eq("reference", o.reference);
+        fixedLines.push(`✅ ${(o.network ?? "").toUpperCase()} ${o.bundle_size} → ${o.phone}`);
+        fixed++;
+      } else {
+        stillFailing++;
+      }
+    } catch {
+      stillFailing++;
+    }
+  }
+
+  let msg = `🔧 <b>Retry Complete</b>\n\n✅ Fixed: <b>${fixed}</b>\n❌ Still failing: <b>${stillFailing}</b>`;
+  if (fixedLines.length) msg += `\n\n${fixedLines.join("\n")}`;
+  if (stillFailing > 0) msg += `\n\nSend /failed to review the remaining ones.`;
+  await send(chatId, msg, mainMenu());
+}
+
 async function cmdSync(chatId: string) {
   await send(chatId, "🔄 Checking all stuck/processing orders and syncing with Inventor…");
   try {
@@ -1736,6 +1788,8 @@ export async function POST(request: NextRequest) {
         } catch (e) { await send(chatId, `❌ Error: ${String(e)}`); }
       }
     }
+    else if (data === "ai_retry:confirm") await execAiRetry(chatId);
+    else if (data === "ai_retry:skip") await send(chatId, "👍 Skipped. I'll check again on the next cycle.", mainMenu());
     else if (data === "noop") await send(chatId, "Cancelled.", mainMenu());
 
     return Response.json({ ok: true });
