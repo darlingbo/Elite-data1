@@ -1,17 +1,14 @@
 import { supabase } from "./supabase";
 import { bundles as staticBundles } from "./bundles";
 
-export const FREE_AGENT_DISCOUNT = 0.04; // 4% off customer price for FREE-plan price-mode agents
-
-// "FREE" is the sentinel stored for Free-plan agents. null = Pro agent.
-const isFreeRef = (ref: string | null | undefined) => ref === "FREE";
+export const FREE_AGENT_DISCOUNT = 0.04; // 4% off customer price for custom_price (free plan) agents
 
 /**
- * Returns the wallet purchase cost for ONE bundle based on agent type + plan:
+ * Returns the wallet purchase cost for ONE bundle based on agent type:
  *
- * - Commission agents   → full customer price (they earn 80% commission on profit via referrals)
- * - Price-mode FREE     → customer price × 0.96 (4% discount)
- * - Price-mode Pro      → custom_tier_prices (admin-set per-agent prices)
+ * - commission    → full customer price (they earn % commission split)
+ * - custom_price  → customer price × 0.96 (4% discount, wallet-based)
+ * - pro           → custom_tier_prices (admin-set wholesale prices, Paystack direct)
  */
 export async function getAgentBundleCost(
   bundleId: string,
@@ -24,12 +21,12 @@ export async function getAgentBundleCost(
   // Commission agents pay the same price as regular customers
   if (agentType === "commission") return customerPrice;
 
-  // Price-mode FREE plan: 4% off
-  if (isFreeRef(registrationRef)) {
+  // custom_price (free plan): 4% off admin selling price
+  if (agentType === "custom_price") {
     return parseFloat((customerPrice * (1 - FREE_AGENT_DISCOUNT)).toFixed(2));
   }
 
-  // Price-mode Pro: admin-set custom price
+  // Pro agents: admin-set custom tier price
   const { data } = await supabase
     .from("custom_tier_prices")
     .select("price")
@@ -37,7 +34,7 @@ export async function getAgentBundleCost(
     .maybeSingle();
   if (data?.price != null) return Number(data.price);
 
-  // Fallback: full customer price if no tier price configured
+  // Fallback: full customer price if no tier price configured yet
   return customerPrice;
 }
 
@@ -46,7 +43,7 @@ export async function getAgentBundleCost(
  * Mirrors exactly what /api/bundles returns so the price list always matches.
  */
 export async function getAllAgentBundleCosts(
-  registrationRef: string | null | undefined,
+  _registrationRef: string | null | undefined,
   agentType?: string | null
 ): Promise<{ bundle_id: string; price: number }[]> {
   const { data: dbRows } = await supabase
@@ -61,15 +58,15 @@ export async function getAllAgentBundleCosts(
     dbMap.set(row.id, { price: Number(row.price), active: row.active as boolean | null });
   }
 
-  // Pro price-mode agents get custom_tier_prices
-  if (agentType !== "commission" && !isFreeRef(registrationRef)) {
+  // Pro agents get admin-set wholesale tier prices
+  if (agentType === "pro") {
     const { data: tierData } = await supabase.from("custom_tier_prices").select("bundle_id, price");
     return (tierData ?? []).map((r: any) => ({ bundle_id: r.bundle_id, price: Number(r.price) }));
   }
 
   const result: { bundle_id: string; price: number }[] = [];
-  const isCommission = agentType === "commission";
-  const discount = isCommission ? 0 : FREE_AGENT_DISCOUNT; // commission = no discount
+  // custom_price agents get 4% off; commission agents pay full price
+  const discount = agentType === "custom_price" ? FREE_AGENT_DISCOUNT : 0;
 
   // Static bundles — include unless explicitly deactivated in DB
   for (const b of staticBundles) {

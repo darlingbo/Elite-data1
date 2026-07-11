@@ -345,7 +345,7 @@ function LoginForm({ onLogin }: { onLogin: (d: AgentData) => void }) {
             <button onClick={goRegister} style={{ background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.4)", color: "white", borderRadius: 14, padding: "12px 28px", fontSize: 14, fontWeight: 800, cursor: "pointer", backdropFilter: "blur(8px)", transition: "background .2s" }}>
               Register as Agent →
             </button>
-            <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, marginTop: 20 }}>GH₵40 one-time fee · Instant approval</p>
+            <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, marginTop: 20 }}>GH₵100 one-time fee · Instant approval</p>
           </div>
         </div>
 
@@ -586,10 +586,6 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
               style={{ background: copied ? "#16a34a" : "#f59e0b", color: copied ? "white" : "#000", border: "none", borderRadius: 10, padding: "9px 16px", fontSize: 13, fontWeight: 800, cursor: "pointer", flexShrink: 0, transition: "background 0.2s" }}>
               {copied ? "✓ Copied!" : "Copy"}
             </button>
-            <button onClick={() => { const msg = `Buy cheap data bundles here: ${link}`; window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank"); }}
-              style={{ background: "#25D366", color: "white", border: "none", borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>
-              Share
-            </button>
           </div>
         );
       })()}
@@ -599,7 +595,7 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
         <div onClick={() => onNavigate("pro")} style={{ background: "linear-gradient(135deg,rgba(124,58,237,0.12),rgba(79,70,229,0.08))", border: "1px solid rgba(124,58,237,0.25)", borderRadius: 18, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}>
           <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(124,58,237,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>⭐</div>
           <div style={{ flex: 1 }}>
-            <p style={{ color: M.text, fontWeight: 800, fontSize: 13, margin: "0 0 2px" }}>Upgrade to Pro — GH₵40 one-time</p>
+            <p style={{ color: M.text, fontWeight: 800, fontSize: 13, margin: "0 0 2px" }}>Upgrade to Pro — GH₵100 one-time</p>
             <p style={{ color: M.muted, fontSize: 12, margin: 0 }}>Half the reward threshold · Wholesale prices · Verified badge · Priority support</p>
           </div>
           <span style={{ color: "#a78bfa", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>View benefits →</span>

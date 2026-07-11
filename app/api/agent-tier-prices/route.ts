@@ -16,8 +16,7 @@ export async function GET(request: NextRequest) {
 
     if (agent) {
       const prices = await getAllAgentBundleCosts(agent.registration_ref, agent.agent_type);
-      const isCommission = agent.agent_type === "commission" || agent.registration_ref === "FREE";
-      const plan = isCommission ? "free" : "pro";
+      const plan = agent.agent_type === "pro" ? "pro" : "free";
       return Response.json({ prices, plan });
     }
   }
