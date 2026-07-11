@@ -28,13 +28,18 @@ export async function POST(request: NextRequest) {
       return Response.json({ verified: true });
     }
 
-    // Number explicitly not on beneficiary list
+    // Number explicitly not on beneficiary list — allow order through, admin will handle manually
     const msg = String((data.message as string) ?? (data.error as string) ?? "");
+    if (msg.includes("beneficiary")) {
+      return Response.json({
+        verified: true,
+        pendingManual: true,
+        warning: `Your order will be placed and delivered within 24–48 hours. Please contact admin to keep an eye on it for you.`,
+      });
+    }
     return Response.json({
       verified: false,
-      error: msg.includes("beneficiary")
-        ? `This MTN number (${phone}) is not on the eligible list. Please check the number and try again, or contact MTN to register it.`
-        : "This MTN number could not be verified. Please check it and try again.",
+      error: "This MTN number could not be verified. Please check it and try again.",
     });
   } catch {
     // Network / timeout error — allow through, purchase will be the hard gate

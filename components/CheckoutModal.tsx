@@ -96,6 +96,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const [promoError, setPromoError] = useState("");
   const [surcharge, setSurcharge] = useState(0);
   const [verifying, setVerifying] = useState(false);
+  const [manualDeliveryWarning, setManualDeliveryWarning] = useState("");
   const paystackReady = usePaystackReady();
   const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -175,12 +176,15 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ phone: phone.replace(/\s/g, "") }),
         });
-        const vd = await vr.json() as { verified: boolean; error?: string };
+        const vd = await vr.json() as { verified: boolean; error?: string; pendingManual?: boolean; warning?: string };
         if (!vd.verified) {
           setLoading(false);
           setVerifying(false);
           setError(vd.error ?? "This MTN number is not eligible for data purchase. Please check the number and try again.");
           return;
+        }
+        if (vd.pendingManual && vd.warning) {
+          setManualDeliveryWarning(vd.warning);
         }
       } catch {
         // Network error — let Inventor reject at purchase time if needed
@@ -513,6 +517,11 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
         <div className="px-6 py-5 space-y-4">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
+          )}
+          {manualDeliveryWarning && (
+            <div className="bg-amber-50 border border-amber-300 text-amber-800 text-sm px-3 py-2 rounded-lg">
+              ⏳ {manualDeliveryWarning}
+            </div>
           )}
 
           <div>
