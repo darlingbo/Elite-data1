@@ -9,15 +9,15 @@ export async function GET(request: NextRequest) {
   if (agentCode) {
     const { data: agent } = await supabase
       .from("agents")
-      .select("registration_ref, agent_type")
+      .select("registration_ref, agent_type, plan")
       .eq("referral_code", agentCode.toUpperCase())
       .eq("status", "approved")
       .maybeSingle();
 
     if (agent) {
-      const prices = await getAllAgentBundleCosts(agent.registration_ref, agent.agent_type);
-      const plan = agent.agent_type === "pro" ? "pro" : "free";
-      return Response.json({ prices, plan });
+      const agentPlan = (agent as { plan?: string | null }).plan ?? "free";
+      const prices = await getAllAgentBundleCosts(agent.registration_ref, agent.agent_type, agentPlan);
+      return Response.json({ prices, plan: agentPlan });
     }
   }
 

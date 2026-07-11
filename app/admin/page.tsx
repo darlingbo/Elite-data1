@@ -1325,7 +1325,7 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
   const [actionLoading, setActionLoading] = useState(false);
   const [pricesAgent, setPricesAgent] = useState<{ id: string; name: string } | null>(null);
   const [switchModal, setSwitchModal] = useState<{ id: string; name: string; currentType: string } | null>(null);
-  const [switchTarget, setSwitchTarget] = useState<"commission" | "custom_price" | "pro" | null>(null);
+  const [switchTarget, setSwitchTarget] = useState<"commission" | "custom_price" | null>(null);
   const [switching, setSwitching] = useState(false);
   const [switchMsg, setSwitchMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [planModal, setPlanModal] = useState<{ id: string; name: string; currentPlan: "free" | "pro" } | null>(null);
@@ -1339,7 +1339,7 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
     try {
       const res = await fetch("/api/admin/agents/switch-mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: switchModal.id, agentType: switchTarget }) });
       const d = await res.json();
-      const label = switchTarget === "pro" ? "⭐ Pro" : switchTarget === "custom_price" ? "Price Mode" : "Free";
+      const label = switchTarget === "custom_price" ? "Set Own Price" : "Commission";
       if (d.success) { setSwitchMsg({ text: `✓ ${switchModal.name} → ${label}`, ok: true }); onRefresh(); }
       else setSwitchMsg({ text: d.error ?? "Failed", ok: false });
     } catch { setSwitchMsg({ text: "Network error", ok: false }); }
@@ -1415,18 +1415,20 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
                   <td className="px-4 py-3.5 text-xs">{a.whatsapp ? <a href={`https://wa.me/${a.whatsapp.replace(/^0/, "233")}`} target="_blank" rel="noreferrer" className="text-green-400 hover:text-green-300 font-mono">{a.whatsapp}</a> : <span className="text-slate-600">—</span>}</td>
                   <td className="px-4 py-3.5 text-slate-500 text-xs">{a.business_name || "—"}</td>
                   {agentTab === "approved" && (() => {
-                    const isFree = !a.registration_ref || a.registration_ref === "FREE";
+                    const isPro = (a as { plan?: string }).plan === "pro";
                     return <>
                       <td className="px-4 py-3.5">
-                        <button onClick={() => setPlanModal({ id: a.id, name: a.name, currentPlan: isFree ? "free" : "pro" })} title="Click to change plan" className="hover:opacity-80 transition-opacity">
-                          {isFree
-                            ? <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "rgba(100,116,139,0.15)", color: "#94a3b8", border: "1px solid rgba(100,116,139,0.3)" }}>Free ⇄</span>
-                            : <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.35)" }}>⭐ Pro ⇄</span>}
+                        <button onClick={() => setPlanModal({ id: a.id, name: a.name, currentPlan: isPro ? "pro" : "free" })} title="Click to change plan" className="hover:opacity-80 transition-opacity">
+                          {isPro
+                            ? <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.35)" }}>⭐ Pro ⇄</span>
+                            : <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "rgba(100,116,139,0.15)", color: "#94a3b8", border: "1px solid rgba(100,116,139,0.3)" }}>Free ⇄</span>}
                         </button>
                       </td>
                       <td className="px-4 py-3.5">
-                        <button onClick={() => { setSwitchTarget(null); setSwitchModal({ id: a.id, name: a.name, currentType: a.agent_type ?? "commission" }); }} title="Change agent type" className="hover:opacity-70 transition-opacity">
-                          {a.agent_type === "pro" ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.3)" }}>⭐ Pro ⇄</span> : a.agent_type === "custom_price" ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>Price Mode 🔒</span> : <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", border: "1px solid rgba(16,185,129,0.25)" }}>Free ⇄</span>}
+                        <button onClick={() => { setSwitchTarget(null); setSwitchModal({ id: a.id, name: a.name, currentType: a.agent_type ?? "commission" }); }} title="Change earning type" className="hover:opacity-70 transition-opacity">
+                          {a.agent_type === "custom_price"
+                            ? <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>Set Price ⇄</span>
+                            : <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#4ade80", border: "1px solid rgba(16,185,129,0.25)" }}>Commission ⇄</span>}
                         </button>
                       </td>
                       <td className="px-4 py-3.5 font-bold text-white">{a.total_sales}</td>
@@ -1523,14 +1525,14 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
       {switchModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="rounded-2xl shadow-2xl w-full max-w-sm p-6 border" style={{ background: CARD, borderColor: BORDER }}>
-            <h3 className="font-black text-white text-lg mb-1">Change Agent Type</h3>
-            <p className="text-sm text-slate-400 mb-4">Select new type for <span className="text-white font-bold">{switchModal.name}</span></p>
+            <h3 className="font-black text-white text-lg mb-1">Change Earning Type</h3>
+            <p className="text-sm text-slate-400 mb-1">Select earning type for <span className="text-white font-bold">{switchModal.name}</span></p>
+            <p className="text-xs text-slate-600 mb-4">Plan (Free/Pro) is changed separately with the plan badge.</p>
             <div className="flex flex-col gap-2 mb-5">
               {([
-                { type: "commission",   label: "Free Agent",   desc: "Earns % commission split",          color: "#60a5fa", bg: "rgba(59,130,246,0.12)",  border: "rgba(59,130,246,0.35)" },
-                { type: "custom_price", label: "Price Mode",   desc: "Tops up wallet, sets own prices",   color: "#a78bfa", bg: "rgba(124,58,237,0.12)", border: "rgba(124,58,237,0.35)" },
-                { type: "pro",          label: "⭐ Pro Agent",  desc: "Paystack direct, sets own prices",  color: "#fbbf24", bg: "rgba(245,158,11,0.12)",  border: "rgba(245,158,11,0.35)" },
-              ] as { type: "commission" | "custom_price" | "pro"; label: string; desc: string; color: string; bg: string; border: string }[]).map(opt => {
+                { type: "commission",   label: "Commission",    desc: "Earns % split of admin profit. Sells at admin prices.",      color: "#60a5fa", bg: "rgba(59,130,246,0.12)",  border: "rgba(59,130,246,0.35)" },
+                { type: "custom_price", label: "Set Own Price", desc: "Sets own prices above admin price. Profit = markup above base.", color: "#a78bfa", bg: "rgba(124,58,237,0.12)", border: "rgba(124,58,237,0.35)" },
+              ] as { type: "commission" | "custom_price"; label: string; desc: string; color: string; bg: string; border: string }[]).map(opt => {
                 const isCurrent = switchModal.currentType === opt.type;
                 const isSelected = switchTarget === opt.type;
                 return (

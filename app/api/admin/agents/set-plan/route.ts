@@ -18,10 +18,9 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  // "FREE" sentinel = Free plan; null = Pro plan (legacy-compatible)
   const { error } = await supabase
     .from("agents")
-    .update({ registration_ref: plan === "free" ? "FREE" : null })
+    .update({ plan })
     .eq("id", agentId);
 
   if (error) return Response.json({ error: error.message }, { status: 500 });

@@ -86,8 +86,8 @@ async function sendDataBundle(network: string, phone: string, sizeGB: number, re
 }
 
 async function getAgentIsPro(agentId: string): Promise<boolean> {
-  const { data } = await supabase.from("agents").select("registration_ref").eq("id", agentId).maybeSingle();
-  return !!(data?.registration_ref && data.registration_ref !== "FREE");
+  const { data } = await supabase.from("agents").select("plan").eq("id", agentId).maybeSingle();
+  return (data as { plan?: string } | null)?.plan === "pro";
 }
 
 // ── GET — return all reward statuses ─────────────────────────────────────────

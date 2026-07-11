@@ -19,7 +19,8 @@ interface AgentData {
   id: string; name: string; email: string; phone?: string | null; referral_code: string;
   wallet_balance: number; commission_balance: number; paystack_wallet_balance?: number; pending_commission?: number;
   total_sales: number; total_revenue: number;
-  agent_type: "commission" | "custom_price" | "pro" | null;
+  agent_type: "commission" | "custom_price" | null;
+  plan: "free" | "pro";
   registration_ref?: string | null;
   business_name?: string | null;
   orders: Order[];
@@ -503,7 +504,7 @@ function WithdrawModal({ agentId, referralCode, profitBalance, onClose, onSucces
 // ─── Dashboard Page ───────────────────────────────────────────────────────────
 function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: AgentData; onAddFunds: () => void; onWithdraw: () => void; onNavigate: (p: Page) => void }) {
   const isPriceMode = data.agent_type === "custom_price";
-  const isPro = !!(data.registration_ref && data.registration_ref !== "FREE");
+  const isPro = data.plan === "pro";
   const ms = useMemo(() => getMonthStats(data.orders), [data.orders]);
   const daily = useMemo(() => getDailySales(data.orders, 30), [data.orders]);
   const topCustomers = useMemo(() => getTopCustomers(data.orders), [data.orders]);
@@ -2353,7 +2354,7 @@ function SupportPage() {
 
 // ─── Pro Features Page ────────────────────────────────────────────────────────
 function ProPage({ data, onNavigate }: { data: AgentData; onNavigate: (p: Page) => void }) {
-  const isPro = data.agent_type === "pro";
+  const isPro = data.plan === "pro";
   const [tab, setTab] = useState<"overview" | "store" | "prices" | "api">("overview");
   const [upgrading, setUpgrading] = useState(false);
   const [upgradeMsg, setUpgradeMsg] = useState("");
@@ -2808,7 +2809,7 @@ function ProPage({ data, onNavigate }: { data: AgentData; onNavigate: (p: Page) 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({ page, setPage, data, onLogout, onWithdraw, open, onClose }: { page: Page; setPage: (p: Page) => void; data: AgentData; onLogout: () => void; onWithdraw: () => void; open: boolean; onClose: () => void }) {
   const isPriceMode = data.agent_type === "custom_price";
-  const isPro = data.agent_type === "pro";
+  const isPro = data.plan === "pro";
   const initial1 = (data.name ?? "A").charAt(0).toUpperCase();
   const initial2 = (data.name ?? "").split(" ")[1]?.charAt(0).toUpperCase() ?? "";
 
@@ -2926,7 +2927,7 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showAddFunds, setShowAddFunds] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
-  const isPro = data.agent_type === "pro";
+  const isPro = data.plan === "pro";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2964,7 +2965,7 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
 
         <main style={{ flex: 1, padding: "28px 28px", overflowY: "auto", overflowX: "hidden", maxWidth: 1300, width: "100%", minWidth: 0, margin: "0 auto", boxSizing: "border-box" }} className="main-content">
           {page === "dashboard"    && <DashboardPage data={data} onAddFunds={() => setShowAddFunds(true)} onWithdraw={() => setShowWithdraw(true)} onNavigate={setPage} />}
-          {page === "orders"       && <OrdersPage orders={data.orders} agentId={data.id} onPlaceOrder={() => setPage("buy_data")} isPro={!!(data.registration_ref && data.registration_ref !== "FREE")} />}
+          {page === "orders"       && <OrdersPage orders={data.orders} agentId={data.id} onPlaceOrder={() => setPage("buy_data")} isPro={data.plan === "pro"} />}
           {page === "customers"    && <CustomersPage orders={data.orders} />}
           {page === "wallet"       && <WalletPage data={data} onAddFunds={() => setShowAddFunds(true)} onWithdraw={() => setShowWithdraw(true)} />}
           {page === "transactions" && <TransactionsPage data={data} onAddFunds={() => setShowAddFunds(true)} onWithdraw={() => setShowWithdraw(true)} />}

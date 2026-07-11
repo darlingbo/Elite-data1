@@ -8,7 +8,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
   // Look up agent by referral code
   const { data: agent } = await supabase
     .from("agents")
-    .select("id, name, business_name, shop_name, tagline, store_color, referral_code, agent_type, status")
+    .select("id, name, business_name, shop_name, tagline, store_color, referral_code, agent_type, plan, status")
     .eq("referral_code", code.toUpperCase())
     .maybeSingle();
 
@@ -26,7 +26,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
 
   // Load agent's custom prices (only for pro agents)
   let agentPriceMap: Record<string, number> = {};
-  if (agent.agent_type === "pro") {
+  if ((agent as { plan?: string }).plan === "pro") {
     const { data: agentPrices } = await supabase
       .from("agent_bundle_prices")
       .select("bundle_id, custom_price")
@@ -41,7 +41,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
     id: b.id,
     network: b.network,
     size: b.size,
-    price: agent.agent_type === "pro" ? (agentPriceMap[b.id] ?? Number(b.price)) : Number(b.price),
+    price: (agent as { plan?: string }).plan === "pro" ? (agentPriceMap[b.id] ?? Number(b.price)) : Number(b.price),
     admin_price: Number(b.price),
   }));
 

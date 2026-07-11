@@ -14,8 +14,8 @@ export async function POST(req: NextRequest) {
 
   const { agentId, agentType } = await req.json();
 
-  if (!agentId || !["commission", "custom_price", "pro"].includes(agentType)) {
-    return Response.json({ error: "Invalid agent type." }, { status: 400 });
+  if (!agentId || !["commission", "custom_price"].includes(agentType)) {
+    return Response.json({ error: "Invalid agent type. Use 'commission' or 'custom_price'." }, { status: 400 });
   }
 
   const { error } = await supabase

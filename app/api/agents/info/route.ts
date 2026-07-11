@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
 
   const { data: agent } = await supabase
     .from("agents")
-    .select("name, phone, whatsapp, agent_type, shop_name, registration_ref")
+    .select("name, phone, whatsapp, agent_type, plan, shop_name, registration_ref")
     .eq("referral_code", code.toUpperCase())
     .eq("status", "approved")
     .maybeSingle();
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   const raw = (agent.whatsapp || agent.phone || "").replace(/\s+/g, "");
   const whatsapp = raw.startsWith("0") ? "233" + raw.slice(1) : raw.replace(/^\+/, "");
 
-  const is_pro = !!(agent.registration_ref && agent.registration_ref !== "FREE");
+  const is_pro = (agent as { plan?: string }).plan === "pro";
 
   return Response.json({
     success: true,

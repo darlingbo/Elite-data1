@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
   if (agentCode) {
     const { data: agent } = await supabase
       .from("agents")
-      .select("id, agent_type")
+      .select("id, agent_type, plan")
       .eq("referral_code", agentCode.toUpperCase())
       .eq("status", "approved")
       .maybeSingle();
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
         .map(b => ({ ...b, price: agentMap.get(b.id)! }));
     }
 
-    if (agent?.agent_type === "pro") {
+    if ((agent as { plan?: string } | null)?.plan === "pro") {
       // Pro agent: show all admin bundles, but apply their custom price where set
       const { data: agentPrices } = await supabase
         .from("agent_bundle_prices")

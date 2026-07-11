@@ -13,15 +13,14 @@ export async function POST(request: NextRequest) {
   // Verify ownership
   const { data: agent } = await supabase
     .from("agents")
-    .select("id, name, agent_type, pro_payment_ref, status, referral_code")
+    .select("id, name, agent_type, plan, pro_payment_ref, status, referral_code")
     .eq("id", agentId)
     .eq("referral_code", String(referralCode).toUpperCase())
     .maybeSingle();
 
   if (!agent) return Response.json({ error: "Agent not found." }, { status: 404 });
   if (agent.status !== "approved") return Response.json({ error: "Only approved agents can upgrade." }, { status: 403 });
-  if (agent.agent_type === "pro") return Response.json({ error: "You are already a Pro Agent." }, { status: 409 });
-  if (agent.agent_type === "custom_price") return Response.json({ error: "Your account type cannot be changed." }, { status: 403 });
+  if ((agent as { plan?: string }).plan === "pro") return Response.json({ error: "You are already a Pro Agent." }, { status: 409 });
 
   // Block duplicate payment reference
   const { data: dupCheck } = await supabase
@@ -54,11 +53,12 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: `Payment amount GH₵${amountGhc} is less than the required GH₵100.` }, { status: 400 });
   }
 
-  // Upgrade agent to pro
+  // Upgrade agent to pro plan; keep agent_type as custom_price (they set own prices)
   const { error: updateErr } = await supabase
     .from("agents")
     .update({
-      agent_type: "pro",
+      plan: "pro",
+      agent_type: "custom_price",
       pro_payment_ref: paystackRef,
       pro_upgraded_at: new Date().toISOString(),
     })

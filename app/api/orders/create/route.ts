@@ -320,7 +320,7 @@ export async function POST(request: NextRequest) {
     agentCode
       ? supabase
           .from("agents")
-          .select("id, name, status, agent_type, telegram_chat_id, registration_ref")
+          .select("id, name, status, agent_type, plan, telegram_chat_id, registration_ref")
           .eq("referral_code", agentCode.toUpperCase())
           .eq("status", "approved")
           .maybeSingle()
@@ -358,13 +358,15 @@ export async function POST(request: NextRequest) {
   let agentId: string | null = null;
   let agentName: string | undefined;
   let agentType: string = "commission";
+  let agentPlan: string = "free";
   let agentTelegramChatId: string | null = null;
   let agentRegistrationRef: string | null = null;
   const agent = agentResult.data;
   if (agent) {
     agentId = agent.id;
     agentName = agent.name;
-    agentType = agent.agent_type ?? "commission";
+    agentType = (agent as { agent_type?: string }).agent_type ?? "commission";
+    agentPlan = (agent as { plan?: string }).plan ?? "free";
     agentTelegramChatId = (agent as { telegram_chat_id?: string | null }).telegram_chat_id ?? null;
     agentRegistrationRef = (agent as { registration_ref?: string | null }).registration_ref ?? null;
   }
@@ -378,14 +380,13 @@ export async function POST(request: NextRequest) {
     referralCreditId = credit.id;
   }
 
-  // For custom_price agents: adminTierPrice = what admin charges agent (wallet deduction)
-  // Pro agents → custom_tier_prices; Free agents (registration_ref === "FREE") → bundle_prices.price × 0.96
-  let adminTierPrice = pricing.costPrice; // fallback to Inventor cost
+  // adminTierPrice = what the agent pays per sale (deducted from wallet for free plan, or used for profit calc)
+  // pro plan → custom_tier_prices (or admin price fallback); free plan custom_price → admin price × 0.96
+  let adminTierPrice = pricing.costPrice; // fallback
   let tierPrice = pricing.price;
   if (agentId && agentType === "custom_price") {
-    const isPro = agentRegistrationRef !== "FREE";
-    const [tierResult, agentPriceResult, freePriceResult] = await Promise.all([
-      isPro
+    const [tierResult, agentPriceResult, adminPriceResult] = await Promise.all([
+      agentPlan === "pro"
         ? supabase.from("custom_tier_prices").select("price").eq("bundle_id", bundleId).maybeSingle()
         : Promise.resolve({ data: null }),
       supabase
@@ -395,21 +396,20 @@ export async function POST(request: NextRequest) {
         .eq("bundle_id", bundleId)
         .eq("active", true)
         .maybeSingle(),
-      !isPro
-        ? supabase.from("bundle_prices").select("price, active").eq("id", bundleId).maybeSingle()
-        : Promise.resolve({ data: null }),
+      supabase.from("bundle_prices").select("price, active").eq("id", bundleId).maybeSingle(),
     ]);
 
-    if (isPro) {
-      if (tierResult.data?.price) adminTierPrice = Number(tierResult.data.price);
+    // Resolve admin selling price (what customer pays admin)
+    const adminSellingPrice = (adminPriceResult.data?.active !== false && adminPriceResult.data?.price != null)
+      ? Number(adminPriceResult.data.price)
+      : bundles.find(b => b.id === bundleId)?.price ?? pricing.price;
+
+    if (agentPlan === "pro") {
+      // Pro plan: tier price if set, otherwise admin selling price
+      adminTierPrice = tierResult.data?.price ? Number(tierResult.data.price) : adminSellingPrice;
     } else {
-      // Free agent: admin selling price - 4%
-      const freeCustomerPrice = (freePriceResult.data?.active !== false && freePriceResult.data?.price != null)
-        ? Number(freePriceResult.data.price)
-        : bundles.find(b => b.id === bundleId)?.price ?? null;
-      if (freeCustomerPrice != null) {
-        adminTierPrice = parseFloat((freeCustomerPrice * 0.96).toFixed(2));
-      }
+      // Free plan: admin selling price minus 4%
+      adminTierPrice = parseFloat((adminSellingPrice * 0.96).toFixed(2));
     }
 
     tierPrice = agentPriceResult.data?.custom_price
@@ -468,9 +468,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // For price-mode agents: verify wallet has enough to cover cost before proceeding.
-  // This is a hard stop — customer has just paid, so we don't deliver if agent can't fund it.
-  if (agentId && agentType === "custom_price") {
+  // For free-plan price-mode agents: verify wallet has enough to cover cost before proceeding.
+  // Pro plan agents don't use a wallet — customer pays Paystack directly.
+  if (agentId && agentType === "custom_price" && agentPlan === "free") {
     const { data: walletAgent } = await supabase
       .from("agents")
       .select("wallet_balance")
@@ -516,13 +516,9 @@ export async function POST(request: NextRequest) {
     agentCommission = 0;
     adminCommission = parseFloat(Math.max(0, effectivePriceFromPayment - pricing.costPrice).toFixed(2));
   } else if (agentType === "custom_price") {
-    // Agent keeps markup above admin tier price; fast delivery fee excluded
+    // Both free and pro plan: agent profit = charged minus their buy price (adminTierPrice)
     agentCommission = parseFloat(Math.max(0, chargedForCommission - adminTierPrice).toFixed(2));
     adminCommission = parseFloat(Math.max(0, adminTierPrice - pricing.costPrice).toFixed(2)) + fastDeliveryFee;
-  } else if (agentType === "pro") {
-    // Pro agent: profit = what they charged above admin selling price; no wallet involved
-    agentCommission = parseFloat(Math.max(0, chargedForCommission - pricing.price).toFixed(2));
-    adminCommission = parseFloat(Math.max(0, pricing.price - pricing.costPrice).toFixed(2)) + fastDeliveryFee;
   } else {
     // commission type: old percentage split — do not change
     const profit = Math.max(0, effectivePriceFromPayment - pricing.costPrice);
@@ -780,8 +776,8 @@ export async function POST(request: NextRequest) {
       .eq("reference", paystackRef);
 
     if (agentId) {
-      if (agentType === "custom_price") {
-        // Price mode: deduct cost from wallet, credit agent only their markup profit
+      if (agentType === "custom_price" && agentPlan === "free") {
+        // Free plan price-mode: deduct cost from wallet, credit agent only their markup profit
         const { data: ag } = await supabase
           .from("agents")
           .select("wallet_balance, paystack_wallet_balance, commission_balance, total_sales")
@@ -958,8 +954,8 @@ export async function POST(request: NextRequest) {
       `⏳ ORDER PROCESSING\nRef: ${paystackRef}\nPhone: ${phone}\n${bundleMeta.network.toUpperCase()} ${actualSize}\n${inventorTimedOut ? "⚠️ Inventor timed out — order left as processing for monitor to sync" : inventorLog}`
     );
 
-    // Deduct wallet for price-mode agents immediately — commission credited when sync confirms delivery
-    if (agentId && agentType === "custom_price") {
+    // Deduct wallet for free-plan price-mode agents — pro plan agents don't use wallet
+    if (agentId && agentType === "custom_price" && agentPlan === "free") {
       const { data: ag } = await supabase
         .from("agents")
         .select("wallet_balance, paystack_wallet_balance")
