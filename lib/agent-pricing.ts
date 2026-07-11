@@ -58,14 +58,28 @@ export async function getAllAgentBundleCosts(
     dbMap.set(row.id, { price: Number(row.price), active: row.active as boolean | null });
   }
 
-  // Pro agents get admin-set wholesale tier prices
+  const result: { bundle_id: string; price: number }[] = [];
+
+  // Pro agents: tier price if set, otherwise admin selling price (never Inventor cost)
   if (agentType === "pro") {
     const { data: tierData } = await supabase.from("custom_tier_prices").select("bundle_id, price");
-    return (tierData ?? []).map((r: any) => ({ bundle_id: r.bundle_id, price: Number(r.price) }));
+    const tierMap = new Map<string, number>((tierData ?? []).map((r: any) => [r.bundle_id, Number(r.price)]));
+
+    for (const b of staticBundles) {
+      const override = dbMap.get(b.id);
+      if (override?.active === false) continue;
+      const adminPrice = override?.price ?? b.price;
+      result.push({ bundle_id: b.id, price: tierMap.get(b.id) ?? adminPrice });
+    }
+    for (const [id, { price, active }] of dbMap) {
+      if (defaultIds.has(id)) continue;
+      if (active === false) continue;
+      result.push({ bundle_id: id, price: tierMap.get(id) ?? price });
+    }
+    return result;
   }
 
-  const result: { bundle_id: string; price: number }[] = [];
-  // custom_price agents get 4% off; commission agents pay full price
+  // custom_price agents get 4% off admin price; commission agents pay full price
   const discount = agentType === "custom_price" ? FREE_AGENT_DISCOUNT : 0;
 
   // Static bundles — include unless explicitly deactivated in DB
