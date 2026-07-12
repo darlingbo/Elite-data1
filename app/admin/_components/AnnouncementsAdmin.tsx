@@ -89,12 +89,17 @@ export default function AnnouncementsAdmin() {
   const [closedMsg, setClosedMsg] = useState("");
   const [storeLoading, setStoreLoading] = useState(false);
   const [storeSaved, setStoreSaved] = useState("");
+  // Helpline control
+  const [helplineEnabled, setHelplineEnabled] = useState<boolean | null>(null);
+  const [helplineLoading, setHelplineLoading] = useState(false);
+  const [helplineSaved, setHelplineSaved] = useState("");
 
   useEffect(() => {
     fetch("/api/admin/store-status").then(r => r.json()).then(d => {
       setStoreOpen(d.open !== false);
       setClosedMsg(d.closedMessage ?? "");
-    }).catch(() => setStoreOpen(true));
+      setHelplineEnabled(d.helplineEnabled !== false);
+    }).catch(() => { setStoreOpen(true); setHelplineEnabled(true); });
   }, []);
 
   async function load() {
@@ -178,6 +183,16 @@ export default function AnnouncementsAdmin() {
     setTimeout(() => setStoreSaved(""), 3000);
   }
 
+  async function toggleHelpline() {
+    const newState = !helplineEnabled;
+    setHelplineEnabled(newState);
+    setHelplineLoading(true);
+    await fetch("/api/admin/store-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ helplineEnabled: newState }) }).catch(() => {});
+    setHelplineLoading(false);
+    setHelplineSaved(newState ? "Helpline is now VISIBLE" : "Helpline is now HIDDEN");
+    setTimeout(() => setHelplineSaved(""), 3000);
+  }
+
   async function saveClosedMessage() {
     setStoreLoading(true);
     await fetch("/api/admin/store-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ closedMessage: closedMsg }) }).catch(() => {});
@@ -239,6 +254,37 @@ export default function AnnouncementsAdmin() {
           {storeLoading ? "Saving…" : "Save Message"}
         </button>
         {storeSaved && <p style={{ color: "#4ade80", fontSize: 13, fontWeight: 700, marginTop: 8 }}>✓ {storeSaved}</p>}
+      </div>
+
+      {/* ── Helpline Control ── */}
+      <div style={{ background: "#162032", border: "1px solid #1e3050", borderRadius: 16, padding: 20 }}>
+        <h3 style={{ color: "#f1f5f9", fontWeight: 800, fontSize: 18, margin: "0 0 4px" }}>WhatsApp Helpline Button</h3>
+        <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 18px" }}>
+          The green &quot;Need Help?&quot; WhatsApp button at the bottom-right of every page. Turn it off when you are unavailable.
+        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <span style={{
+            width: 10, height: 10, borderRadius: "50%",
+            background: helplineEnabled !== false ? "#4ade80" : "#f87171",
+            display: "inline-block",
+            boxShadow: helplineEnabled !== false ? "0 0 6px #4ade80" : "0 0 6px #f87171",
+          }} />
+          <span style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 16 }}>
+            Helpline is {helplineEnabled !== false ? "ON — visible to customers" : "OFF — hidden from customers"}
+          </span>
+        </div>
+        <button
+          onClick={toggleHelpline}
+          disabled={helplineLoading || helplineEnabled === null}
+          style={{
+            background: helplineEnabled !== false ? "#dc2626" : "#16a34a",
+            color: "#fff", border: "none", borderRadius: 12,
+            padding: "12px 28px", fontWeight: 800, fontSize: 14,
+            cursor: "pointer", opacity: helplineLoading ? 0.6 : 1,
+          }}>
+          {helplineLoading ? "Saving…" : helplineEnabled !== false ? "Turn Off Helpline" : "Turn On Helpline"}
+        </button>
+        {helplineSaved && <p style={{ color: "#4ade80", fontSize: 13, fontWeight: 700, marginTop: 8 }}>✓ {helplineSaved}</p>}
       </div>
 
       {/* SQL setup */}

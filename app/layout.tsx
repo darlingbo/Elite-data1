@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import WelcomePopup from "@/components/WelcomePopup";
 import ThemeToggle from "@/components/ThemeToggle";
+import { supabase } from "@/lib/supabase";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -42,10 +43,20 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
+async function getHelplineEnabled(): Promise<boolean> {
+  try {
+    const { data } = await supabase.from("system_settings").select("value").eq("key", "helpline_enabled").maybeSingle();
+    return data?.value !== "false";
+  } catch {
+    return true;
+  }
+}
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const headersList = await headers();
   const pathname = headersList.get("x-pathname") ?? "";
   const isStandalone = pathname.startsWith("/admin") || pathname.startsWith("/agent/dashboard") || pathname.startsWith("/agent");
+  const helplineEnabled = isStandalone ? false : await getHelplineEnabled();
 
   return (
     <html lang="en">
@@ -58,7 +69,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {!isStandalone && <PublicNav />}
         <main className="flex-1">{children}</main>
         {!isStandalone && <Footer />}
-        {!isStandalone && <WhatsAppButton />}
+        {!isStandalone && helplineEnabled && <WhatsAppButton />}
         {!isStandalone && <WelcomePopup />}
         {/* On standalone pages (admin/agent) the nav is absent so we float the toggle */}
         {isStandalone && (

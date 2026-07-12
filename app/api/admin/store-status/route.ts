@@ -16,8 +16,16 @@ async function setKV(key: string, value: string) {
 }
 
 export async function GET() {
-  const [openVal, msg] = await Promise.all([getKV("store_open"), getKV("store_closed_message")]);
-  return Response.json({ open: openVal !== "false", closedMessage: msg ?? "" });
+  const [openVal, msg, helplineVal] = await Promise.all([
+    getKV("store_open"),
+    getKV("store_closed_message"),
+    getKV("helpline_enabled"),
+  ]);
+  return Response.json({
+    open: openVal !== "false",
+    closedMessage: msg ?? "",
+    helplineEnabled: helplineVal !== "false",
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -25,5 +33,6 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   if (typeof body.open === "boolean") await setKV("store_open", String(body.open));
   if (typeof body.closedMessage === "string") await setKV("store_closed_message", body.closedMessage);
+  if (typeof body.helplineEnabled === "boolean") await setKV("helpline_enabled", String(body.helplineEnabled));
   return Response.json({ success: true });
 }
