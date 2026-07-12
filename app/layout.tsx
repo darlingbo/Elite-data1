@@ -65,7 +65,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <meta name="mobile-web-app-capable" content="yes" />
         <link rel="apple-touch-icon" href="/logo.png" />
       </head>
-      <body className="min-h-screen flex flex-col bg-gray-50 text-gray-900">
+      <body className="min-h-screen flex flex-col bg-gray-50 text-gray-900" data-helpline={helplineEnabled ? "on" : "off"}>
         {!isStandalone && <PublicNav />}
         <main className="flex-1">{children}</main>
         {!isStandalone && <Footer />}
