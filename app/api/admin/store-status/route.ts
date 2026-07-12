@@ -16,15 +16,17 @@ async function setKV(key: string, value: string) {
 }
 
 export async function GET() {
-  const [openVal, msg, helplineVal] = await Promise.all([
+  const [openVal, msg, helplineVal, mtnVerifyVal] = await Promise.all([
     getKV("store_open"),
     getKV("store_closed_message"),
     getKV("helpline_enabled"),
+    getKV("mtn_verification_enabled"),
   ]);
   return Response.json({
     open: openVal !== "false",
     closedMessage: msg ?? "",
     helplineEnabled: helplineVal !== "false",
+    mtnVerificationEnabled: mtnVerifyVal !== "false",
   });
 }
 
@@ -34,5 +36,6 @@ export async function POST(req: NextRequest) {
   if (typeof body.open === "boolean") await setKV("store_open", String(body.open));
   if (typeof body.closedMessage === "string") await setKV("store_closed_message", body.closedMessage);
   if (typeof body.helplineEnabled === "boolean") await setKV("helpline_enabled", String(body.helplineEnabled));
+  if (typeof body.mtnVerificationEnabled === "boolean") await setKV("mtn_verification_enabled", String(body.mtnVerificationEnabled));
   return Response.json({ success: true });
 }

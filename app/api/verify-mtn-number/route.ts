@@ -1,8 +1,22 @@
 import { NextRequest } from "next/server";
+import { supabase } from "@/lib/supabase";
+
+async function isMtnVerificationEnabled(): Promise<boolean> {
+  try {
+    const { data } = await supabase.from("system_settings").select("value").eq("key", "mtn_verification_enabled").maybeSingle();
+    return data?.value !== "false";
+  } catch {
+    return true;
+  }
+}
 
 export async function POST(request: NextRequest) {
   const { phone } = await request.json().catch(() => ({}));
   if (!phone) return Response.json({ verified: false, error: "Phone number required." }, { status: 400 });
+
+  // Admin can disable verification — skip entirely and allow all MTN orders through
+  const verifyEnabled = await isMtnVerificationEnabled();
+  if (!verifyEnabled) return Response.json({ verified: true, skipped: true });
 
   const key  = process.env.INVENTOR_API_KEY;
   const base = process.env.INVENTOR_API_BASE_URL;

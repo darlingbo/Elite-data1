@@ -93,13 +93,18 @@ export default function AnnouncementsAdmin() {
   const [helplineEnabled, setHelplineEnabled] = useState<boolean | null>(null);
   const [helplineLoading, setHelplineLoading] = useState(false);
   const [helplineSaved, setHelplineSaved] = useState("");
+  // MTN verification control
+  const [mtnVerifyEnabled, setMtnVerifyEnabled] = useState<boolean | null>(null);
+  const [mtnVerifyLoading, setMtnVerifyLoading] = useState(false);
+  const [mtnVerifySaved, setMtnVerifySaved] = useState("");
 
   useEffect(() => {
     fetch("/api/admin/store-status").then(r => r.json()).then(d => {
       setStoreOpen(d.open !== false);
       setClosedMsg(d.closedMessage ?? "");
       setHelplineEnabled(d.helplineEnabled !== false);
-    }).catch(() => { setStoreOpen(true); setHelplineEnabled(true); });
+      setMtnVerifyEnabled(d.mtnVerificationEnabled !== false);
+    }).catch(() => { setStoreOpen(true); setHelplineEnabled(true); setMtnVerifyEnabled(true); });
   }, []);
 
   async function load() {
@@ -191,6 +196,16 @@ export default function AnnouncementsAdmin() {
     setHelplineLoading(false);
     setHelplineSaved(newState ? "Helpline is now VISIBLE" : "Helpline is now HIDDEN");
     setTimeout(() => setHelplineSaved(""), 3000);
+  }
+
+  async function toggleMtnVerification() {
+    const newState = !mtnVerifyEnabled;
+    setMtnVerifyEnabled(newState);
+    setMtnVerifyLoading(true);
+    await fetch("/api/admin/store-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mtnVerificationEnabled: newState }) }).catch(() => {});
+    setMtnVerifyLoading(false);
+    setMtnVerifySaved(newState ? "Verification is now ON" : "Verification is now OFF — all MTN orders allowed");
+    setTimeout(() => setMtnVerifySaved(""), 4000);
   }
 
   async function saveClosedMessage() {
@@ -285,6 +300,38 @@ export default function AnnouncementsAdmin() {
           {helplineLoading ? "Saving…" : helplineEnabled !== false ? "Turn Off Helpline" : "Turn On Helpline"}
         </button>
         {helplineSaved && <p style={{ color: "#4ade80", fontSize: 13, fontWeight: 700, marginTop: 8 }}>✓ {helplineSaved}</p>}
+      </div>
+
+      {/* ── MTN Verification Control ── */}
+      <div style={{ background: "#162032", border: "1px solid #1e3050", borderRadius: 16, padding: 20 }}>
+        <h3 style={{ color: "#f1f5f9", fontWeight: 800, fontSize: 18, margin: "0 0 4px" }}>MTN Number Verification</h3>
+        <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 18px" }}>
+          When ON, the system checks each MTN number against Inventor&apos;s beneficiary list before checkout.
+          Turn it OFF to skip the check and allow all MTN orders through immediately.
+        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <span style={{
+            width: 10, height: 10, borderRadius: "50%",
+            background: mtnVerifyEnabled !== false ? "#4ade80" : "#f59e0b",
+            display: "inline-block",
+            boxShadow: mtnVerifyEnabled !== false ? "0 0 6px #4ade80" : "0 0 6px #f59e0b",
+          }} />
+          <span style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 16 }}>
+            Verification is {mtnVerifyEnabled !== false ? "ON — numbers are checked before checkout" : "OFF — all MTN orders go straight through"}
+          </span>
+        </div>
+        <button
+          onClick={toggleMtnVerification}
+          disabled={mtnVerifyLoading || mtnVerifyEnabled === null}
+          style={{
+            background: mtnVerifyEnabled !== false ? "#b45309" : "#16a34a",
+            color: "#fff", border: "none", borderRadius: 12,
+            padding: "12px 28px", fontWeight: 800, fontSize: 14,
+            cursor: "pointer", opacity: mtnVerifyLoading ? 0.6 : 1,
+          }}>
+          {mtnVerifyLoading ? "Saving…" : mtnVerifyEnabled !== false ? "Turn Off Verification" : "Turn On Verification"}
+        </button>
+        {mtnVerifySaved && <p style={{ color: "#4ade80", fontSize: 13, fontWeight: 700, marginTop: 8 }}>✓ {mtnVerifySaved}</p>}
       </div>
 
       {/* SQL setup */}
