@@ -28,18 +28,12 @@ export async function POST(request: NextRequest) {
       return Response.json({ verified: true });
     }
 
-    // Number explicitly not on beneficiary list — allow order through, admin will handle manually
-    const msg = String((data.message as string) ?? (data.error as string) ?? "");
-    if (msg.includes("beneficiary")) {
-      return Response.json({
-        verified: true,
-        pendingManual: true,
-        warning: `Your order will be placed and delivered within 24–48 hours. Please contact admin to keep an eye on it for you.`,
-      });
-    }
+    // Any other Inventor response (beneficiary list, ineligible, unknown) — let the order through.
+    // Admin handles delivery manually. Never block a paying customer at this step.
     return Response.json({
-      verified: false,
-      error: "This MTN number could not be verified. Please check it and try again.",
+      verified: true,
+      pendingManual: true,
+      warning: `Your order will be placed and delivered within 24–48 hours. Our team will handle your delivery manually.`,
     });
   } catch {
     // Network / timeout error — allow through, purchase will be the hard gate
