@@ -2124,15 +2124,26 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
       <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
         <p className="font-bold text-white mb-1">Admin Account</p>
         <p className="text-xs text-slate-500 mb-4">Logged in as <span className="text-white font-semibold">Super Admin</span></p>
-        <button onClick={onChangePassword}
-          className="flex items-center gap-3 px-4 py-3 rounded-xl border w-full text-left transition-all hover:border-blue-500"
-          style={{ background: BG, borderColor: BORDER }}>
-          <span className="text-2xl">🔑</span>
-          <div>
-            <p className="text-sm font-bold text-white">Change Password</p>
-            <p className="text-xs text-slate-500">Update your admin login password</p>
-          </div>
-        </button>
+        <div className="space-y-2">
+          <button onClick={onChangePassword}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl border w-full text-left transition-all hover:border-blue-500"
+            style={{ background: BG, borderColor: BORDER }}>
+            <span className="text-2xl">🔑</span>
+            <div>
+              <p className="text-sm font-bold text-white">Change Password</p>
+              <p className="text-xs text-slate-500">Update your admin login password</p>
+            </div>
+          </button>
+          <a href="/api/admin/backup" download
+            className="flex items-center gap-3 px-4 py-3 rounded-xl border w-full text-left transition-all hover:border-green-500"
+            style={{ background: BG, borderColor: BORDER }}>
+            <span className="text-2xl">🗄️</span>
+            <div>
+              <p className="text-sm font-bold text-white">Download Backup</p>
+              <p className="text-xs text-slate-500">Export all orders, agents &amp; bundles as JSON · Runs automatically every night at 2 AM</p>
+            </div>
+          </a>
+        </div>
       </div>
 
       {/* Toast */}
