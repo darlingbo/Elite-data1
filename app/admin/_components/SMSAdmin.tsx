@@ -75,8 +75,23 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
   const [schedText, setSchedText] = useState("");
   const [schedSaving, setSchedSaving] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagResult, setDiagResult] = useState<Record<string, unknown> | null>(null);
 
   const approvedAgents = useMemo(() => agents.filter(a => a.status === "approved"), [agents]);
+
+  async function runDiagnose() {
+    setDiagnosing(true);
+    setDiagResult(null);
+    try {
+      const r = await fetch("/api/admin/sms/check").then(r => r.json());
+      setDiagResult(r);
+    } catch (e) {
+      setDiagResult({ error: String(e) });
+    } finally {
+      setDiagnosing(false);
+    }
+  }
 
   useEffect(() => {
     if (audience !== "customers" || customerPhones !== null || customersLoading) return;
@@ -222,6 +237,79 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
           style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
           📢 Send to All Agents
         </button>
+      </div>
+
+      {/* ── Diagnose panel ── */}
+      <div className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <p className="font-bold text-white text-sm">Account Diagnostics</p>
+            <p className="text-xs text-slate-500">Check your Africa&apos;s Talking credentials and balance</p>
+          </div>
+          <button onClick={runDiagnose} disabled={diagnosing}
+            className="px-4 py-2 rounded-xl text-sm font-bold border text-blue-400 disabled:opacity-50"
+            style={{ borderColor: BORDER, background: BG }}>
+            {diagnosing ? "Checking…" : "🔍 Run Diagnose"}
+          </button>
+        </div>
+
+        {diagResult && (
+          <div className="mt-4 space-y-2">
+            {!diagResult.configured && (
+              <div className="p-3 rounded-xl" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)" }}>
+                <p className="text-sm font-bold text-red-400">❌ {diagResult.error as string}</p>
+                <p className="text-xs text-slate-400 mt-1">Add AT_API_KEY and AT_USERNAME in Vercel → Settings → Environment Variables, then redeploy.</p>
+              </div>
+            )}
+
+            {diagResult.configured && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-xl p-3" style={{ background: BG }}>
+                  <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Username</p>
+                  <p className="text-sm font-black" style={{ color: diagResult.isSandbox ? "#f87171" : "#4ade80" }}>
+                    {diagResult.username as string}
+                    {diagResult.isSandbox && <span className="text-xs text-red-400 ml-1">(SANDBOX — won&apos;t deliver!)</span>}
+                  </p>
+                </div>
+                <div className="rounded-xl p-3" style={{ background: BG }}>
+                  <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Balance</p>
+                  <p className="text-sm font-black" style={{ color: diagResult.balance ? "#4ade80" : "#f87171" }}>
+                    {diagResult.balance as string ?? "Could not fetch — check API key"}
+                  </p>
+                </div>
+                <div className="rounded-xl p-3" style={{ background: BG }}>
+                  <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Sender ID</p>
+                  <p className="text-sm font-black text-white">
+                    {diagResult.senderId ? diagResult.senderId as string : <span className="text-slate-500">None set (AT default)</span>}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {diagResult.configured && diagResult.isSandbox && (
+              <div className="p-3 rounded-xl" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)" }}>
+                <p className="text-sm font-bold text-red-400">❌ You are in SANDBOX mode</p>
+                <p className="text-xs text-slate-400 mt-1">Change AT_USERNAME in Vercel env vars to your real Africa&apos;s Talking username, then redeploy.</p>
+              </div>
+            )}
+
+            {diagResult.configured && !diagResult.isSandbox && diagResult.balance && (
+              <div className="p-3 rounded-xl" style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)" }}>
+                <p className="text-sm font-bold text-green-400">✅ Account looks good</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  If SMS still doesn&apos;t deliver: make sure your Sender ID (<strong className="text-white">{diagResult.senderId as string || "AFRICASTALKING"}</strong>) is registered with MTN Ghana / Telecel. Unregistered sender IDs get silently dropped by Ghana networks. Remove AT_SENDER_ID from env vars to use the default, or register it at africastalking.com.
+                </p>
+              </div>
+            )}
+
+            {diagResult.error && diagResult.configured && (
+              <div className="p-3 rounded-xl" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)" }}>
+                <p className="text-sm font-bold text-red-400">❌ {diagResult.error as string}</p>
+                <p className="text-xs text-slate-400 mt-1">Your AT_API_KEY may be wrong or expired.</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
