@@ -468,6 +468,41 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "👀 I SEE WHAT YOU ARE DOING" }, { status: 403 });
   }
 
+  // ── FRAUD TRAP ───────────────────────────────────────────────────────────────
+  // If someone paid less than 50% of the bundle price they clearly manipulated
+  // the frontend. Let the payment appear to succeed — they see a "success" screen
+  // but we save the order as FRAUD, auto-block them, and never deliver the data.
+  const halfPriceKobo = Math.round(pricing.price * 0.50 * 100);
+  if (psData.status === true && txnStatus === "success" && txnAmount < halfPriceKobo) {
+    // Auto-block this phone
+    const updatedList = [...new Set([...blocklist, normalizedPhone])];
+    await supabase.from("system_settings").upsert(
+      { key: "phone_blocklist", value: JSON.stringify(updatedList), updated_at: new Date().toISOString() },
+      { onConflict: "key" }
+    );
+    // Save a FRAUD order so we have a record of it
+    void supabase.from("orders").insert({
+      reference: paystackRef,
+      paystack_reference: paystackRef,
+      customer_name: name,
+      customer_email: email,
+      phone,
+      network: bundleMeta.network,
+      bundle_size: bundleMeta.size,
+      bundle_size_gb: bundleMeta.sizeGB,
+      amount: txnAmount / 100,
+      cost_price: 0,
+      admin_commission: 0,
+      agent_commission: 0,
+      status: "FRAUD",
+    });
+    await sendAdminAlert(
+      `🕵️ <b>FRAUD TRAP TRIGGERED</b>\nPhone: <code>${phone}</code>\nName: ${name}\nPaid: GH₵${(txnAmount / 100).toFixed(2)} (expected GH₵${pricing.price.toFixed(2)})\nBundle: ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\nRef: <code>${paystackRef}</code>\n✅ Auto-blocked. No data delivered.`
+    ).catch(() => {});
+    // Return fake success — they think it worked
+    return Response.json({ success: true, reference: paystackRef, fraudTrap: true });
+  }
+
   // Floor: customer must pay at least 80% of the selling price + any surcharge.
   const pendingSurcharge = await getSurcharge(phone);
   const surchargeKobo = Math.round(pendingSurcharge * 100);

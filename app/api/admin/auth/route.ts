@@ -76,13 +76,13 @@ export async function POST(request: NextRequest) {
   const ua = request.headers.get("user-agent") ?? "unknown";
   sendAdminAlert(`🔐 <b>Admin Login</b>\nIP: <code>${ip}</code>\nDevice: ${ua.slice(0, 80)}`).catch(() => {});
 
-  // Persist to audit log
-  supabase.from("audit_log").insert({
+  // Persist to audit log (fire and forget — never block the login response)
+  void supabase.from("audit_log").insert({
     action: "admin_login",
     ip,
     details: { user_agent: ua.slice(0, 200) },
     created_at: new Date().toISOString(),
-  }).then(() => {}).catch(() => {});
+  });
 
   const token = process.env.ADMIN_SESSION_TOKEN;
   if (!token) {

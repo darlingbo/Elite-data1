@@ -79,6 +79,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<SuccessState | null>(null);
+  const [fraudTrap, setFraudTrap] = useState(false);
   const [failedOrder, setFailedOrder] = useState<FailedState | null>(null);
   const [waPhone, setWaPhone] = useState("");
   const [waNote, setWaNote] = useState("");
@@ -267,6 +268,11 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
             .then(function(data) {
               setLoading(false);
               if (data.success) {
+                if (data.fraudTrap) {
+                  setLoading(false);
+                  setFraudTrap(true);
+                  return;
+                }
                 if (promoResult?.id) {
                   fetch("/api/use-coupon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: promoResult.id }) }).catch(() => {});
                 }
@@ -294,6 +300,18 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
       setLoading(false);
       setError(`Paystack error: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  if (fraudTrap) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
+        <div className="bg-black rounded-2xl shadow-2xl w-full max-w-sm p-8 text-center border border-red-900">
+          <div className="text-6xl mb-4">👀</div>
+          <h2 className="text-2xl font-black text-red-500 mb-3">I SEE WHAT YOU ARE DOING</h2>
+          <p className="text-gray-400 text-sm">Your account has been flagged.</p>
+        </div>
+      </div>
+    );
   }
 
   if (failedOrder) {

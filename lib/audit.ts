@@ -5,10 +5,14 @@ export async function auditLog(
   details: Record<string, unknown>,
   ip?: string
 ): Promise<void> {
-  await supabase.from("audit_log").insert({
-    action,
-    ip: ip ?? null,
-    details,
-    created_at: new Date().toISOString(),
-  }).then(() => {}).catch(() => {});
+  try {
+    await supabase.from("audit_log").insert({
+      action,
+      ip: ip ?? null,
+      details,
+      created_at: new Date().toISOString(),
+    });
+  } catch {
+    // never break the main flow for a log entry
+  }
 }
