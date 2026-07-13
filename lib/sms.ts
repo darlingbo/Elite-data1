@@ -21,16 +21,16 @@ export async function sendCustomerSMS(phone: string, message: string): Promise<v
   }).catch(() => {});
 }
 
-export function orderReceivedSMS(name: string, network: string, size: string, phone: string, reference: string): string {
+export function orderReceivedSMS(name: string, network: string, size: string, _phone: string, reference: string): string {
   const first = (name || "").split(" ")[0] || "Customer";
   const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
-  return `Hi ${first}! Your ${network.toUpperCase()} ${size} data order (Ref: ${shortRef}) has been received. Delivery is in progress to ${phone}. Thank you for choosing Elite Data!`;
+  return `Hi ${first}! Your ${network.toUpperCase()} ${size} data order (Ref: ${shortRef}) has been received. Delivery is in progress. Thank you for choosing Elite Data!`;
 }
 
-export function orderDeliveredSMS(name: string, network: string, size: string, phone: string, reference: string): string {
+export function orderDeliveredSMS(name: string, network: string, size: string, _phone: string, reference: string): string {
   const first = (name || "").split(" ")[0] || "Customer";
   const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
-  return `Hi ${first}! Your ${network.toUpperCase()} ${size} data has been delivered to ${phone}. Ref: ${shortRef}. Thank you for choosing Elite Data!`;
+  return `Hi ${first}! Your ${network.toUpperCase()} ${size} data has been delivered. Ref: ${shortRef}. Thank you for choosing Elite Data!`;
 }
 
 export function orderConfirmedSMS(name: string, network: string, size: string, phone: string, reference: string): string {
