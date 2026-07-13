@@ -97,6 +97,11 @@ export default function AnnouncementsAdmin() {
   const [mtnVerifyEnabled, setMtnVerifyEnabled] = useState<boolean | null>(null);
   const [mtnVerifyLoading, setMtnVerifyLoading] = useState(false);
   const [mtnVerifySaved, setMtnVerifySaved] = useState("");
+  // Phone blocklist
+  const [blocklist, setBlocklist] = useState<string[]>([]);
+  const [blocklistLoading, setBlocklistLoading] = useState(false);
+  const [blockInput, setBlockInput] = useState("");
+  const [blockMsg, setBlockMsg] = useState("");
 
   useEffect(() => {
     fetch("/api/admin/store-status").then(r => r.json()).then(d => {
@@ -105,6 +110,8 @@ export default function AnnouncementsAdmin() {
       setHelplineEnabled(d.helplineEnabled !== false);
       setMtnVerifyEnabled(d.mtnVerificationEnabled !== false);
     }).catch(() => { setStoreOpen(true); setHelplineEnabled(true); setMtnVerifyEnabled(true); });
+    // Load blocklist
+    fetch("/api/admin/blocklist").then(r => r.json()).then(d => setBlocklist(d.phones ?? [])).catch(() => {});
   }, []);
 
   async function load() {
@@ -196,6 +203,24 @@ export default function AnnouncementsAdmin() {
     setHelplineLoading(false);
     setHelplineSaved(newState ? "Helpline is now VISIBLE" : "Helpline is now HIDDEN");
     setTimeout(() => setHelplineSaved(""), 3000);
+  }
+
+  async function addToBlocklist() {
+    const phone = blockInput.trim();
+    if (!phone) return;
+    setBlocklistLoading(true);
+    const res = await fetch("/api/admin/blocklist", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) }).then(r => r.json());
+    if (res.phones) { setBlocklist(res.phones); setBlockInput(""); setBlockMsg(`✓ ${phone} blocked`); }
+    else setBlockMsg(res.error ?? "Failed");
+    setBlocklistLoading(false);
+    setTimeout(() => setBlockMsg(""), 3000);
+  }
+
+  async function removeFromBlocklist(phone: string) {
+    setBlocklistLoading(true);
+    const res = await fetch("/api/admin/blocklist", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) }).then(r => r.json());
+    if (res.phones) setBlocklist(res.phones);
+    setBlocklistLoading(false);
   }
 
   async function toggleMtnVerification() {
@@ -332,6 +357,43 @@ export default function AnnouncementsAdmin() {
           {mtnVerifyLoading ? "Saving…" : mtnVerifyEnabled !== false ? "Turn Off Verification" : "Turn On Verification"}
         </button>
         {mtnVerifySaved && <p style={{ color: "#4ade80", fontSize: 13, fontWeight: 700, marginTop: 8 }}>✓ {mtnVerifySaved}</p>}
+      </div>
+
+      {/* ── Phone Blocklist ── */}
+      <div style={{ background: "#162032", border: "1px solid #1e3050", borderRadius: 16, padding: 20 }}>
+        <h3 style={{ color: "#f1f5f9", fontWeight: 800, fontSize: 18, margin: "0 0 4px" }}>🚫 Phone Blocklist</h3>
+        <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 18px" }}>
+          Blocked numbers cannot place any orders. Use this to stop fraudsters immediately.
+        </p>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <input
+            type="tel"
+            placeholder="e.g. 0247723074"
+            value={blockInput}
+            onChange={e => setBlockInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && addToBlocklist()}
+            style={{ flex: 1, background: "#0e1928", border: "1px solid #1e3050", borderRadius: 10, padding: "10px 14px", color: "#f1f5f9", fontSize: 14, outline: "none" }}
+          />
+          <button
+            onClick={addToBlocklist}
+            disabled={blocklistLoading || !blockInput.trim()}
+            style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: blocklistLoading ? 0.6 : 1, whiteSpace: "nowrap" }}>
+            Block Number
+          </button>
+        </div>
+        {blockMsg && <p style={{ color: "#4ade80", fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{blockMsg}</p>}
+        {blocklist.length === 0
+          ? <p style={{ color: "#475569", fontSize: 13 }}>No numbers blocked.</p>
+          : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {blocklist.map(p => (
+                <div key={p} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#0e1928", border: "1px solid #3f1818", borderRadius: 8, padding: "8px 14px" }}>
+                  <span style={{ color: "#f87171", fontWeight: 700, fontSize: 14, fontFamily: "monospace" }}>{p}</span>
+                  <button onClick={() => removeFromBlocklist(p)} style={{ background: "none", border: "1px solid #3f1818", borderRadius: 6, padding: "3px 10px", color: "#f87171", fontSize: 12, cursor: "pointer" }}>Remove</button>
+                </div>
+              ))}
+            </div>
+          )}
       </div>
 
       {/* SQL setup */}

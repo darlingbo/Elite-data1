@@ -445,10 +445,27 @@ export async function POST(request: NextRequest) {
   const txnStatus = (psData.data as Record<string, unknown>)?.status;
   const txnAmount = Number((psData.data as Record<string, unknown>)?.amount ?? 0);
 
+  // Hard floor: no bundle can ever cost less than GH₵1.00 — catches zero-priced DB entries
+  const ABSOLUTE_MIN_GHC = 1.00;
+
+  // Check phone blocklist before any further processing
+  const { data: blocklistData } = await supabase
+    .from("system_settings").select("value").eq("key", "phone_blocklist").maybeSingle();
+  let blocklist: string[] = [];
+  try { blocklist = JSON.parse(blocklistData?.value ?? "[]"); } catch { blocklist = []; }
+  const normalizedPhone = phone.replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0");
+  if (blocklist.some((b: string) => b.replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0") === normalizedPhone)) {
+    await sendAdminAlert(`🚫 BLOCKED ORDER ATTEMPT\nPhone: ${phone}\nBundle: ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\nRef: ${paystackRef}`).catch(() => {});
+    return Response.json({ error: "Your account has been suspended. Contact support." }, { status: 403 });
+  }
+
   // Floor: customer must pay at least 80% of the selling price + any surcharge.
   const pendingSurcharge = await getSurcharge(phone);
   const surchargeKobo = Math.round(pendingSurcharge * 100);
-  const minKobo = Math.round(pricing.price * 0.80 * 100) + surchargeKobo;
+  const minKobo = Math.max(
+    Math.round(ABSOLUTE_MIN_GHC * 100),
+    Math.round(pricing.price * 0.80 * 100)
+  ) + surchargeKobo;
   const paid =
     psData.status === true &&
     txnStatus === "success" &&
