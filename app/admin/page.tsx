@@ -2222,6 +2222,26 @@ export default function AdminDashboard() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => { if (tab === "overview") { setAnimated(false); setTimeout(() => setAnimated(true), 60); } }, [tab]);
 
+  // Auto-logout after 30 minutes of inactivity
+  useEffect(() => {
+    const IDLE_MS = 30 * 60 * 1000;
+    let timer: ReturnType<typeof setTimeout>;
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        await fetch("/api/admin/auth", { method: "DELETE" });
+        router.push("/admin/login");
+      }, IDLE_MS);
+    };
+    const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"] as const;
+    events.forEach(e => window.addEventListener(e, reset, { passive: true }));
+    reset();
+    return () => {
+      clearTimeout(timer);
+      events.forEach(e => window.removeEventListener(e, reset));
+    };
+  }, [router]);
+
   async function handleLogout() {
     await fetch("/api/admin/auth", { method: "DELETE" });
     router.push("/admin/login");
