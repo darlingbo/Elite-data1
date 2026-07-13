@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createHash, timingSafeEqual } from "crypto";
 import { supabase } from "@/lib/supabase";
+import { sendAdminAlert } from "@/lib/telegram";
 
 // In-memory rate limiter: max 5 attempts per IP per 15 minutes
 const attempts = new Map<string, { count: number; resetAt: number }>();
@@ -70,6 +71,18 @@ export async function POST(request: NextRequest) {
 
   // Clear rate limit on success
   attempts.delete(ip);
+
+  // Alert on every successful login so you know if someone else gets in
+  const ua = request.headers.get("user-agent") ?? "unknown";
+  sendAdminAlert(`🔐 <b>Admin Login</b>\nIP: <code>${ip}</code>\nDevice: ${ua.slice(0, 80)}`).catch(() => {});
+
+  // Persist to audit log
+  supabase.from("audit_log").insert({
+    action: "admin_login",
+    ip,
+    details: { user_agent: ua.slice(0, 200) },
+    created_at: new Date().toISOString(),
+  }).then(() => {}).catch(() => {});
 
   const token = process.env.ADMIN_SESSION_TOKEN;
   if (!token) {
