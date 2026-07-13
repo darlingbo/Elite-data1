@@ -76,7 +76,10 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
   const [schedSaving, setSchedSaving] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [diagnosing, setDiagnosing] = useState(false);
-  const [diagResult, setDiagResult] = useState<Record<string, unknown> | null>(null);
+  const [diagResult, setDiagResult] = useState<{
+    configured: boolean; username?: string; isSandbox?: boolean;
+    senderId?: string | null; balance?: string | null; error?: string;
+  } | null>(null);
 
   const approvedAgents = useMemo(() => agents.filter(a => a.status === "approved"), [agents]);
 
@@ -87,7 +90,7 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
       const r = await fetch("/api/admin/sms/check").then(r => r.json());
       setDiagResult(r);
     } catch (e) {
-      setDiagResult({ error: String(e) });
+      setDiagResult({ configured: false, error: String(e) });
     } finally {
       setDiagnosing(false);
     }
