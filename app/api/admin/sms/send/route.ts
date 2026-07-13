@@ -57,9 +57,12 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: (data.SMSMessageData as Record<string, string>)?.Message ?? rawText }, { status: 500 });
   }
 
-  const recipients = (data.SMSMessageData as Record<string, unknown>)?.Recipients as { status: string }[] ?? [];
+  const recipients = (data.SMSMessageData as Record<string, unknown>)?.Recipients as { number: string; status: string; statusCode: number; cost: string }[] ?? [];
   const sent   = recipients.filter(r => r.status === "Success").length;
   const failed = recipients.length - sent;
 
-  return Response.json({ success: true, sent, failed });
+  // Collect unique non-success statuses so the admin can diagnose delivery issues
+  const failReasons = [...new Set(recipients.filter(r => r.status !== "Success").map(r => r.status))];
+
+  return Response.json({ success: true, sent, failed, failReasons, username, isSandbox: username === "sandbox" });
 }

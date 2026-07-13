@@ -46,7 +46,7 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkMsg, setBulkMsg] = useState("");
   const [bulkSending, setBulkSending] = useState(false);
-  const [bulkResult, setBulkResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [bulkResult, setBulkResult] = useState<{ ok: boolean; text: string; warn?: string } | null>(null);
   const [customerPhones, setCustomerPhones] = useState<string[] | null>(null);
   const [customersLoading, setCustomersLoading] = useState(false);
 
@@ -54,7 +54,7 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
   const [testPhone, setTestPhone] = useState("");
   const [testMsg, setTestMsg] = useState("");
   const [testSending, setTestSending] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ ok: boolean; text: string; warn?: string } | null>(null);
 
   // Templates
   const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
@@ -138,7 +138,12 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
       const d = await res.json();
       const ok = res.ok && !d.error;
       const label = audience === "customers" ? "customers" : "agents";
-      setBulkResult({ ok, text: d.error ?? `✓ Sent to ${d.sent ?? sendPhones.length} ${label} successfully!` });
+      const warn = d.isSandbox
+        ? "⚠️ AT_USERNAME is set to 'sandbox' — messages never deliver to real phones. Change it to your live Africa's Talking username."
+        : d.failReasons?.length
+        ? `⚠️ Some failed: ${d.failReasons.join(", ")}. Check your AT account balance and sender ID.`
+        : undefined;
+      setBulkResult({ ok, text: d.error ?? `✓ Sent to ${d.sent ?? sendPhones.length} ${label} successfully!`, warn });
       await logSend({ audience, recipientCount: sendPhones.length, message: bulkMsg, sentCount: d.sent ?? 0, failedCount: d.failed ?? 0, status: ok ? "success" : "failed" });
     } catch (e) {
       setBulkResult({ ok: false, text: String(e) });
@@ -153,7 +158,12 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
       const res = await fetch("/api/admin/sms/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phones: [phone], message: testMsg }) });
       const d = await res.json();
       const ok = res.ok && !d.error;
-      setTestResult({ ok, text: d.error ?? `✓ Test SMS sent to ${phone}!` });
+      const warn = d.isSandbox
+        ? "⚠️ AT_USERNAME is 'sandbox' — this never delivers to a real phone. Use your live AT username."
+        : d.failReasons?.length
+        ? `⚠️ AT status: ${d.failReasons.join(", ")}. Check your AT balance / sender ID.`
+        : undefined;
+      setTestResult({ ok, text: d.error ?? `✓ Test SMS sent to ${phone}!`, warn });
       await logSend({ audience: "individual", recipientCount: 1, message: testMsg, sentCount: ok ? 1 : 0, failedCount: ok ? 0 : 1, status: ok ? "success" : "failed" });
     } catch (e) {
       setTestResult({ ok: false, text: String(e) });
@@ -298,8 +308,15 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
                     </button>
                   </div>
                   {bulkResult && (
-                    <div className="mt-3 p-3 rounded-xl" style={{ background: bulkResult.ok ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${bulkResult.ok ? "rgba(74,222,128,0.3)" : "rgba(248,113,113,0.3)"}` }}>
-                      <p className="text-sm font-bold" style={{ color: bulkResult.ok ? "#4ade80" : "#f87171" }}>{bulkResult.text}</p>
+                    <div className="mt-3 space-y-2">
+                      <div className="p-3 rounded-xl" style={{ background: bulkResult.ok ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${bulkResult.ok ? "rgba(74,222,128,0.3)" : "rgba(248,113,113,0.3)"}` }}>
+                        <p className="text-sm font-bold" style={{ color: bulkResult.ok ? "#4ade80" : "#f87171" }}>{bulkResult.text}</p>
+                      </div>
+                      {bulkResult.warn && (
+                        <div className="p-3 rounded-xl" style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)" }}>
+                          <p className="text-sm font-bold text-amber-400">{bulkResult.warn}</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -381,8 +398,15 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
                   {testSending ? "Sending…" : "Send Test SMS"}
                 </button>
                 {testResult && (
-                  <div className="p-3 rounded-xl" style={{ background: testResult.ok ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${testResult.ok ? "rgba(74,222,128,0.3)" : "rgba(248,113,113,0.3)"}` }}>
-                    <p className="text-sm font-bold" style={{ color: testResult.ok ? "#4ade80" : "#f87171" }}>{testResult.text}</p>
+                  <div className="space-y-2">
+                    <div className="p-3 rounded-xl" style={{ background: testResult.ok ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${testResult.ok ? "rgba(74,222,128,0.3)" : "rgba(248,113,113,0.3)"}` }}>
+                      <p className="text-sm font-bold" style={{ color: testResult.ok ? "#4ade80" : "#f87171" }}>{testResult.text}</p>
+                    </div>
+                    {testResult.warn && (
+                      <div className="p-3 rounded-xl" style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)" }}>
+                        <p className="text-sm font-bold text-amber-400">{testResult.warn}</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
