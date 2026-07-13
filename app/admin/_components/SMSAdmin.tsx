@@ -172,8 +172,9 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
     const phone = testPhone.trim().replace(/\s/g, "");
     if (!phone || !testMsg.trim()) return;
     setTestSending(true); setTestResult(null);
+    const resolvedMsg = testMsg.replace(/\{name\}/gi, "Customer");
     try {
-      const res = await fetch("/api/admin/sms/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phones: [phone], message: testMsg }) });
+      const res = await fetch("/api/admin/sms/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phones: [phone], message: resolvedMsg }) });
       const d = await res.json();
       const ok = res.ok && !d.error;
       const warn = d.isSandbox
