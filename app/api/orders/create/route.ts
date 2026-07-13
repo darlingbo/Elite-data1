@@ -454,9 +454,11 @@ export async function POST(request: NextRequest) {
   let blocklist: string[] = [];
   try { blocklist = JSON.parse(blocklistData?.value ?? "[]"); } catch { blocklist = []; }
   const normalizedPhone = phone.replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0");
-  if (blocklist.some((b: string) => b.replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0") === normalizedPhone)) {
+  const normalize = (p: string) => String(p).trim().replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0");
+
+  if (blocklist.some((b: string) => normalize(b) === normalize(normalizedPhone))) {
     await sendAdminAlert(`🚫 BLOCKED ORDER ATTEMPT\nPhone: ${phone}\nBundle: ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\nRef: ${paystackRef}`).catch(() => {});
-    return Response.json({ error: "Your account has been suspended. Contact support." }, { status: 403 });
+    return Response.json({ error: "👀 I SEE WHAT YOU ARE DOING" }, { status: 403 });
   }
 
   // Floor: customer must pay at least 80% of the selling price + any surcharge.
@@ -478,6 +480,18 @@ export async function POST(request: NextRequest) {
         : txnStatus !== "success"
         ? `Transaction status: ${txnStatus}`
         : `Amount too low: paid ${txnAmount} pesewas, minimum ${minKobo}`;
+
+    // Auto-block numbers that try to pay suspiciously low amounts (under GH₵1.00)
+    if (txnStatus === "success" && txnAmount < 100) {
+      const updatedList = [...new Set([...blocklist, normalizedPhone])];
+      await supabase.from("system_settings").upsert(
+        { key: "phone_blocklist", value: JSON.stringify(updatedList), updated_at: new Date().toISOString() },
+        { onConflict: "key" }
+      );
+      await sendAdminAlert(`🚫 AUTO-BLOCKED: ${phone}\nPaid only GH₵${(txnAmount / 100).toFixed(2)} for ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\nRef: ${paystackRef}`).catch(() => {});
+      return Response.json({ error: "👀 I SEE WHAT YOU ARE DOING" }, { status: 400 });
+    }
+
     await sendAdminAlert(`PAYMENT VERIFY FAILED\nRef: ${paystackRef}\nReason: ${reason}`).catch(() => {});
     return Response.json(
       { error: `Payment verification failed — ${reason}. Contact support on WhatsApp.` },

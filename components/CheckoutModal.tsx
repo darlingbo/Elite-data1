@@ -166,6 +166,23 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
 
     setLoading(true);
 
+    // Check if this phone is blocked before doing anything else
+    try {
+      const br = await fetch("/api/check-phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phone.replace(/\s/g, "") }),
+      });
+      const bd = await br.json() as { blocked: boolean };
+      if (bd.blocked) {
+        setLoading(false);
+        setError("👀 I SEE WHAT YOU ARE DOING");
+        return;
+      }
+    } catch {
+      // Network error — let backend guard catch it
+    }
+
     // For MTN bundles: verify the number is on the Inventor beneficiary list before opening Paystack.
     // This catches ineligible numbers before the customer is charged.
     if (bundle.network === "mtn") {
