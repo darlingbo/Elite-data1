@@ -7,21 +7,9 @@ const securityHeaders = [
   { key: "X-XSS-Protection", value: "1; mode=block" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(self)" },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
-  {
-    key: "Content-Security-Policy",
-    value: [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' https://js.paystack.co",
-      "style-src 'self' 'unsafe-inline'",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.paystack.co",
-      "frame-src https://checkout.paystack.com",
-      "img-src 'self' data: blob:",
-      "font-src 'self'",
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-    ].join("; "),
-  },
+  // CSP is intentionally absent here — middleware.ts generates a per-request
+  // nonce and sets the Content-Security-Policy header at runtime. A static
+  // CSP here would create a duplicate header that breaks the nonce mechanism.
 ];
 
 const nextConfig: NextConfig = {
