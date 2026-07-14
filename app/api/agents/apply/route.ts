@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { supabase } from "@/lib/supabase";
-import { sendAdminAlert, agentApprovalKeyboard } from "@/lib/telegram";
+import { sendAdminAlert, agentApprovalKeyboard, tgEscape } from "@/lib/telegram";
 
 const PRO_FEE_GHC = 100;
 
@@ -152,15 +152,19 @@ export async function POST(request: NextRequest) {
 
   const { data: inserted, error: err1 } = await supabase.from("agents").insert(insertPayload).select("id").maybeSingle();
 
+  const n = tgEscape(name.trim());
+  const em = tgEscape(email.trim());
+  const ph = tgEscape(phone.trim());
+
   if (!err1) {
     if (plan === "pro") {
       await sendAdminAlert(
-        `⚡ <b>New Pro Agent Registered</b>\n\n👤 ${name.trim()}\n📧 ${email.trim()}\n📞 ${phone.trim()}\n🔗 Code: <code>${referral_code}</code>\n💰 Paid GH₵${PRO_FEE_GHC}\n📎 Ref: ${paystackRef}`
+        `⚡ <b>New Pro Agent Registered</b>\n\n👤 ${n}\n📧 ${em}\n📞 ${ph}\n🔗 Code: <code>${tgEscape(referral_code)}</code>\n💰 Paid GH₵${PRO_FEE_GHC}\n📎 Ref: <code>${tgEscape(paystackRef ?? "")}</code>`
       );
     } else {
       const agentId = (inserted as { id: string } | null)?.id ?? "";
       await sendAdminAlert(
-        `📋 <b>New Agent Application</b>\n\n👤 ${name.trim()}\n📧 ${email.trim()}\n📞 ${phone.trim()}\n🔗 Code: <code>${referral_code}</code>\n⏳ Tap below to approve or reject:`,
+        `📋 <b>New Agent Application</b>\n\n👤 ${n}\n📧 ${em}\n📞 ${ph}\n🔗 Code: <code>${tgEscape(referral_code)}</code>\n⏳ Tap below to approve or reject:`,
         agentId ? agentApprovalKeyboard(agentId) : undefined
       );
     }
@@ -186,9 +190,9 @@ export async function POST(request: NextRequest) {
 
   if (!err2) {
     if (plan === "pro") {
-      await sendAdminAlert(`⚡ New Pro Agent: ${name.trim()} (${email.trim()}) — Code: ${referral_code} — paid GH₵${PRO_FEE_GHC}`);
+      await sendAdminAlert(`⚡ <b>New Pro Agent Registered</b>\n\n👤 ${n}\n📧 ${em}\n📞 ${ph}\n🔗 Code: <code>${tgEscape(referral_code)}</code>\n💰 Paid GH₵${PRO_FEE_GHC}`);
     } else {
-      await sendAdminAlert(`📋 Free Agent Application: ${name.trim()} (${email.trim()}) — Code: ${referral_code} — awaiting approval`);
+      await sendAdminAlert(`📋 <b>New Agent Application</b>\n\n👤 ${n}\n📧 ${em}\n📞 ${ph}\n🔗 Code: <code>${tgEscape(referral_code)}</code>\n⏳ Awaiting approval`);
     }
     return Response.json({ success: true, referral_code });
   }

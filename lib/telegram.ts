@@ -41,6 +41,22 @@ export async function sendSwiftAlert(message: string, markup?: object): Promise<
   await tgSend(SWIFT_TOKEN!, message, markup);
 }
 
+// ── Escape user-supplied content before inserting into Telegram HTML messages ──
+export function tgEscape(text: string): string {
+  return String(text ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+function e(text: string): string {
+  return String(text ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 // ── Message formatters ────────────────────────────────────────────────────────
 export function fmtOrder({
   ref, network, size, phone, amount, profit, agentName,
@@ -48,42 +64,42 @@ export function fmtOrder({
   ref: string; network: string; size: string; phone: string;
   amount: number; profit: number; agentName?: string;
 }) {
-  const source = agentName ? `🔗 Agent: <b>${agentName}</b>` : "🛒 Direct sale";
+  const source = agentName ? `🔗 Agent: <b>${e(agentName)}</b>` : "🛒 Direct sale";
   return (
     `🛒 <b>New Order</b>\n` +
-    `📱 ${network.toUpperCase()} ${size}\n` +
-    `📞 Phone: <code>${phone}</code>\n` +
+    `📱 ${e(network.toUpperCase())} ${e(size)}\n` +
+    `📞 Phone: <code>${e(phone)}</code>\n` +
     `💰 Amount: GH₵${amount.toFixed(2)}\n` +
     `📊 Profit: GH₵${profit.toFixed(2)}\n` +
     `${source}\n` +
-    `📎 Ref: <code>${ref}</code>`
+    `📎 Ref: <code>${e(ref)}</code>`
   );
 }
 
 export function fmtDelivered(ref: string, phone: string, network: string, size: string) {
   return (
     `✅ <b>Bundle Delivered</b>\n` +
-    `📱 ${network.toUpperCase()} ${size} → <code>${phone}</code>\n` +
-    `📎 Ref: <code>${ref}</code>`
+    `📱 ${e(network.toUpperCase())} ${e(size)} → <code>${e(phone)}</code>\n` +
+    `📎 Ref: <code>${e(ref)}</code>`
   );
 }
 
 export function fmtFailed(ref: string, phone: string, network: string, size: string, amount: number) {
   return (
     `❌ <b>Order Failed</b>\n` +
-    `📱 ${network.toUpperCase()} ${size} → <code>${phone}</code>\n` +
+    `📱 ${e(network.toUpperCase())} ${e(size)} → <code>${e(phone)}</code>\n` +
     `💰 GH₵${amount.toFixed(2)}\n` +
-    `📎 Ref: <code>${ref}</code>`
+    `📎 Ref: <code>${e(ref)}</code>`
   );
 }
 
-export function fmtAgentApplied(name: string, email: string, phone: string, business?: string, agentId?: string) {
+export function fmtAgentApplied(name: string, email: string, phone: string, business?: string) {
   return (
     `👤 <b>New Agent Application</b>\n` +
-    `Name: ${name}\n` +
-    `Email: ${email}\n` +
-    `Phone: <code>${phone}</code>\n` +
-    (business ? `Business: ${business}\n` : "") +
+    `Name: ${e(name)}\n` +
+    `Email: ${e(email)}\n` +
+    `Phone: <code>${e(phone)}</code>\n` +
+    (business ? `Business: ${e(business)}\n` : "") +
     `\n⚡ Use the buttons below to approve or reject instantly.`
   );
 }
@@ -98,7 +114,7 @@ export function agentApprovalKeyboard(agentId: string) {
 }
 
 export function fmtAgentApproved(name: string, code: string) {
-  return `✅ <b>Agent Approved</b>\nName: ${name}\nReferral code: <code>${code}</code>`;
+  return `✅ <b>Agent Approved</b>\nName: ${e(name)}\nReferral code: <code>${e(code)}</code>`;
 }
 
 export function retryKeyboard(ref: string) {
