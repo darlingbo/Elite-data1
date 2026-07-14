@@ -5,6 +5,29 @@ import { sendAdminAlert, agentApprovalKeyboard } from "@/lib/telegram";
 
 const PRO_FEE_GHC = 100;
 
+// ── IP rate limiting: max 3 applications per IP per hour ──────────────────────
+const applyAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function getClientIP(req: NextRequest): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown"
+  );
+}
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = applyAttempts.get(ip);
+  if (!entry || entry.resetAt < now) {
+    applyAttempts.set(ip, { count: 1, resetAt: now + 60 * 60 * 1000 });
+    return true;
+  }
+  if (entry.count >= 3) return false;
+  entry.count++;
+  return true;
+}
+
 async function generateUniqueReferralCode(name: string): Promise<string> {
   const prefix = name.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, "X");
   for (let i = 0; i < 10; i++) {
@@ -16,6 +39,12 @@ async function generateUniqueReferralCode(name: string): Promise<string> {
 }
 
 export async function POST(request: NextRequest) {
+  // Rate limit by IP
+  const ip = getClientIP(request);
+  if (!checkRateLimit(ip)) {
+    return Response.json({ error: "Too many applications from your device. Please wait an hour and try again." }, { status: 429 });
+  }
+
   const body = await request.json();
   const { name, email, phone, whatsapp, business_name, password, plan, paystackRef } = body;
 
@@ -27,9 +56,26 @@ export async function POST(request: NextRequest) {
   if (!name?.trim() || !email?.trim() || !phone?.trim() || !whatsapp?.trim()) {
     return Response.json({ error: "Name, email, phone, and WhatsApp number are all required." }, { status: 400 });
   }
-  if (!email.includes("@")) {
+
+  // Input length caps
+  if (name.trim().length > 80 || email.trim().length > 100 || (business_name && business_name.trim().length > 120)) {
+    return Response.json({ error: "Input too long. Please check your details." }, { status: 400 });
+  }
+
+  if (!email.includes("@") || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
     return Response.json({ error: "Please enter a valid email address." }, { status: 400 });
   }
+
+  // Ghana phone number format
+  const cleanPhone = phone.replace(/\s/g, "");
+  const cleanWA = whatsapp.replace(/\s/g, "");
+  if (!/^0[2-5][0-9]{8}$/.test(cleanPhone) && !/^\+233[2-5][0-9]{8}$/.test(cleanPhone)) {
+    return Response.json({ error: "Enter a valid Ghana phone number (e.g. 0241234567)." }, { status: 400 });
+  }
+  if (!/^0[2-5][0-9]{8}$/.test(cleanWA) && !/^\+233[2-5][0-9]{8}$/.test(cleanWA)) {
+    return Response.json({ error: "Enter a valid Ghana WhatsApp number." }, { status: 400 });
+  }
+
   if (!password || password.length < 6) {
     return Response.json({ error: "Password must be at least 6 characters." }, { status: 400 });
   }
@@ -163,7 +209,5 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, referral_code });
   }
 
-  return Response.json({
-    error: `Failed to submit application. Database error: ${err3.message} (code: ${err3.code})`,
-  }, { status: 500 });
+  return Response.json({ error: "Failed to submit application. Please try again or contact support." }, { status: 500 });
 }
