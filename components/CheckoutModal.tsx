@@ -37,6 +37,40 @@ type FailedState = {
   bundleSize: string;
 };
 
+// ── Beneficiary list (localStorage) ─────────────────────────────────────────
+type Beneficiary = { label: string; phone: string };
+const BEN_KEY = "elite_beneficiaries";
+
+function useBeneficiaries() {
+  const [list, setList] = useState<Beneficiary[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(BEN_KEY);
+      if (raw) setList(JSON.parse(raw));
+    } catch { /* ignore */ }
+  }, []);
+
+  function save(phone: string, label: string) {
+    const cleaned = phone.replace(/\s/g, "");
+    setList(prev => {
+      const next = [{ label: label.trim() || cleaned, phone: cleaned }, ...prev.filter(b => b.phone !== cleaned)].slice(0, 10);
+      try { localStorage.setItem(BEN_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
+
+  function remove(phone: string) {
+    setList(prev => {
+      const next = prev.filter(b => b.phone !== phone);
+      try { localStorage.setItem(BEN_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }
+
+  return { list, save, remove };
+}
+
 function usePaystackReady() {
   const [ready, setReady] = useState(false);
 
@@ -98,7 +132,10 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const [surcharge, setSurcharge] = useState(0);
   const [verifying, setVerifying] = useState(false);
   const [manualDeliveryWarning, setManualDeliveryWarning] = useState("");
+  const [saveLabel, setSaveLabel] = useState("");
+  const [beneficiarySaved, setBeneficiarySaved] = useState(false);
   const paystackReady = usePaystackReady();
+  const { list: beneficiaries, save: saveBeneficiary, remove: removeBeneficiary } = useBeneficiaries();
   const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const net = networkConfig[bundle.network];
@@ -428,6 +465,40 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
               <p className="font-mono font-bold text-gray-800 text-sm break-all">{success.reference}</p>
             </div>
 
+            {/* Save beneficiary prompt */}
+            {!beneficiarySaved && !beneficiaries.some(b => b.phone === phone.replace(/\s/g, "")) && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                <p className="text-xs font-bold text-blue-700 mb-2">💾 Save this number?</p>
+                <p className="text-xs text-blue-500 mb-3">
+                  Save <span className="font-semibold">{phone}</span> so you can pick it quickly next time.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Label e.g. Mine, Mum, Dad"
+                    value={saveLabel}
+                    onChange={e => setSaveLabel(e.target.value)}
+                    maxLength={20}
+                    className="flex-1 border border-blue-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-800 bg-white"
+                  />
+                  <button
+                    onClick={() => {
+                      saveBeneficiary(phone, saveLabel || phone.replace(/\s/g, ""));
+                      setBeneficiarySaved(true);
+                    }}
+                    className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            )}
+            {beneficiarySaved && (
+              <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-2.5 text-xs font-semibold text-green-700">
+                ✓ Number saved — you can pick it next time at checkout
+              </div>
+            )}
+
             {/* Loyalty progress */}
             {loyalty && (
               loyalty.rewardEarned ? (
@@ -566,9 +637,40 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">
-              {net.name} Phone Number <span className="text-gray-400">(bundle will be sent here)</span>
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold text-gray-600">
+                {net.name} Phone Number <span className="text-gray-400">(bundle will be sent here)</span>
+              </label>
+              {beneficiaries.length > 0 && (
+                <span className="text-[10px] text-gray-400">Saved numbers ↓</span>
+              )}
+            </div>
+
+            {/* Beneficiary chips */}
+            {beneficiaries.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {beneficiaries.map(b => (
+                  <div key={b.phone} className="group flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-full pl-3 pr-1 py-1">
+                    <button
+                      type="button"
+                      onClick={() => setPhone(b.phone)}
+                      className="text-xs font-semibold text-blue-700 leading-none"
+                    >
+                      {b.label}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeBeneficiary(b.phone)}
+                      className="w-4 h-4 rounded-full flex items-center justify-center text-blue-300 hover:text-red-400 hover:bg-red-50 transition-colors text-[10px] font-bold leading-none"
+                      title="Remove"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <input type="tel" placeholder="0241234567" value={phone} onChange={(e) => setPhone(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" />
             {creditChecked && referralCredit > 0 && (

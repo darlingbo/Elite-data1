@@ -96,7 +96,8 @@ export async function GET(request: NextRequest) {
     .from("orders")
     .select("reference, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount, cost_price")
     .in("status", ["pending", "processing"])
-    .gte("created_at", cutoff48h);
+    .gte("created_at", cutoff48h)
+    .neq("network", "voucher");
 
   if (!fullErr) {
     orders = full as OrderRow[];
@@ -105,7 +106,8 @@ export async function GET(request: NextRequest) {
       .from("orders")
       .select("reference, status, phone, network, bundle_size, created_at, agent_id")
       .in("status", ["pending", "processing"])
-      .gte("created_at", cutoff48h);
+      .gte("created_at", cutoff48h)
+      .neq("network", "voucher");
     orders = (basic ?? []).map(o => ({ ...o, bundle_size_gb: null, agent_commission: null, amount: null })) as OrderRow[];
   }
 

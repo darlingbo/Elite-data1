@@ -1,12 +1,13 @@
 "use client";
 import { useState, useEffect } from "react";
 
-const VOUCHERS = [
-  { id: "BECE",   label: "BECE",   full: "Basic Education Certificate Examination",           price: 18, color: "#3b82f6", dark: "#1d4ed8", glow: "rgba(59,130,246,0.4)",  emoji: "📗" },
-  { id: "WASSCE", label: "WASSCE", full: "West African Senior School Certificate Examination", price: 18, color: "#8b5cf6", dark: "#6d28d9", glow: "rgba(139,92,246,0.4)", emoji: "📘" },
-] as const;
+const VOUCHER_META = [
+  { id: "BECE"   as const, label: "BECE",   full: "Basic Education Certificate Examination",           color: "#3b82f6", dark: "#1d4ed8", glow: "rgba(59,130,246,0.4)",  emoji: "📗" },
+  { id: "WASSCE" as const, label: "WASSCE", full: "West African Senior School Certificate Examination", color: "#8b5cf6", dark: "#6d28d9", glow: "rgba(139,92,246,0.4)", emoji: "📘" },
+];
 
-type VoucherID = typeof VOUCHERS[number]["id"];
+type VoucherID = "BECE" | "WASSCE";
+type VoucherEntry = typeof VOUCHER_META[number] & { price: number };
 
 const D = { bg: "#080d18", card: "#0d1525", border: "#1a2a45", text: "#e2e8f0", muted: "#64748b" };
 
@@ -40,11 +41,23 @@ export default function VouchersPage() {
   const [qtyBump, setQtyBump]       = useState(false);
   const [phoneFocus, setPhoneFocus] = useState(false);
   const [flipped, setFlipped]       = useState<VoucherID | null>(null);
+  const [vouchers, setVouchers]     = useState<VoucherEntry[]>(
+    VOUCHER_META.map(m => ({ ...m, price: 18 }))
+  );
   const paystackReady               = usePaystackReady();
 
   useEffect(() => { const t = setTimeout(() => setMounted(true), 60); return () => clearTimeout(t); }, []);
 
-  const selected = VOUCHERS.find(v => v.id === selectedId)!;
+  useEffect(() => {
+    fetch("/api/vouchers/prices")
+      .then(r => r.json())
+      .then((data: Record<string, { sellPrice: number }>) => {
+        setVouchers(VOUCHER_META.map(m => ({ ...m, price: data[m.id]?.sellPrice ?? 18 })));
+      })
+      .catch(() => {});
+  }, []);
+
+  const selected = vouchers.find(v => v.id === selectedId)!;
   const subtotal = selected.price * quantity;
   const fee      = parseFloat((subtotal * 0.02).toFixed(2));
   const total    = parseFloat((subtotal + fee).toFixed(2));
@@ -175,7 +188,7 @@ export default function VouchersPage() {
           <h1 style={{ fontSize: 26, fontWeight: 900, margin: "0 0 6px", background: "linear-gradient(135deg,#60a5fa,#a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
             Result Checker Vouchers
           </h1>
-          <p style={{ color: D.muted, fontSize: 13, margin: 0 }}>BECE & WASSCE · Instant SMS delivery · GH₵18 each</p>
+          <p style={{ color: D.muted, fontSize: 13, margin: 0 }}>BECE & WASSCE · Instant SMS delivery · from GH₵{Math.min(...vouchers.map(v => v.price)).toFixed(2)} each</p>
         </div>
 
         {/* Step 1 — Exam type */}
@@ -187,7 +200,7 @@ export default function VouchersPage() {
             </div>
             <p style={{ color: D.muted, fontSize: 11, margin: "0 0 14px" }}>Tap a card to flip it, then press Select</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              {VOUCHERS.map(v => {
+              {vouchers.map(v => {
                 const isFlipped = flipped === v.id;
                 const active    = selectedId === v.id;
                 return (

@@ -4,11 +4,30 @@ import { sendAdminAlert } from "@/lib/telegram";
 
 const PLATFORM_FEE_RATE = 0.02;
 
-// Sell price charged to customer (cost price is what Inventor deducts from your wallet)
-const VOUCHER_PRICES: Record<string, { sellPrice: number; costPrice: number; label: string }> = {
-  BECE:   { sellPrice: 18, costPrice: 15, label: "BECE Result Checker" },
-  WASSCE: { sellPrice: 18, costPrice: 15, label: "WASSCE Result Checker" },
+const VOUCHER_LABELS: Record<string, string> = {
+  BECE:   "BECE Result Checker",
+  WASSCE: "WASSCE Result Checker",
 };
+
+const DEFAULT_PRICES: Record<string, { sellPrice: number; costPrice: number }> = {
+  BECE:   { sellPrice: 18, costPrice: 15 },
+  WASSCE: { sellPrice: 18, costPrice: 15 },
+};
+
+async function getVoucherPrices() {
+  try {
+    const { data } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "voucher_prices")
+      .maybeSingle();
+    return data?.value
+      ? (JSON.parse(data.value) as Record<string, { sellPrice: number; costPrice: number }>)
+      : DEFAULT_PRICES;
+  } catch {
+    return DEFAULT_PRICES;
+  }
+}
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
@@ -21,11 +40,16 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Missing required fields." }, { status: 400 });
   }
 
-  const vInfo = VOUCHER_PRICES[String(voucherType).toUpperCase()];
-  if (!vInfo) return Response.json({ error: "Invalid voucher type. Use BECE or WASSCE." }, { status: 400 });
+  const vType = String(voucherType).toUpperCase();
+  const label = VOUCHER_LABELS[vType];
+  if (!label) return Response.json({ error: "Invalid voucher type. Use BECE or WASSCE." }, { status: 400 });
 
-  const totalSell = vInfo.sellPrice * qty;
-  const totalCost = vInfo.costPrice * qty;
+  // Load prices from DB (falls back to defaults if not set)
+  const prices = await getVoucherPrices();
+  const vPrice = prices[vType] ?? DEFAULT_PRICES[vType];
+
+  const totalSell = vPrice.sellPrice * qty;
+  const totalCost = vPrice.costPrice * qty;
   const profit = totalSell - totalCost;
   const chargedAmount = parseFloat((totalSell * (1 + PLATFORM_FEE_RATE)).toFixed(2));
   const expectedKobo = Math.round(chargedAmount * 100);
@@ -68,7 +92,7 @@ export async function POST(request: NextRequest) {
     customer_email: String(email),
     phone: String(phone),
     network: "voucher",
-    bundle_size: `${vInfo.label} x${qty}`,
+    bundle_size: `${label} x${qty}`,
     bundle_size_gb: 0,
     amount: chargedAmount,
     cost_price: totalCost,
@@ -78,7 +102,7 @@ export async function POST(request: NextRequest) {
     status: "pending",
   });
 
-  await sendAdminAlert(`🎟 VOUCHER ORDER\nRef: ${paystackRef}\n${vInfo.label} x${qty}\nPhone: ${phone}\nCharged: GH₵${chargedAmount}`).catch(() => {});
+  await sendAdminAlert(`🎟 VOUCHER ORDER\nRef: ${paystackRef}\n${label} x${qty}\nPhone: ${phone}\nCharged: GH₵${chargedAmount}`).catch(() => {});
 
   // Call Inventor vouchers API
   let inventorBody: Record<string, unknown> = {};
@@ -88,7 +112,7 @@ export async function POST(request: NextRequest) {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
       body: JSON.stringify({
-        voucherType: String(voucherType).toUpperCase(),
+        voucherType: vType,
         recipient: String(phone),
         quantity: qty,
       }),
@@ -102,13 +126,13 @@ export async function POST(request: NextRequest) {
 
   if (inventorOk) {
     await supabase.from("orders").update({ status: "completed" }).eq("reference", String(paystackRef));
-    await sendAdminAlert(`✅ VOUCHER DELIVERED\nRef: ${paystackRef}\n${vInfo.label} x${qty} → ${phone}\nProfit: GH₵${profit.toFixed(2)}`).catch(() => {});
+    await sendAdminAlert(`✅ VOUCHER DELIVERED\nRef: ${paystackRef}\n${label} x${qty} → ${phone}\nProfit: GH₵${profit.toFixed(2)}`).catch(() => {});
     return Response.json({ success: true, reference: paystackRef, status: "completed" });
   }
 
   // Failed
   await supabase.from("orders").update({ status: "failed" }).eq("reference", String(paystackRef));
-  const errMsg = `❌ VOUCHER FAILED\nRef: ${paystackRef}\n${vInfo.label} x${qty}\nError: ${JSON.stringify(inventorBody).slice(0, 200)}`;
+  const errMsg = `❌ VOUCHER FAILED\nRef: ${paystackRef}\n${label} x${qty}\nError: ${JSON.stringify(inventorBody).slice(0, 200)}`;
   await sendAdminAlert(errMsg).catch(() => {});
   return Response.json({ error: "Voucher delivery failed. Support has been notified. You will be refunded." }, { status: 502 });
 }

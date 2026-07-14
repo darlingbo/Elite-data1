@@ -225,6 +225,7 @@ function getNetBadge(network: string) {
   if (net === "mtn") return { bg: "#78350f", color: "#fbbf24", label: "MTN" };
   if (net === "telecel") return { bg: "#7f1d1d", color: "#fca5a5", label: "Telecel" };
   if (net.includes("airtel")) return { bg: "#4c1d95", color: "#c4b5fd", label: "AirtelTigo" };
+  if (net === "voucher") return { bg: "#312e81", color: "#a5b4fc", label: "🎟 Voucher" };
   return { bg: "#1e3050", color: "#94a3b8", label: (network ?? "—").toUpperCase() };
 }
 
@@ -1725,6 +1726,122 @@ function LeaderboardView({ stats }: { stats: StatsData }) {
   );
 }
 
+// ─── Voucher Pricing Settings ─────────────────────────────────────────────────
+function VoucherPricingSettings({ showToast }: { showToast: (msg: string, ok?: boolean) => void }) {
+  const [prices, setPrices] = useState<Record<string, { sellPrice: number; costPrice: number }> | null>(null);
+  const [editing, setEditing] = useState<"BECE" | "WASSCE" | null>(null);
+  const [sellInput, setSellInput] = useState("");
+  const [costInput, setCostInput] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/admin/voucher-prices")
+      .then(r => r.json())
+      .then(d => { if (!d.error) setPrices(d); })
+      .catch(() => {});
+  }, []);
+
+  function startEdit(type: "BECE" | "WASSCE") {
+    const p = prices?.[type];
+    setSellInput(String(p?.sellPrice ?? 18));
+    setCostInput(String(p?.costPrice ?? 15));
+    setEditing(type);
+  }
+
+  async function savePrice() {
+    if (!editing) return;
+    const sell = parseFloat(sellInput);
+    const cost = parseFloat(costInput);
+    if (isNaN(sell) || sell <= 0) { showToast("❌ Sell price must be a positive number", false); return; }
+    if (isNaN(cost) || cost <= 0) { showToast("❌ Cost price must be a positive number", false); return; }
+    if (cost >= sell) { showToast("❌ Cost must be less than sell price", false); return; }
+    setSaving(true);
+    const r = await fetch("/api/admin/voucher-prices", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: editing, sellPrice: sell, costPrice: cost }),
+    }).then(r => r.json());
+    setSaving(false);
+    if (r.success) { setPrices(r.prices); setEditing(null); showToast(`✓ ${editing} price updated`); }
+    else showToast(`❌ ${r.error ?? "Save failed"}`, false);
+  }
+
+  const types = ["BECE", "WASSCE"] as const;
+
+  return (
+    <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+      <h2 className="font-bold text-white mb-1">🎟 Voucher Pricing</h2>
+      <p className="text-xs text-slate-500 mb-4">Set your sell and cost prices for BECE & WASSCE result checker vouchers</p>
+      {!prices && <div className="text-sm text-slate-500">Loading…</div>}
+      {prices && (
+        <div className="space-y-3">
+          {types.map(type => {
+            const p = prices[type] ?? { sellPrice: 18, costPrice: 15 };
+            const profit = p.sellPrice - p.costPrice;
+            const isEditing = editing === type;
+            return (
+              <div key={type} className="rounded-xl border p-4" style={{ background: BG, borderColor: BORDER2 }}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{type === "BECE" ? "📗" : "📘"}</span>
+                    <span className="font-bold text-white text-sm">{type}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: "#052e16", color: "#4ade80" }}>
+                      +GH₵{profit.toFixed(2)} profit
+                    </span>
+                  </div>
+                  {!isEditing && (
+                    <button onClick={() => startEdit(type)}
+                      className="text-xs border px-3 py-1.5 rounded-lg font-bold text-blue-400 border-blue-900 hover:bg-blue-900/20">
+                      Edit
+                    </button>
+                  )}
+                </div>
+                {isEditing ? (
+                  <div className="space-y-2 mt-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">Sell Price (GH₵)</label>
+                        <input type="number" value={sellInput} onChange={e => setSellInput(e.target.value)}
+                          step="0.01" min="0.01"
+                          className="w-full rounded-lg px-3 py-2 text-sm text-white border focus:outline-none focus:border-blue-500"
+                          style={{ background: CARD, borderColor: BORDER }} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">Cost Price (GH₵)</label>
+                        <input type="number" value={costInput} onChange={e => setCostInput(e.target.value)}
+                          step="0.01" min="0.01"
+                          className="w-full rounded-lg px-3 py-2 text-sm text-white border focus:outline-none focus:border-blue-500"
+                          style={{ background: CARD, borderColor: BORDER }} />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-1">
+                      <button onClick={savePrice} disabled={saving}
+                        className="flex-1 py-2 rounded-lg text-sm font-black text-white disabled:opacity-60"
+                        style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
+                        {saving ? "Saving…" : "Save"}
+                      </button>
+                      <button onClick={() => setEditing(null)}
+                        className="px-4 py-2 rounded-lg text-sm font-bold text-slate-400 border"
+                        style={{ borderColor: BORDER }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-6 text-sm mt-1">
+                    <span className="text-slate-400">Sell: <strong className="text-white">GH₵{p.sellPrice.toFixed(2)}</strong></span>
+                    <span className="text-slate-400">Cost: <strong className="text-white">GH₵{p.costPrice.toFixed(2)}</strong></span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Biometric Settings ───────────────────────────────────────────────────────
 function base64urlToBuffer(base64url: string): ArrayBuffer {
   const pad = "=".repeat((4 - (base64url.length % 4)) % 4);
@@ -2119,6 +2236,9 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
 
       {/* Fingerprint / Face ID Login */}
       <BiometricSettings showToast={showToast} />
+
+      {/* Voucher Pricing */}
+      <VoucherPricingSettings showToast={showToast} />
 
       {/* Admin Account */}
       <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
