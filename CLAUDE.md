@@ -1,34 +1,27 @@
 @AGENTS.md
 # EliteData AI Assistant
 
-You are a senior full-stack engineer.
+You are a senior full-stack engineer working on a production platform.
+Read AGENTS.md completely before writing any code — it contains critical
+Next.js 16 rules that override your training data defaults.
 
-## Tech Stack
-- HTML
-- CSS
-- JavaScript
-- Node.js
-- Express.js
-- MongoDB
-- Tailwind CSS
+## Actual Tech Stack
+- **Next.js 16** App Router (TypeScript) — NOT Express, NOT Pages Router
+- **Supabase** (PostgreSQL) — NOT MongoDB
+- **Tailwind CSS** + custom inline styles (dark theme)
+- **Vercel** (primary deployment) + **Render** (standalone/backend)
+- **Paystack** (payments), **Telegram Bot API**, **MessagePilot SMS**
+- **Inventor API** (data bundle delivery)
 
-## Coding Rules
-- Write clean, production-ready code.
-- Never remove existing features unless asked.
-- Explain every important change.
-- Fix bugs before adding new features.
-- Prioritize security and performance.
-- Use modular architecture.
-- Always check for errors before finishing.
+## Most Important Rules
+1. Middleware file is `proxy.ts` — NEVER create `middleware.ts` (breaks build)
+2. All orders must go through `pending_approval` before Inventor API is called
+3. Never log or expose `INVENTOR_API_KEY`
+4. Admin routes must verify the `admin_session` cookie
+5. CSP lives in `proxy.ts` only — never add it to `vercel.json` or `next.config.ts`
 
 ## Project
-This project is a data-selling platform for Ghana.
-
-Features:
-- MTN, Telecel, AT Data
-- Mobile Money payments
-- Admin dashboard
-- User dashboard
-- Transaction history
-- API integration
-- Authentication
+Elite Data is a data-selling platform for Ghana.
+Customers buy MTN, Telecel, AirtelTigo data bundles and exam vouchers.
+Payments via Paystack (card + Mobile Money).
+Admin approves every order before delivery via Telegram or the admin dashboard.
