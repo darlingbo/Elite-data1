@@ -46,6 +46,7 @@ export async function GET() {
       processing: (byStatus["processing"] ?? 0) + (byStatus["PROCESSING"] ?? 0),
       pending: (byStatus["pending"] ?? 0) + (byStatus["PENDING"] ?? 0),
       failed: (byStatus["failed"] ?? 0) + (byStatus["FAILED"] ?? 0),
+      pendingApproval: (byStatus["pending_approval"] ?? 0),
     },
     revenue: { total: totalRevenue, cost: totalCost },
     profit: { admin: adminProfit, agentCommissions, gross: totalRevenue - totalCost },

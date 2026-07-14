@@ -25,12 +25,13 @@ const RefundNumbers = dynamic(() => import("./_components/RefundNumbers"), { loa
 
 type Tab =
   | "overview" | "all-orders" | "pending-orders" | "processing" | "completed" | "failed-orders"
+  | "approval-queue"
   | "data-bundles" | "bundle-prices" | "all-agents" | "agent-applications" | "agent-wallets" | "leaderboard"
   | "transactions" | "commissions" | "manual" | "compensate" | "announcements" | "promo" | "apikeys" | "sms" | "settings"
   | "customers" | "mashup-bundles" | "network-providers" | "coupons" | "referrals" | "withdrawals" | "agent-ranks" | "analytics" | "developer-api" | "paystack-split" | "notifications"
   | "refund-numbers";
 
-type OrderStatus = "ALL" | "COMPLETED" | "PROCESSING" | "PENDING" | "FAILED" | "NOT_ON_LIST";
+type OrderStatus = "ALL" | "COMPLETED" | "PROCESSING" | "PENDING" | "FAILED" | "NOT_ON_LIST" | "PENDING_APPROVAL";
 
 interface Order {
   reference: string; status: string; amount: number; admin_commission: number;
@@ -46,7 +47,7 @@ interface Agent {
   total_sales: number; total_revenue: number; created_at: string; registration_ref?: string | null;
 }
 interface StatsData {
-  orders: { all: Order[]; total: number; completed: number; processing: number; pending: number; failed: number };
+  orders: { all: Order[]; total: number; completed: number; processing: number; pending: number; failed: number; pendingApproval: number };
   revenue: { total: number; cost: number };
   profit: { admin: number; agentCommissions: number; gross: number };
   agents: { all: Agent[]; total: number; pending: number; approved: number; rejected: number };
@@ -320,8 +321,8 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-function Sidebar({ tab, setTab, pendingOrders, pendingAgents, onLogout, onChangePassword, mobileOpen, onMobileClose }: {
-  tab: Tab; setTab: (t: Tab) => void; pendingOrders: number; pendingAgents: number;
+function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingApproval, onLogout, onChangePassword, mobileOpen, onMobileClose }: {
+  tab: Tab; setTab: (t: Tab) => void; pendingOrders: number; pendingAgents: number; pendingApproval: number;
   onLogout: () => void; onChangePassword: () => void; mobileOpen: boolean; onMobileClose: () => void;
 }) {
   const sections = [
@@ -354,6 +355,7 @@ function Sidebar({ tab, setTab, pendingOrders, pendingAgents, onLogout, onChange
     {
       label: "ORDERS",
       items: [
+        { id: "approval-queue" as Tab,  icon: <Ic.clock />, label: "Approval Queue", badge: pendingApproval || undefined },
         { id: "pending-orders" as Tab,  icon: <Ic.clock />, label: "Pending", badge: pendingOrders || undefined },
         { id: "processing" as Tab,      icon: <Ic.sync />,  label: "Processing" },
         { id: "manual" as Tab,          icon: <Ic.edit />,  label: "Manual Orders" },
@@ -829,7 +831,38 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
   const [logsRef, setLogsRef] = useState<string | null>(null);
   const [logs, setLogs] = useState<{ id: string; action: string; note: string; details: Record<string, unknown>; created_at: string }[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  // Approval queue
+  const [selectedRefs, setSelectedRefs] = useState<Set<string>>(new Set());
+  const [approving, setApproving] = useState<Set<string>>(new Set());
+  const [approveMsg, setApproveMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
 
+
+  async function handleApproveOrReject(references: string[], action: "approve" | "reject") {
+    const refSet = new Set(references);
+    setApproving(prev => new Set([...prev, ...references]));
+    setSelectedRefs(new Set());
+    try {
+      const res = await fetch("/api/admin/orders/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ references, action }),
+      });
+      const d = await res.json() as { results: { reference: string; ok: boolean; message: string }[] };
+      const msgs: Record<string, { ok: boolean; text: string }> = {};
+      for (const r of d.results ?? []) {
+        msgs[r.reference] = { ok: r.ok, text: r.ok ? (action === "approve" ? "✓ Sent!" : "✓ Rejected") : `✗ ${r.message}` };
+      }
+      setApproveMsg(prev => ({ ...prev, ...msgs }));
+      onRefresh();
+      setTimeout(() => setApproveMsg(prev => { const n = { ...prev }; for (const ref of refSet) delete n[ref]; return n; }), 6000);
+    } catch {
+      const msgs: Record<string, { ok: boolean; text: string }> = {};
+      for (const ref of references) msgs[ref] = { ok: false, text: "Network error" };
+      setApproveMsg(prev => ({ ...prev, ...msgs }));
+    } finally {
+      setApproving(prev => { const n = new Set(prev); for (const ref of references) n.delete(ref); return n; });
+    }
+  }
 
   async function handleRetry(reference: string) {
     setRetrying(reference); setRetryMsg(null);
@@ -996,7 +1029,7 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
   const q = search.toLowerCase().trim();
   const aq = agentFilter.toLowerCase().trim();
   const filtered = orders.slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).filter(o => {
-    if (statusFilter !== "ALL" && o.status.toUpperCase() !== statusFilter) return false;
+    if (statusFilter !== "ALL" && o.status.toUpperCase() !== statusFilter && !(statusFilter === "PENDING_APPROVAL" && o.status === "pending_approval")) return false;
     if (aq && !(o.agent_name ?? "").toLowerCase().includes(aq) && !(o.agent_code ?? "").toLowerCase().includes(aq)) return false;
     if (!q) return true;
     return (o.customer_name ?? "").toLowerCase().includes(q) || (o.phone ?? "").includes(q) || (o.reference ?? "").toLowerCase().includes(q) || (o.network ?? "").toLowerCase().includes(q) || (o.agent_name ?? "").toLowerCase().includes(q);
@@ -1012,20 +1045,23 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
     PENDING: orders.filter(o => o.status.toUpperCase() === "PENDING").length,
     FAILED: orders.filter(o => o.status.toUpperCase() === "FAILED").length,
     NOT_ON_LIST: orders.filter(o => o.status.toUpperCase() === "NOT_ON_LIST").length,
+    PENDING_APPROVAL: orders.filter(o => o.status === "pending_approval").length,
   };
 
   const tabDefs: { key: OrderStatus; color: string }[] = [
     { key: "ALL", color: "#3b82f6" }, { key: "COMPLETED", color: "#10b981" }, { key: "PROCESSING", color: "#3b82f6" },
-    { key: "PENDING", color: "#f59e0b" }, { key: "FAILED", color: "#f87171" },
+    { key: "PENDING_APPROVAL", color: "#f59e0b" }, { key: "PENDING", color: "#94a3b8" }, { key: "FAILED", color: "#f87171" },
     { key: "NOT_ON_LIST", color: "#f97316" },
   ];
 
   const statusStyle: Record<string, { bg: string; color: string }> = {
-    COMPLETED:   { bg: "rgba(16,185,129,0.1)",  color: "#10b981" },
-    PROCESSING:  { bg: "rgba(59,130,246,0.1)",  color: "#3b82f6" },
-    PENDING:     { bg: "rgba(245,158,11,0.1)",  color: "#f59e0b" },
-    FAILED:      { bg: "rgba(248,113,113,0.1)", color: "#f87171" },
-    NOT_ON_LIST: { bg: "rgba(249,115,22,0.15)", color: "#f97316" },
+    COMPLETED:        { bg: "rgba(16,185,129,0.1)",   color: "#10b981" },
+    PROCESSING:       { bg: "rgba(59,130,246,0.1)",   color: "#3b82f6" },
+    PENDING:          { bg: "rgba(148,163,184,0.1)",  color: "#94a3b8" },
+    PENDING_APPROVAL: { bg: "rgba(245,158,11,0.12)",  color: "#f59e0b" },
+    FAILED:           { bg: "rgba(248,113,113,0.1)",  color: "#f87171" },
+    NOT_ON_LIST:      { bg: "rgba(249,115,22,0.15)",  color: "#f97316" },
+    REJECTED:         { bg: "rgba(239,68,68,0.08)",   color: "#ef4444" },
   };
 
   return (
@@ -1061,34 +1097,88 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
       <div className="flex gap-1 overflow-x-auto">
         {tabDefs.map(({ key, color }) => {
           const active = statusFilter === key;
+          const label = key === "ALL" ? "All" : key === "NOT_ON_LIST" ? "⚠️ Not On List" : key === "PENDING_APPROVAL" ? "⏳ Awaiting Approval" : key.charAt(0) + key.slice(1).toLowerCase();
           return (
-            <button key={key} onClick={() => { setStatusFilter(key); setPage(1); }}
+            <button key={key} onClick={() => { setStatusFilter(key); setPage(1); setSelectedRefs(new Set()); }}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap border transition-all"
               style={active ? { background: `${color}20`, color, borderColor: `${color}50` } : { background: CARD, color: "#64748b", borderColor: BORDER }}>
-              {key === "ALL" ? "All" : key === "NOT_ON_LIST" ? "⚠️ Not On List" : key.charAt(0) + key.slice(1).toLowerCase()}
+              {label}
               <span className="text-[11px] px-1.5 py-0.5 rounded-full font-black" style={{ background: active ? `${color}30` : BORDER2, color: active ? color : "#475569" }}>{counts[key]}</span>
             </button>
           );
         })}
       </div>
 
+      {/* ── Bulk Approval Toolbar ── */}
+      {statusFilter === "PENDING_APPROVAL" && (
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-2xl border" style={{ background: "rgba(245,158,11,0.06)", borderColor: "rgba(245,158,11,0.25)" }}>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox"
+              checked={selectedRefs.size > 0 && selectedRefs.size === pageOrders.filter(o => o.status === "pending_approval").length}
+              ref={el => { if (el) el.indeterminate = selectedRefs.size > 0 && selectedRefs.size < pageOrders.filter(o => o.status === "pending_approval").length; }}
+              onChange={e => {
+                const approvalOrders = pageOrders.filter(o => o.status === "pending_approval");
+                setSelectedRefs(e.target.checked ? new Set(approvalOrders.map(o => o.reference)) : new Set());
+              }}
+              className="w-4 h-4 accent-amber-400 cursor-pointer" />
+            <span className="text-sm font-semibold text-amber-400">
+              {selectedRefs.size > 0 ? `${selectedRefs.size} selected` : "Select all on page"}
+            </span>
+          </label>
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
+            {selectedRefs.size > 0 && (
+              <>
+                <button
+                  onClick={() => handleApproveOrReject([...selectedRefs], "approve")}
+                  disabled={approving.size > 0}
+                  className="flex items-center gap-1.5 text-sm font-bold px-4 py-2 rounded-xl disabled:opacity-50 transition-all"
+                  style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid rgba(16,185,129,0.4)" }}>
+                  {approving.size > 0 ? "Sending…" : `✅ Approve ${selectedRefs.size > 1 ? `${selectedRefs.size} Orders` : "Order"}`}
+                </button>
+                <button
+                  onClick={() => { if (window.confirm(`Reject ${selectedRefs.size} order(s)? Customers will be notified.`)) handleApproveOrReject([...selectedRefs], "reject"); }}
+                  disabled={approving.size > 0}
+                  className="flex items-center gap-1.5 text-sm font-bold px-4 py-2 rounded-xl disabled:opacity-50 transition-all"
+                  style={{ background: "rgba(239,68,68,0.12)", color: "#f87171", border: "1px solid rgba(239,68,68,0.35)" }}>
+                  ❌ Reject {selectedRefs.size > 1 ? `${selectedRefs.size}` : ""}
+                </button>
+              </>
+            )}
+            <span className="text-xs text-amber-400/60 font-medium">{counts.PENDING_APPROVAL} order{counts.PENDING_APPROVAL !== 1 ? "s" : ""} waiting</span>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-2xl border overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-xs text-slate-500 uppercase tracking-wider" style={{ background: BG, borderColor: BORDER }}>
-                {["#", "Customer", "Network", "Phone", "MoMo Refund", "Amount", "Profit", "Source", "Status", "Date", ""].map(h => (
-                  <th key={h} className="px-4 py-3 text-left font-semibold">{h}</th>
+                {(statusFilter === "PENDING_APPROVAL" ? ["", "#"] : ["#"]).concat(["Customer", "Network", "Phone", "MoMo Refund", "Amount", "Profit", "Source", "Status", "Date", ""]).map((h, i) => (
+                  <th key={`${h}-${i}`} className="px-4 py-3 text-left font-semibold">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {pageOrders.map((o, idx) => {
                 const nb = getNetBadge(o.network);
-                const st = statusStyle[o.status.toUpperCase()] ?? { bg: "transparent", color: "#94a3b8" };
+                const isPendingApproval = o.status === "pending_approval";
+                const st = statusStyle[isPendingApproval ? "PENDING_APPROVAL" : o.status.toUpperCase()] ?? { bg: "transparent", color: "#94a3b8" };
                 const cleanSize = (o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel)\s+/i, "").trim();
+                const isSelected = selectedRefs.has(o.reference);
+                const isApprovingThis = approving.has(o.reference);
+                const approveMsgThis = approveMsg[o.reference];
                 return (
-                  <tr key={o.reference ?? idx} className="border-b hover:bg-white/2 transition-colors last:border-0" style={{ borderColor: BORDER }}>
+                  <tr key={o.reference ?? idx} className="border-b hover:bg-white/2 transition-colors last:border-0" style={{ borderColor: BORDER, background: isSelected ? "rgba(245,158,11,0.04)" : undefined }}>
+                    {statusFilter === "PENDING_APPROVAL" && (
+                      <td className="pl-4 py-3.5 pr-1 w-10">
+                        {isPendingApproval && (
+                          <input type="checkbox" checked={isSelected}
+                            onChange={e => setSelectedRefs(prev => { const n = new Set(prev); e.target.checked ? n.add(o.reference) : n.delete(o.reference); return n; })}
+                            className="w-4 h-4 accent-amber-400 cursor-pointer" />
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-3.5 text-slate-600 text-xs font-mono">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="px-4 py-3.5">
                       <p className="font-semibold text-white whitespace-nowrap">{o.customer_name || o.phone || "—"}</p>
@@ -1120,12 +1210,31 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
                     <td className="px-4 py-3.5">
                       <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: st.bg, color: st.color }}>
                         <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.color }} />
-                        {(o.status ?? "").toLowerCase() === "not_on_list" ? "⚠️ Not On List" : (o.status ?? "").charAt(0) + (o.status ?? "").slice(1).toLowerCase()}
+                        {isPendingApproval ? "⏳ Awaiting Approval" : (o.status ?? "").toLowerCase() === "not_on_list" ? "⚠️ Not On List" : (o.status ?? "").charAt(0) + (o.status ?? "").slice(1).toLowerCase()}
                       </span>
                     </td>
                     <td className="px-4 py-3.5 text-slate-500 text-xs whitespace-nowrap">{new Date(o.created_at).toLocaleDateString("en-GH", { day: "2-digit", month: "short", year: "numeric" })}</td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-1.5">
+                        {/* ── Approval actions ── */}
+                        {isPendingApproval && o.reference && (
+                          approveMsgThis ? (
+                            <span className={`text-xs font-bold ${approveMsgThis.ok ? "text-green-400" : "text-red-400"}`}>{approveMsgThis.text}</span>
+                          ) : (
+                            <>
+                              <button onClick={() => handleApproveOrReject([o.reference], "approve")} disabled={isApprovingThis}
+                                title="Approve & send" className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50 whitespace-nowrap"
+                                style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid rgba(16,185,129,0.4)" }}>
+                                {isApprovingThis ? "…" : "✅ Approve"}
+                              </button>
+                              <button onClick={() => { if (window.confirm("Reject this order? Customer will be notified.")) handleApproveOrReject([o.reference], "reject"); }} disabled={isApprovingThis}
+                                title="Reject order" className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
+                                style={{ background: "rgba(239,68,68,0.12)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }}>
+                                ❌
+                              </button>
+                            </>
+                          )
+                        )}
                         {["pending", "processing", "failed", "not_on_list"].includes((o.status ?? "").toLowerCase()) && o.reference && (
                           (manualMsg?.ref === o.reference) ? (
                             <span className={`text-xs font-bold ${manualMsg.ok ? "text-green-400" : "text-red-400"}`}>{manualMsg.text}</span>
@@ -2312,12 +2421,13 @@ export default function AdminDashboard() {
 
   const tabToOrderFilter: Record<string, OrderStatus> = {
     "all-orders": "ALL", "pending-orders": "PENDING", "processing": "PROCESSING", "completed": "COMPLETED", "failed-orders": "FAILED",
+    "approval-queue": "PENDING_APPROVAL",
   };
   const isOrderTab = (t: Tab) => t in tabToOrderFilter;
   const isAgentTab = (t: Tab) => t === "all-agents" || t === "agent-applications";
 
   const pageTitle: Record<Tab, string> = {
-    "overview": "Dashboard", "all-orders": "All Orders", "pending-orders": "Pending Orders", "processing": "Processing",
+    "overview": "Dashboard", "all-orders": "All Orders", "approval-queue": "Approval Queue", "pending-orders": "Pending Orders", "processing": "Processing",
     "completed": "Completed", "failed-orders": "Failed Orders", "data-bundles": "Data Bundles", "bundle-prices": "Agent Prices",
     "all-agents": "All Agents", "agent-applications": "Agent Applications", "agent-wallets": "Agent Wallets",
     "leaderboard": "Referrals & Leaderboard", "referrals": "Referrals & Leaderboard", "transactions": "Transactions", "commissions": "Commissions",
@@ -2330,7 +2440,7 @@ export default function AdminDashboard() {
 
   return (
     <div style={{ minHeight: "100vh", background: BG }}>
-      <Sidebar tab={tab} setTab={setTab} pendingOrders={stats?.orders.pending ?? 0} pendingAgents={stats?.agents.pending ?? 0} onLogout={handleLogout} onChangePassword={() => setShowChangePw(true)} mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} />
+      <Sidebar tab={tab} setTab={setTab} pendingOrders={stats?.orders.pending ?? 0} pendingAgents={stats?.agents.pending ?? 0} pendingApproval={stats?.orders.pendingApproval ?? 0} onLogout={handleLogout} onChangePassword={() => setShowChangePw(true)} mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} />
       {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}
       {mobileSidebarOpen && <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={() => setMobileSidebarOpen(false)} />}
 
