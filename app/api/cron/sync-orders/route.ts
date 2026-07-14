@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { sendAdminAlert } from "@/lib/telegram";
+import { sendCustomerSMS, orderDeliveredSMS, orderFailedSMS } from "@/lib/sms";
 
 const networkApiMap: Record<string, string> = {
   mtn: "MTN",
@@ -89,12 +90,12 @@ export async function GET(request: NextRequest) {
   const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
   const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
-  type OrderRow = { reference: string; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null; cost_price: number | null };
+  type OrderRow = { reference: string; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null; cost_price: number | null; customer_name: string | null };
 
   let orders: OrderRow[] | null = null;
   const { data: full, error: fullErr } = await supabase
     .from("orders")
-    .select("reference, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount, cost_price")
+    .select("reference, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount, cost_price, customer_name")
     .in("status", ["pending", "processing"])
     .gte("created_at", cutoff48h)
     .neq("network", "voucher");
@@ -104,7 +105,7 @@ export async function GET(request: NextRequest) {
   } else {
     const { data: basic } = await supabase
       .from("orders")
-      .select("reference, status, phone, network, bundle_size, created_at, agent_id")
+      .select("reference, status, phone, network, bundle_size, created_at, agent_id, customer_name")
       .in("status", ["pending", "processing"])
       .gte("created_at", cutoff48h)
       .neq("network", "voucher");
@@ -132,13 +133,16 @@ export async function GET(request: NextRequest) {
         if (order.agent_id) {
           await creditAgent(order.agent_id, Number(order.agent_commission) || 0, Number(order.amount) || 0);
         }
-        // Skip admin notification for wallet purchases — agent handled it themselves
         if (!isWalletOrder) {
           const profit = (order.amount && order.cost_price) ? (Number(order.amount) - Number(order.cost_price)).toFixed(2) : null;
           completedOrders.push(
             `✅ ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → ${order.phone}` +
             (profit ? ` | Profit: GH₵${profit}` : "")
           );
+          sendCustomerSMS(
+            order.phone,
+            orderDeliveredSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", order.phone, order.reference)
+          ).catch(() => {});
         }
         updated++;
         return;
@@ -146,6 +150,10 @@ export async function GET(request: NextRequest) {
 
       if (invStatus === "failed") {
         await supabase.from("orders").update({ status: "failed" }).eq("reference", order.reference);
+        sendCustomerSMS(
+          order.phone,
+          orderFailedSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", order.reference)
+        ).catch(() => {});
         updated++;
         return;
       }

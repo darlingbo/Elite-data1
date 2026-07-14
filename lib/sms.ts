@@ -36,3 +36,9 @@ export function orderDeliveredSMS(name: string, network: string, size: string, _
 export function orderConfirmedSMS(name: string, network: string, size: string, phone: string, reference: string): string {
   return orderDeliveredSMS(name, network, size, phone, reference);
 }
+
+export function orderFailedSMS(name: string, network: string, size: string, reference: string): string {
+  const first = (name || "").split(" ")[0] || "Customer";
+  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
+  return `Hi ${first}, we're sorry — your ${network.toUpperCase()} ${size} data order (Ref: ${shortRef}) could not be delivered. You will receive a full refund within 24 hours. Contact us for help.`;
+}

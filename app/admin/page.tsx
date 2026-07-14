@@ -273,11 +273,11 @@ function LineChart({ data }: { data: { label: string; revenue: number }[] }) {
 
 function DonutChart({ bundles, total }: { bundles: { pct: number; color: string }[]; total: number }) {
   const R = 52, r = 34, cx = 70, cy = 70;
-  let angle = -90;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+
   function arc(start: number, pct: number) {
     const sweep = (pct / 100) * 360;
     const end = start + sweep;
-    const toRad = (d: number) => (d * Math.PI) / 180;
     const x1 = cx + R * Math.cos(toRad(start));
     const y1 = cy + R * Math.sin(toRad(start));
     const x2 = cx + R * Math.cos(toRad(end));
@@ -289,13 +289,19 @@ function DonutChart({ bundles, total }: { bundles: { pct: number; color: string 
     const lg = sweep > 180 ? 1 : 0;
     return `M${x1} ${y1} A${R} ${R} 0 ${lg} 1 ${x2} ${y2} L${ix1} ${iy1} A${r} ${r} 0 ${lg} 0 ${ix2} ${iy2}Z`;
   }
+
+  // Pre-compute each slice's start angle so there's no mutation inside JSX
+  const slices = bundles.reduce<{ start: number; pct: number; color: string }[]>((acc, b) => {
+    const prev = acc[acc.length - 1];
+    const start = prev ? prev.start + (prev.pct / 100) * 360 : -90;
+    return [...acc, { start, pct: b.pct, color: b.color }];
+  }, []);
+
   return (
     <svg viewBox="0 0 140 140" width={140} height={140}>
-      {bundles.map((b, i) => {
-        const start = angle;
-        angle += (b.pct / 100) * 360;
-        return <path key={i} d={arc(start, b.pct)} fill={b.color} />;
-      })}
+      {slices.map((s, i) => (
+        <path key={i} d={arc(s.start, s.pct)} fill={s.color} />
+      ))}
       <text x={cx} y={cy - 5} textAnchor="middle" fontSize={16} fontWeight="800" fill="white">{total.toLocaleString()}</text>
       <text x={cx} y={cy + 12} textAnchor="middle" fontSize={8} fill="#6b7280">Total Sales</text>
     </svg>
@@ -883,7 +889,6 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
   const [logs, setLogs] = useState<{ id: string; action: string; note: string; details: Record<string, unknown>; created_at: string }[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
-  useEffect(() => { setStatusFilter(defaultFilter); }, [defaultFilter]);
 
   async function handleRetry(reference: string) {
     setRetrying(reference); setRetryMsg(null);
@@ -1047,20 +1052,17 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
     finally { setLogsLoading(false); }
   }
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    const aq = agentFilter.toLowerCase().trim();
-    return orders.slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).filter(o => {
-      if (statusFilter !== "ALL" && o.status.toUpperCase() !== statusFilter) return false;
-      if (aq && !(o.agent_name ?? "").toLowerCase().includes(aq) && !(o.agent_code ?? "").toLowerCase().includes(aq)) return false;
-      if (!q) return true;
-      return (o.customer_name ?? "").toLowerCase().includes(q) || (o.phone ?? "").includes(q) || (o.reference ?? "").toLowerCase().includes(q) || (o.network ?? "").toLowerCase().includes(q) || (o.agent_name ?? "").toLowerCase().includes(q);
-    });
-  }, [orders, search, statusFilter, agentFilter]);
+  const q = search.toLowerCase().trim();
+  const aq = agentFilter.toLowerCase().trim();
+  const filtered = orders.slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).filter(o => {
+    if (statusFilter !== "ALL" && o.status.toUpperCase() !== statusFilter) return false;
+    if (aq && !(o.agent_name ?? "").toLowerCase().includes(aq) && !(o.agent_code ?? "").toLowerCase().includes(aq)) return false;
+    if (!q) return true;
+    return (o.customer_name ?? "").toLowerCase().includes(q) || (o.phone ?? "").includes(q) || (o.reference ?? "").toLowerCase().includes(q) || (o.network ?? "").toLowerCase().includes(q) || (o.agent_name ?? "").toLowerCase().includes(q);
+  });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageOrders = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  useEffect(() => { setPage(1); }, [search, statusFilter, agentFilter]);
 
   const counts: Record<OrderStatus, number> = {
     ALL: orders.length,
@@ -1095,10 +1097,10 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"><Ic.search /></span>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
+            <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search…"
               className="pl-9 pr-4 py-2 text-sm rounded-xl border focus:outline-none focus:border-blue-500 w-44 text-white placeholder-slate-600" style={{ background: CARD, borderColor: BORDER }} />
           </div>
-          <input value={agentFilter} onChange={e => setAgentFilter(e.target.value)} placeholder="Filter by agent…"
+          <input value={agentFilter} onChange={e => { setAgentFilter(e.target.value); setPage(1); }} placeholder="Filter by agent…"
             className="px-3 py-2 text-sm rounded-xl border focus:outline-none w-36 text-white placeholder-slate-600"
             style={{ background: agentFilter ? "rgba(139,92,246,0.12)" : CARD, borderColor: agentFilter ? "rgba(139,92,246,0.5)" : BORDER }} />
           <button onClick={onRefresh} className="text-sm font-medium text-slate-400 hover:text-white border px-3 py-2 rounded-xl transition-colors" style={{ background: CARD, borderColor: BORDER }}>↻ Refresh</button>
@@ -1119,7 +1121,7 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
         {tabDefs.map(({ key, color }) => {
           const active = statusFilter === key;
           return (
-            <button key={key} onClick={() => setStatusFilter(key)}
+            <button key={key} onClick={() => { setStatusFilter(key); setPage(1); }}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap border transition-all"
               style={active ? { background: `${color}20`, color, borderColor: `${color}50` } : { background: CARD, color: "#64748b", borderColor: BORDER }}>
               {key === "ALL" ? "All" : key === "NOT_ON_LIST" ? "⚠️ Not On List" : key.charAt(0) + key.slice(1).toLowerCase()}
@@ -1169,7 +1171,7 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
                     <td className="px-4 py-3.5 font-black" style={{ color: "#4ade80" }}>GH₵{Number(o.admin_commission).toFixed(2)}</td>
                     <td className="px-4 py-3.5">
                       {o.agent_name ? (
-                        <button onClick={() => setAgentFilter(o.agent_name!)} className="text-xs font-semibold px-2 py-0.5 rounded-full truncate max-w-[100px]" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }} title={o.agent_name}>{o.agent_name}</button>
+                        <button onClick={() => { setAgentFilter(o.agent_name!); setPage(1); }} className="text-xs font-semibold px-2 py-0.5 rounded-full truncate max-w-[100px]" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }} title={o.agent_name}>{o.agent_name}</button>
                       ) : (
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: BORDER2, color: "#64748b" }}>Direct</span>
                       )}
@@ -2455,7 +2457,7 @@ export default function AdminDashboard() {
           ) : stats ? (
             <>
               {tab === "overview"          && <Dashboard stats={stats} animated={animated} onNavigate={setTab} />}
-              {isOrderTab(tab)             && <OrdersView orders={stats.orders.all} onRefresh={fetchStats} defaultFilter={tabToOrderFilter[tab]} />}
+              {isOrderTab(tab)             && <OrdersView key={tab} orders={stats.orders.all} onRefresh={fetchStats} defaultFilter={tabToOrderFilter[tab]} />}
               {tab === "data-bundles"      && <PricesView />}
               {tab === "bundle-prices"     && <AgentPricesAdmin allAgents={stats.agents.all} />}
               {isAgentTab(tab)             && <AgentsView stats={stats} onRefresh={fetchStats} defaultTab={tab === "agent-applications" ? "pending" : "approved"} />}

@@ -42,14 +42,14 @@ type Beneficiary = { label: string; phone: string };
 const BEN_KEY = "elite_beneficiaries";
 
 function useBeneficiaries() {
-  const [list, setList] = useState<Beneficiary[]>([]);
-
-  useEffect(() => {
+  const [list, setList] = useState<Beneficiary[]>(() => {
     try {
-      const raw = localStorage.getItem(BEN_KEY);
-      if (raw) setList(JSON.parse(raw));
-    } catch { /* ignore */ }
-  }, []);
+      const raw = typeof window !== "undefined" ? localStorage.getItem(BEN_KEY) : null;
+      return raw ? (JSON.parse(raw) as Beneficiary[]) : [];
+    } catch {
+      return [];
+    }
+  });
 
   function save(phone: string, label: string) {
     const cleaned = phone.replace(/\s/g, "");
@@ -72,10 +72,13 @@ function useBeneficiaries() {
 }
 
 function usePaystackReady() {
-  const [ready, setReady] = useState(false);
+  // Lazy init: if Paystack script was already loaded (e.g. cached), start as ready
+  const [ready, setReady] = useState(() =>
+    typeof window !== "undefined" && !!window.PaystackPop
+  );
 
   useEffect(() => {
-    if (window.PaystackPop) { setReady(true); return; }
+    if (ready) return; // Already ready — nothing to do
 
     const existing = document.querySelector('script[src*="paystack"]');
     if (!existing) {
@@ -90,7 +93,7 @@ function usePaystackReady() {
       }, 100);
       return () => clearInterval(check);
     }
-  }, []);
+  }, [ready]);
 
   return ready;
 }
@@ -158,17 +161,24 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
     finally { setPromoApplying(false); }
   }
 
+  // Keep promoResult accessible inside the phone effect without adding it to deps
+  const promoResultRef = useRef(promoResult);
+  useEffect(() => { promoResultRef.current = promoResult; });
+
   // Check referral credits + surcharge when phone is entered
   useEffect(() => {
     const cleaned = phone.replace(/\s/g, "");
-    if (!/^0[2-5][0-9]{8}$/.test(cleaned)) {
-      setReferralCredit(0);
-      setCreditChecked(false);
-      setSurcharge(0);
-      return;
-    }
+    const valid = /^0[2-5][0-9]{8}$/.test(cleaned);
     if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current);
+
+    // All setState calls go inside setTimeout so they're never synchronous in the effect body
     phoneCheckTimer.current = setTimeout(() => {
+      if (!valid) {
+        setReferralCredit(0);
+        setCreditChecked(false);
+        setSurcharge(0);
+        return;
+      }
       Promise.all([
         fetch(`/api/referral/check?phone=${encodeURIComponent(cleaned)}`).then(r => r.json()).catch(() => ({})),
         fetch(`/api/orders/pending-surcharge?phone=${encodeURIComponent(cleaned)}`).then(r => r.json()).catch(() => ({ surcharge: 0 })),
@@ -177,12 +187,13 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
         setCreditChecked(true);
         setReferralUsesLeft(data.usesLeft ?? null);
         setSurcharge(sc.surcharge ?? 0);
-        if (data.milestoneCode && !promoResult) {
+        if (data.milestoneCode && !promoResultRef.current) {
           setPromoCode(data.milestoneCode);
           setMilestoneCode(data.milestoneCode);
         }
       });
-    }, 600);
+    }, valid ? 600 : 0);
+
     return () => { if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current); };
   }, [phone]);
 

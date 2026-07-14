@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { rateLimit } from "@/lib/rate-limit";
 import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles";
 import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, sendSwiftAlert, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
-import { sendCustomerSMS, orderReceivedSMS } from "@/lib/sms";
+import { sendCustomerSMS, orderReceivedSMS, orderDeliveredSMS, orderFailedSMS } from "@/lib/sms";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { sendAlert as mpAlert } from "@/lib/messagepilot";
 import { datacityPurchase, isDatacityEnabled, isInventorEnabled } from "@/lib/datacity";
@@ -898,6 +898,7 @@ export async function POST(request: NextRequest) {
 
     await sendAdminAlert(`${fmtDelivered(paystackRef, phone, bundleMeta.network, actualSize)}\n📡 Provider: Inventor\n${inventorLog}`);
     mpAlert("✅ Delivered", `${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone} | Ref: ${paystackRef.slice(-8)}`).catch(() => {});
+    sendCustomerSMS(phone, orderDeliveredSMS(name, bundleMeta.network, actualSize, phone, paystackRef)).catch(() => {});
 
 
     // Notify agent on Telegram (fire and forget)
@@ -961,7 +962,7 @@ export async function POST(request: NextRequest) {
       `🔗 DataCity ref: <code>${dcRes.reference}</code>\n` +
       `⚠️ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}`
     ).catch(() => {});
-
+    sendCustomerSMS(phone, orderDeliveredSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
 
     if (agentTelegramChatId) {
       sendAgentNotification(agentTelegramChatId,
@@ -1005,7 +1006,7 @@ export async function POST(request: NextRequest) {
       `⚠️ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}\n` +
       `⚠️ DataCity: ${dcRes.error ?? "failed"}`
     ).catch(() => {});
-
+    sendCustomerSMS(phone, orderDeliveredSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
 
     if (agentTelegramChatId) {
       sendAgentNotification(agentTelegramChatId,
@@ -1088,6 +1089,7 @@ export async function POST(request: NextRequest) {
   await sendAdminBotMessage(bothFailedMsg, retryKeyboard(paystackRef));
   sendAdminWhatsApp(bothFailedMsg.replace(/<[^>]*>/g, "")).catch(() => {});
   mpAlert("🔴 Order Failed", `${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → ${phone} | GH₵${chargedAmount.toFixed(2)} | Ref: ${paystackRef.slice(-8)} | Deliver manually`).catch(() => {});
+  sendCustomerSMS(phone, orderFailedSMS(name, bundleMeta.network, bundleMeta.size, paystackRef)).catch(() => {});
 
   return Response.json({ success: true, failed: true, reference: paystackRef, network: bundleMeta.network, bundleSize: bundleMeta.size, status: "PROCESSING" });
 }
