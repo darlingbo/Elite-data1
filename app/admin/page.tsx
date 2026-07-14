@@ -73,7 +73,7 @@ function useCountUp(target: number, duration = 1000, active = true) {
   const raf = useRef<number>(0);
   useEffect(() => {
     if (!active) return;
-    setValue(0);
+    setTimeout(() => setValue(0), 0);
     const start = performance.now();
     const tick = (now: number) => {
       const p = Math.min((now - start) / duration, 1);
@@ -532,6 +532,15 @@ function Sidebar({ tab, setTab, pendingOrders, pendingAgents, onLogout, onChange
   );
 }
 
+function PctBadge({ val }: { val: number }) {
+  return (
+    <span className="flex items-center gap-0.5 text-xs font-bold" style={{ color: val >= 0 ? "#10b981" : "#f87171" }}>
+      {val >= 0 ? <Ic.up /> : <Ic.down />}
+      {Math.abs(val).toFixed(1)}%
+    </span>
+  );
+}
+
 // ─── Dashboard Overview ────────────────────────────────────────────────────────
 function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; animated: boolean; onNavigate: (t: Tab) => void }) {
   const cmp = useMemo(() => get7DayComparison(stats.orders.all), [stats.orders.all]);
@@ -569,15 +578,6 @@ function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; animated
   const weeklyTxns  = weekly.reduce((s, d) => s + d.count, 0);
   const weeklyAvg   = weeklyTxns > 0 ? weeklyTotal / weeklyTxns : 0;
   const avatarColors = ["#f59e0b", "#94a3b8", "#10b981", "#3b82f6", "#8b5cf6"];
-
-  function PctBadge({ val }: { val: number }) {
-    return (
-      <span className="flex items-center gap-0.5 text-xs font-bold" style={{ color: val >= 0 ? "#10b981" : "#f87171" }}>
-        {val >= 0 ? <Ic.up /> : <Ic.down />}
-        {Math.abs(val).toFixed(1)}%
-      </span>
-    );
-  }
 
   const statusStyle: Record<string, { bg: string; color: string }> = {
     COMPLETED:  { bg: "rgba(16,185,129,0.15)",  color: "#34d399" },
@@ -1247,7 +1247,7 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
           <div className="border-t" style={{ borderColor: BORDER, background: "#0a0f1e" }}>
             <div className="px-4 py-2 flex items-center gap-2 border-b" style={{ borderColor: BORDER }}>
               <span className="text-xs font-black text-purple-400">🤖 AI Order Assistant</span>
-              <span className="text-xs text-slate-600">Type a command — e.g. "retry order TRX-1234" or "mark REF-5678 as completed"</span>
+              <span className="text-xs text-slate-600">{'Type a command — e.g. "retry order TRX-1234" or "mark REF-5678 as completed"'}</span>
             </div>
             <div className="px-4 py-3 space-y-2 max-h-52 overflow-y-auto">
               {aiMessages.length === 0 && <p className="text-xs text-slate-600 italic">No messages yet. Type a command below.</p>}
@@ -1334,7 +1334,6 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
   const [planModal, setPlanModal] = useState<{ id: string; name: string; currentPlan: "free" | "pro" } | null>(null);
   const [planChanging, setPlanChanging] = useState(false);
 
-  useEffect(() => { setAgentTab(defaultTab); }, [defaultTab]);
 
   async function handleSwitchMode() {
     if (!switchModal || !switchTarget) return;
@@ -1861,13 +1860,15 @@ function bufferToBase64url(buf: ArrayBuffer): string {
 }
 
 function BiometricSettings({ showToast }: { showToast: (msg: string, ok?: boolean) => void }) {
-  const [status, setStatus] = useState<"loading" | "unsupported" | "none" | "registered">("loading");
+  const [status, setStatus] = useState<"loading" | "unsupported" | "none" | "registered">(() =>
+    typeof window !== "undefined" && !window.PublicKeyCredential ? "unsupported" : "loading"
+  );
   const [registering, setRegistering] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [credentials, setCredentials] = useState<{ id: string; createdAt: string }[]>([]);
 
   useEffect(() => {
-    if (!window.PublicKeyCredential) { setStatus("unsupported"); return; }
+    if (!window.PublicKeyCredential) return;
     fetch("/api/admin/biometric?action=has-credentials")
       .then(r => r.json())
       .then(d => {
@@ -2001,6 +2002,17 @@ function BiometricSettings({ showToast }: { showToast: (msg: string, ok?: boolea
   );
 }
 
+function SettingToggle({ checked, onChange, saving }: { checked: boolean; onChange: (v: boolean) => void; saving?: boolean }) {
+  return (
+    <button onClick={() => !saving && onChange(!checked)} disabled={saving}
+      className="relative inline-flex items-center h-7 rounded-full w-12 transition-colors shrink-0 disabled:opacity-60"
+      style={{ background: checked ? "#16a34a" : "#374151" }}>
+      {saving ? <span className="absolute inset-0 flex items-center justify-center"><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /></span>
+        : <span className="inline-block w-5 h-5 transform rounded-full bg-white shadow transition-transform" style={{ transform: checked ? "translateX(26px)" : "translateX(2px)" }} />}
+    </button>
+  );
+}
+
 // ─── Settings View ────────────────────────────────────────────────────────────
 function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
   const [net, setNet] = useState<{ mtn: boolean; telecel: boolean; at: boolean; mashup: boolean; autoHours: boolean; autoStart: string; autoEnd: string; inventor: boolean; datacity: boolean; datify: boolean; slowDelivery: boolean } | null>(null);
@@ -2076,17 +2088,6 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
     results["Supabase DB"] = net ? { value: "✓ Connected", ok: true } : { value: "✗ Not connected — run SQL below", ok: false };
     setIntStatus(results);
     setCheckingInt(false);
-  }
-
-  function SettingToggle({ checked, onChange, saving }: { checked: boolean; onChange: (v: boolean) => void; saving?: boolean }) {
-    return (
-      <button onClick={() => !saving && onChange(!checked)} disabled={saving}
-        className="relative inline-flex items-center h-7 rounded-full w-12 transition-colors shrink-0 disabled:opacity-60"
-        style={{ background: checked ? "#16a34a" : "#374151" }}>
-        {saving ? <span className="absolute inset-0 flex items-center justify-center"><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /></span>
-          : <span className="inline-block w-5 h-5 transform rounded-full bg-white shadow transition-transform" style={{ transform: checked ? "translateX(26px)" : "translateX(2px)" }} />}
-      </button>
-    );
   }
 
   const SQL = `-- Run this ONCE in Supabase SQL Editor:\nCREATE TABLE IF NOT EXISTS system_settings (\n  key text PRIMARY KEY,\n  value text NOT NULL,\n  updated_at timestamptz DEFAULT now()\n);\n\nCREATE TABLE IF NOT EXISTS admin_config (\n  key text PRIMARY KEY,\n  value text NOT NULL,\n  updated_at timestamptz DEFAULT now()\n);`;
@@ -2352,8 +2353,8 @@ export default function AdminDashboard() {
     } finally { setLoadingStats(false); }
   }, [router]);
 
-  useEffect(() => { fetchStats(); }, [fetchStats]);
-  useEffect(() => { if (tab === "overview") { setAnimated(false); setTimeout(() => setAnimated(true), 60); } }, [tab]);
+  useEffect(() => { const t = setTimeout(() => void fetchStats(), 0); return () => clearTimeout(t); }, [fetchStats]);
+  useEffect(() => { if (tab === "overview") { setTimeout(() => setAnimated(false), 0); setTimeout(() => setAnimated(true), 60); } }, [tab]);
 
   // Auto-logout after 30 minutes of inactivity
   useEffect(() => {
@@ -2460,7 +2461,7 @@ export default function AdminDashboard() {
               {isOrderTab(tab)             && <OrdersView key={tab} orders={stats.orders.all} onRefresh={fetchStats} defaultFilter={tabToOrderFilter[tab]} />}
               {tab === "data-bundles"      && <PricesView />}
               {tab === "bundle-prices"     && <AgentPricesAdmin allAgents={stats.agents.all} />}
-              {isAgentTab(tab)             && <AgentsView stats={stats} onRefresh={fetchStats} defaultTab={tab === "agent-applications" ? "pending" : "approved"} />}
+              {isAgentTab(tab)             && <AgentsView key={tab === "agent-applications" ? "pending" : "approved"} stats={stats} onRefresh={fetchStats} defaultTab={tab === "agent-applications" ? "pending" : "approved"} />}
               {tab === "agent-wallets"     && <AgentWalletsAdmin />}
               {(tab === "leaderboard" || tab === "referrals") && <LeaderboardView stats={stats} />}
               {tab === "agent-ranks"       && <LeaderboardView stats={stats} />}

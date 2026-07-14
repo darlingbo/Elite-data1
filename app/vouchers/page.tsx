@@ -12,9 +12,9 @@ type VoucherEntry = typeof VOUCHER_META[number] & { price: number };
 const D = { bg: "#080d18", card: "#0d1525", border: "#1a2a45", text: "#e2e8f0", muted: "#64748b" };
 
 function usePaystackReady() {
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(() => typeof window !== "undefined" && !!window.PaystackPop);
   useEffect(() => {
-    if (window.PaystackPop) { setReady(true); return; }
+    if (ready) return;
     const existing = document.querySelector('script[src*="paystack"]');
     if (!existing) {
       const s = document.createElement("script");
@@ -26,7 +26,7 @@ function usePaystackReady() {
       const id = setInterval(() => { if (window.PaystackPop) { setReady(true); clearInterval(id); } }, 100);
       return () => clearInterval(id);
     }
-  }, []);
+  }, [ready]);
   return ready;
 }
 

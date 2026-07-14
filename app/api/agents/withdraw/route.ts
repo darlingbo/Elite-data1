@@ -49,9 +49,9 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Free agents can only withdraw Monday to Friday. Upgrade to Pro for weekend withdrawals." }, { status: 400 });
   }
 
-  const minWithdraw = isPro ? 40 : 20;
+  const minWithdraw = 20;
   if (amt < minWithdraw) {
-    return Response.json({ error: `Minimum withdrawal is GH₵${minWithdraw} for ${isPro ? "Pro" : "Free"} agents.` }, { status: 400 });
+    return Response.json({ error: `Minimum withdrawal is GH₵${minWithdraw}.` }, { status: 400 });
   }
 
   const commissionBal = Number(agent.commission_balance ?? 0);

@@ -444,7 +444,7 @@ function WithdrawModal({ agentId, referralCode, profitBalance, onClose, onSucces
 
   async function handleWithdraw() {
     const amt = Number(amount);
-    if (!amt || amt < 50) { setError("Minimum withdrawal is GH₵50."); return; }
+    if (!amt || amt < 20) { setError("Minimum withdrawal is GH₵20."); return; }
     if (amt > profitBalance) { setError(`You only have GH₵${profitBalance.toFixed(2)} available.`); return; }
     if (!phone || !name) { setError("Enter your account details."); return; }
     setLoading(true); setError("");
@@ -2008,7 +2008,7 @@ function AffiliatePage({ data }: { data: AgentData }) {
   const siteUrl = typeof window !== "undefined" ? window.location.origin : "https://elitedata1.com";
   const storeLink = `${siteUrl}/store/${data.referral_code}`;
   const isActive = data.referral_code && (data.total_sales ?? 0) > 0;
-  const minWithdraw = 30;
+  const minWithdraw = 20;
 
   async function saveProfile() {
     setSaving(true); setSaveMsg("");
