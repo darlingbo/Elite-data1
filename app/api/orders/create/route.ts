@@ -1,14 +1,11 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { rateLimit } from "@/lib/rate-limit";
-import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles";
-import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, sendSwiftAlert, fmtOrder, fmtDelivered, fmtFailed, retryKeyboard } from "@/lib/telegram";
-import { sendCustomerSMS, orderReceivedSMS, orderDeliveredSMS, orderFailedSMS } from "@/lib/sms";
+import { bundles, sizeLabel, type Network } from "@/lib/bundles";
+import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, fmtOrder, retryKeyboard, orderApprovalKeyboard } from "@/lib/telegram";
+import { sendCustomerSMS, orderReceivedSMS } from "@/lib/sms";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { sendAlert as mpAlert } from "@/lib/messagepilot";
-import { datacityPurchase, isDatacityEnabled, isInventorEnabled } from "@/lib/datacity";
-import { datifyPurchase, isDatifyEnabled } from "@/lib/datify";
-import { getRoutingRules, matchPhone } from "@/lib/phone-routing";
 import { getSurcharge, clearSurcharge } from "@/lib/surcharge";
 
 const PLATFORM_FEE_RATE = 0.02;
@@ -34,9 +31,6 @@ async function appendToRefundLog(entry: Record<string, unknown>) {
     .from("system_settings")
     .upsert({ key: "refund_log", value: JSON.stringify(existing) }, { onConflict: "key" });
 }
-
-// Inventor must respond within this time — AT ISHARE can be slow, give it 25s
-const INVENTOR_TIMEOUT_MS = 25_000;
 
 type BundleMeta = { id: string; network: Network; size: string; sizeGB: number };
 type BundlePricing = { price: number; costPrice: number; sizeGB: number };
@@ -248,49 +242,6 @@ async function processLoyalty(
   }
 }
 
-async function creditAgent(agentId: string, commission: number, revenue: number) {
-  if (!agentId || !commission) return;
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("commission_balance, total_sales, total_revenue")
-    .eq("id", agentId)
-    .maybeSingle();
-  if (!agent) return;
-  await supabase.from("agents").update({
-    commission_balance: (Number(agent.commission_balance) || 0) + commission,
-    total_sales: (Number(agent.total_sales) || 0) + 1,
-    total_revenue: (Number(agent.total_revenue) || 0) + revenue,
-    updated_at: new Date().toISOString(),
-  }).eq("id", agentId);
-}
-
-// Inventor API call — single attempt with tight timeout
-// If it doesn't respond in time, order stays "pending" and the monitor delivers it
-async function callInventorAPI(
-  payload: Record<string, unknown>
-): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), INVENTOR_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(`${(process.env.INVENTOR_API_BASE_URL ?? "").replace(/\/+$/, "")}/api/developer/purchase`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.INVENTOR_API_KEY}`,
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timer);
-    const body = await res.json().catch(() => ({}));
-    return { ok: res.ok, status: res.status, body };
-  } catch (err) {
-    clearTimeout(timer);
-    return { ok: false, status: 0, body: { error: String(err) } };
-  }
-}
 
 export async function POST(request: NextRequest) {
   // Rate limit: 10 order attempts per IP per minute
@@ -327,7 +278,7 @@ export async function POST(request: NextRequest) {
     agentCode
       ? supabase
           .from("agents")
-          .select("id, name, status, agent_type, plan, telegram_chat_id, registration_ref")
+          .select("id, name, status, agent_type, plan, telegram_chat_id")
           .eq("referral_code", agentCode.toUpperCase())
           .eq("status", "approved")
           .maybeSingle()
@@ -354,10 +305,12 @@ export async function POST(request: NextRequest) {
   ]);
 
   if (existingResult.data) {
+    const existingStatus = existingResult.data.status;
     return Response.json({
       success: true,
       reference: existingResult.data.reference,
-      status: existingResult.data.status,
+      status: existingStatus,
+      ...(existingStatus === "pending_approval" ? { pendingApproval: true } : {}),
     });
   }
 
@@ -367,7 +320,6 @@ export async function POST(request: NextRequest) {
   let agentType: string = "commission";
   let agentPlan: string = "free";
   let agentTelegramChatId: string | null = null;
-  let agentRegistrationRef: string | null = null;
   const agent = agentResult.data;
   if (agent) {
     agentId = agent.id;
@@ -375,7 +327,6 @@ export async function POST(request: NextRequest) {
     agentType = (agent as { agent_type?: string }).agent_type ?? "commission";
     agentPlan = (agent as { plan?: string }).plan ?? "free";
     agentTelegramChatId = (agent as { telegram_chat_id?: string | null }).telegram_chat_id ?? null;
-    agentRegistrationRef = (agent as { registration_ref?: string | null }).registration_ref ?? null;
   }
 
   // Referral credit
@@ -390,7 +341,6 @@ export async function POST(request: NextRequest) {
   // adminTierPrice = what the agent pays per sale (deducted from wallet for free plan, or used for profit calc)
   // pro plan → custom_tier_prices (or admin price fallback); free plan custom_price → admin price × 0.96
   let adminTierPrice = pricing.costPrice; // fallback
-  let tierPrice = pricing.price;
   if (agentId && agentType === "custom_price") {
     const [tierResult, agentPriceResult, adminPriceResult] = await Promise.all([
       agentPlan === "pro"
@@ -419,9 +369,6 @@ export async function POST(request: NextRequest) {
       adminTierPrice = parseFloat((adminSellingPrice * 0.96).toFixed(2));
     }
 
-    tierPrice = agentPriceResult.data?.custom_price
-      ? Number(agentPriceResult.data.custom_price)
-      : adminTierPrice;
   }
 
   // Verify Paystack payment
@@ -617,7 +564,7 @@ export async function POST(request: NextRequest) {
     agent_id: agentId,
     refund_phone: refundPhone ?? null,
     refund_network: refundNetwork ?? null,
-    status: "pending",
+    status: "pending_approval",
   });
 
   // Warn silently when fallback save was used (order still saved but with partial data)
@@ -648,8 +595,10 @@ export async function POST(request: NextRequest) {
   }).catch(() => {});
 
   await sendAdminAlert(
-    (fastDelivery ? "⚡ FAST DELIVERY\n" : "") +
-    fmtOrder({ ref: paystackRef, network: bundleMeta.network, size: bundleMeta.size, phone, amount: chargedAmount, profit, agentName })
+    (fastDelivery ? "⚡ <b>FAST DELIVERY</b>\n" : "") +
+    `🔔 <b>NEW ORDER — APPROVE TO DELIVER</b>\n\n` +
+    fmtOrder({ ref: paystackRef, network: bundleMeta.network, size: bundleMeta.size, phone, amount: chargedAmount, profit, agentName }),
+    orderApprovalKeyboard(paystackRef)
   );
   mpAlert("🛒 New Order", `${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → ${phone} | GH₵${chargedAmount.toFixed(2)}${agentName ? ` | Agent: ${agentName}` : ""} | Ref: ${paystackRef.slice(-8)}`).catch(() => {});
 
@@ -775,321 +724,8 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
   }
 
-  // ─── Number routing: check if this phone is pinned to a specific provider ──
-  // If a rule matches, call ONLY that provider — no fallback chain.
-  const [routingRules, inventorOnRaw, datacityOnRaw, datifyOnRaw] = await Promise.all([
-    getRoutingRules(),
-    isInventorEnabled(),
-    isDatacityEnabled(),
-    isDatifyEnabled(),
-  ]);
-  const pinnedProvider = matchPhone(phone, routingRules);
-
-  // When pinned: override enabled flags so only the pinned provider is called.
-  const inventorOn = pinnedProvider ? pinnedProvider === "inventor" && inventorOnRaw : inventorOnRaw;
-  const datacityOn = pinnedProvider ? pinnedProvider === "datacity" && datacityOnRaw : datacityOnRaw;
-  const datifyOn   = pinnedProvider ? pinnedProvider === "datify"   && datifyOnRaw   : datifyOnRaw;
-
-  if (pinnedProvider) {
-    sendSwiftAlert(`📍 Routing ${phone} → ${pinnedProvider.toUpperCase()} (pinned rule)\nRef: ${paystackRef}`).catch(() => {});
-  }
-
-  const { ok: invOkRaw, status: inventorHttpStatus, body: inventorBody } = inventorOn
-    ? await callInventorAPI({
-        network: networkApiName[bundleMeta.network],
-        Phone: phone,
-        Datasize: pricing.sizeGB,
-        reference: paystackRef,
-      })
-    : { ok: false, status: -1, body: { error: "Inventor disabled" } as Record<string, unknown> };
-
-  const inventorLog = `Inventor HTTP ${inventorHttpStatus}: ${JSON.stringify(inventorBody).slice(0, 300)}`;
-
-  const invData = (inventorBody.data as Record<string, unknown>) ?? {};
-  const invOrderData = (invData.order as Record<string, unknown>) ?? {};
-  const invPlanData = (invOrderData.plan as Record<string, unknown>) ?? {};
-
-  const rawInvStatus = String(
-    invOrderData.status ?? invData.status ?? invData.delivery_status ?? inventorBody.status ?? ""
-  ).toLowerCase();
-
-  const inventorPlanName = (invPlanData.name as string) ?? null;
-  const actualSize = inventorPlanName
-    ? inventorPlanName.replace(new RegExp(`^${bundleMeta.network}\\s+`, "i"), "").trim()
-    : bundleMeta.size;
-
-  // 409 = Inventor already has this order (webhook + client both fired) — treat as processing
-  const inventorDuplicate = inventorHttpStatus === 409;
-
-  const invIsProcessing =
-    inventorDuplicate ||
-    rawInvStatus.includes("process") ||
-    rawInvStatus.includes("progress") ||
-    rawInvStatus.includes("dispatch") ||
-    rawInvStatus.includes("pending");
-
-  // status -1 = Inventor disabled by admin toggle; status 0 = timed out
-  const inventorDisabled = inventorHttpStatus === -1;
-  const inventorTimedOut = inventorHttpStatus === 0;
-  const inventorOk = invOkRaw && !invIsProcessing;
-
-  // Process loyalty fire-and-forget — doesn't block response
+  // Order is held for admin approval — do not call Inventor yet.
+  // processLoyalty counts the purchase since payment was confirmed.
   processLoyalty(phone, bundleMeta.network, paystackRef).catch(() => {});
-
-  if (inventorOk) {
-    const orderId: string | null =
-      (invOrderData.id as string) ??
-      (invData.id as string) ??
-      (inventorBody.orderId as string) ??
-      null;
-
-    await supabase
-      .from("orders")
-      .update({ status: "completed", inventor_order_id: orderId ?? null, bundle_size: actualSize, network: bundleMeta.network, customer_name: name })
-      .eq("reference", paystackRef);
-
-    if (agentId) {
-      if (agentType === "custom_price" && agentPlan === "free") {
-        // Free plan price-mode: deduct cost from wallet, credit agent only their markup profit
-        const { data: ag } = await supabase
-          .from("agents")
-          .select("wallet_balance, paystack_wallet_balance, commission_balance, total_sales")
-          .eq("id", agentId)
-          .maybeSingle();
-        if (ag) {
-          const agentProfit = parseFloat(Math.max(0, chargedAmount - adminTierPrice).toFixed(2));
-          await supabase.from("agents").update({
-            wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - adminTierPrice),
-            paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - adminTierPrice),
-            commission_balance: Number(ag.commission_balance ?? 0) + agentProfit,
-            total_sales: Number(ag.total_sales ?? 0) + 1,
-          }).eq("id", agentId);
-          supabase.from("agent_wallet_transactions").insert([
-            {
-              agent_id: agentId,
-              type: "sale_deduction",
-              amount: -pricing.costPrice,
-              description: `Cost: ${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone}`,
-            },
-            {
-              agent_id: agentId,
-              type: "sale_profit",
-              amount: agentProfit,
-              description: `Profit: ${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone}`,
-            },
-          ]).then(() => {});
-        }
-      } else {
-        const { data: ag } = await supabase
-          .from("agents")
-          .select("commission_balance, total_sales, total_revenue")
-          .eq("id", agentId)
-          .maybeSingle();
-        if (ag) {
-          await supabase.from("agents").update({
-            commission_balance: (Number(ag.commission_balance) || 0) + agentCommission,
-            total_sales: (Number(ag.total_sales) || 0) + 1,
-            total_revenue: (Number(ag.total_revenue) || 0) + chargedAmount,
-            updated_at: new Date().toISOString(),
-          }).eq("id", agentId);
-        }
-      }
-    }
-
-    await sendAdminAlert(`${fmtDelivered(paystackRef, phone, bundleMeta.network, actualSize)}\n📡 Provider: Inventor\n${inventorLog}`);
-    mpAlert("✅ Delivered", `${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone} | Ref: ${paystackRef.slice(-8)}`).catch(() => {});
-    sendCustomerSMS(phone, orderDeliveredSMS(name, bundleMeta.network, actualSize, phone, paystackRef)).catch(() => {});
-
-
-    // Notify agent on Telegram (fire and forget)
-    if (agentTelegramChatId) {
-      sendAgentNotification(
-        agentTelegramChatId,
-        `🛒 <b>New Sale!</b>\n\n` +
-        `📱 ${bundleMeta.network.toUpperCase()} ${actualSize} → <code>${phone}</code>\n` +
-        `💰 Sold for: GH₵${chargedAmount.toFixed(2)}\n` +
-        `💵 Your commission: GH₵${agentCommission.toFixed(2)}\n` +
-        `✅ Status: Delivered\n` +
-        `📎 Ref: <code>${paystackRef}</code>`
-      ).catch(() => {});
-    }
-
-    supabase
-      .from("api_ledger")
-      .insert({
-        type: "deduction",
-        amount: pricing.costPrice,
-        note: `${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone}`,
-        order_reference: paystackRef,
-      })
-      .then(() => {});
-    return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
-  }
-
-  // Extract Inventor error message — needed for fallback alerts
-  const inventorErrorMsg = String(
-    (inventorBody.message as string) ??
-    (inventorBody.error as string) ??
-    (inventorBody.description as string) ??
-    (inventorDisabled ? "Inventor disabled" : "")
-  );
-
-  // ── Check ALL fallback providers BEFORE the processing branch ───────────
-  // This ensures that if DataCity or Datify delivered while Inventor was
-  // still in-flight or disabled, we complete immediately rather than waiting.
-
-  // Inventor failed → try DataCity
-  const dcRes = datacityOn
-    ? await datacityPurchase(bundleMeta.network, phone, pricing.sizeGB)
-    : { success: false as const, error: "DataCity disabled" };
-
-  if (dcRes.success) {
-    await supabase.from("orders").update({
-      status: "completed",
-      bundle_size: bundleMeta.size,
-      network: bundleMeta.network,
-      customer_name: name,
-    }).eq("reference", paystackRef);
-
-    if (agentId && agentCommission > 0) await creditAgent(agentId, agentCommission, chargedAmount);
-
-    sendAdminAlert(
-      `✅ <b>DELIVERED VIA DATACITY</b>\n\n` +
-      `👤 ${name} · <code>${phone}</code>\n` +
-      `📦 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} · GH₵${chargedAmount.toFixed(2)}\n` +
-      `📡 Provider: DataCity\n` +
-      `📎 Paystack: <code>${paystackRef}</code>\n` +
-      `🔗 DataCity ref: <code>${dcRes.reference}</code>\n` +
-      `⚠️ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}`
-    ).catch(() => {});
-    sendCustomerSMS(phone, orderDeliveredSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
-
-    if (agentTelegramChatId) {
-      sendAgentNotification(agentTelegramChatId,
-        `🛒 <b>New Sale!</b>\n\n📱 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → <code>${phone}</code>\n` +
-        `💰 GH₵${chargedAmount.toFixed(2)} · Commission: GH₵${agentCommission.toFixed(2)}\n✅ Delivered via DataCity\n📎 <code>${paystackRef}</code>`
-      ).catch(() => {});
-    }
-
-    return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
-  }
-
-  // DataCity timed out → stop here, don't try Datify (might still deliver)
-  if (dcRes.timedOut) {
-    await supabase.from("orders").update({ status: "processing", bundle_size: bundleMeta.size, network: bundleMeta.network, customer_name: name }).eq("reference", paystackRef);
-    await sendAdminAlert(`⏳ ORDER PROCESSING\nRef: ${paystackRef}\nPhone: ${phone}\n${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\n⚠️ DataCity timed out — order left as processing`);
-    return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
-  }
-
-  // DataCity also rejected → try Datify
-  const dtRes = datifyOn
-    ? await datifyPurchase(bundleMeta.network, phone, pricing.sizeGB)
-    : { success: false as const, error: "Datify disabled" };
-
-  if (dtRes.success) {
-    await supabase.from("orders").update({
-      status: "completed",
-      bundle_size: bundleMeta.size,
-      network: bundleMeta.network,
-      customer_name: name,
-    }).eq("reference", paystackRef);
-
-    if (agentId && agentCommission > 0) await creditAgent(agentId, agentCommission, chargedAmount);
-
-    sendAdminAlert(
-      `✅ <b>DELIVERED VIA DATIFY</b>\n\n` +
-      `👤 ${name} · <code>${phone}</code>\n` +
-      `📦 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} · GH₵${chargedAmount.toFixed(2)}\n` +
-      `📡 Provider: Datify\n` +
-      `📎 Paystack: <code>${paystackRef}</code>\n` +
-      `🔗 Datify ref: <code>${dtRes.reference}</code>\n` +
-      `⚠️ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}\n` +
-      `⚠️ DataCity: ${dcRes.error ?? "failed"}`
-    ).catch(() => {});
-    sendCustomerSMS(phone, orderDeliveredSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef)).catch(() => {});
-
-    if (agentTelegramChatId) {
-      sendAgentNotification(agentTelegramChatId,
-        `🛒 <b>New Sale!</b>\n\n📱 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → <code>${phone}</code>\n` +
-        `💰 GH₵${chargedAmount.toFixed(2)} · Commission: GH₵${agentCommission.toFixed(2)}\n✅ Delivered via Datify\n📎 <code>${paystackRef}</code>`
-      ).catch(() => {});
-    }
-
-    return Response.json({ success: true, reference: paystackRef, status: "COMPLETED" });
-  }
-
-  // All 3 failed — check if Inventor is still in-flight
-  if (!inventorDisabled && (invIsProcessing || inventorTimedOut)) {
-    await supabase
-      .from("orders")
-      .update({ status: "processing", bundle_size: actualSize, network: bundleMeta.network, customer_name: name })
-      .eq("reference", paystackRef);
-    await sendAdminAlert(
-      `⏳ ORDER PROCESSING\nRef: ${paystackRef}\nPhone: ${phone}\n${bundleMeta.network.toUpperCase()} ${actualSize}\n${inventorTimedOut ? "⚠️ Inventor timed out — order left as processing for monitor to sync" : inventorLog}`
-    );
-
-    // Deduct wallet for free-plan price-mode agents — pro plan agents don't use wallet
-    if (agentId && agentType === "custom_price" && agentPlan === "free") {
-      const { data: ag } = await supabase
-        .from("agents")
-        .select("wallet_balance, paystack_wallet_balance")
-        .eq("id", agentId)
-        .maybeSingle();
-      if (ag) {
-        await supabase.from("agents").update({
-          wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - adminTierPrice),
-          paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - adminTierPrice),
-        }).eq("id", agentId);
-      }
-    }
-
-    if (agentTelegramChatId) {
-      sendAgentNotification(
-        agentTelegramChatId,
-        `🛒 <b>New Sale!</b>\n\n` +
-        `📱 ${bundleMeta.network.toUpperCase()} ${actualSize} → <code>${phone}</code>\n` +
-        `💰 Sold for: GH₵${chargedAmount.toFixed(2)}\n` +
-        `💵 Your commission: GH₵${agentCommission.toFixed(2)}\n` +
-        `🔄 Status: Processing\n` +
-        `📎 Ref: <code>${paystackRef}</code>`
-      ).catch(() => {});
-    }
-
-    supabase
-      .from("api_ledger")
-      .insert({
-        type: "deduction",
-        amount: pricing.costPrice,
-        note: `${bundleMeta.network.toUpperCase()} ${actualSize} → ${phone} (processing)`,
-        order_reference: paystackRef,
-      })
-      .then(() => {});
-    return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
-  }
-
-  // All APIs failed — check reason
-  const isBeneficiary = inventorErrorMsg.toLowerCase().includes("beneficiary");
-  const finalStatus = isBeneficiary ? "not_on_list" : "failed";
-
-  await supabase.from("orders")
-    .update({ status: finalStatus, bundle_size: bundleMeta.size, network: bundleMeta.network, customer_name: name })
-    .eq("reference", paystackRef);
-
-  const bothFailedMsg =
-    `🔴 <b>${isBeneficiary ? "ALL APIS BLOCKED — NOT ON LIST" : "ALL APIS FAILED"}</b>\n\n` +
-    `👤 ${name} · <code>${phone}</code>\n` +
-    `📦 ${bundleMeta.network.toUpperCase()} ${bundleMeta.size} · GH₵${chargedAmount.toFixed(2)}\n` +
-    `📎 <code>${paystackRef}</code>\n\n` +
-    `❌ Inventor: ${inventorErrorMsg || `HTTP ${inventorHttpStatus}`}\n` +
-    `❌ DataCity: ${dcRes.error ?? "failed"}\n` +
-    `❌ Datify: ${dtRes.error ?? "failed"}\n\n` +
-    `➡️ Deliver manually then mark completed in admin panel.`;
-
-  await sendAdminAlert(bothFailedMsg);
-  await sendAdminBotMessage(bothFailedMsg, retryKeyboard(paystackRef));
-  sendAdminWhatsApp(bothFailedMsg.replace(/<[^>]*>/g, "")).catch(() => {});
-  mpAlert("🔴 Order Failed", `${bundleMeta.network.toUpperCase()} ${bundleMeta.size} → ${phone} | GH₵${chargedAmount.toFixed(2)} | Ref: ${paystackRef.slice(-8)} | Deliver manually`).catch(() => {});
-  sendCustomerSMS(phone, orderFailedSMS(name, bundleMeta.network, bundleMeta.size, paystackRef)).catch(() => {});
-
-  return Response.json({ success: true, failed: true, reference: paystackRef, network: bundleMeta.network, bundleSize: bundleMeta.size, status: "PROCESSING" });
+  return Response.json({ success: true, reference: paystackRef, pendingApproval: true });
 }

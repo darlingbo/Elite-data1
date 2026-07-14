@@ -113,6 +113,15 @@ export function agentApprovalKeyboard(agentId: string) {
   };
 }
 
+export function orderApprovalKeyboard(ref: string) {
+  return {
+    inline_keyboard: [[
+      { text: "✅ Approve & Send", callback_data: `approve_order:${ref}` },
+      { text: "❌ Reject", callback_data: `reject_order:${ref}` },
+    ]],
+  };
+}
+
 export function fmtAgentApproved(name: string, code: string) {
   return `✅ <b>Agent Approved</b>\nName: ${e(name)}\nReferral code: <code>${e(code)}</code>`;
 }

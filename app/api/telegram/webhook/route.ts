@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
+import { sendCustomerSMS, orderDeliveredSMS, orderFailedSMS } from "@/lib/sms";
 
 const ADMIN_BOT_TOKEN = process.env.TELEGRAM_ADMIN_BOT_TOKEN!;
 const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID!;
@@ -551,6 +552,157 @@ async function cmdLookup(chatId: string, phone: string) {
   );
 }
 
+async function approveOrder(chatId: string, reference: string) {
+  const { data: order } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("reference", reference)
+    .maybeSingle();
+
+  if (!order) {
+    await reply(chatId, `❌ Order <code>${reference}</code> not found.`);
+    return;
+  }
+  if (order.status !== "pending_approval") {
+    await reply(chatId, `ℹ️ Order <code>${reference}</code> is already <b>${String(order.status).toUpperCase()}</b> — nothing to do.`);
+    return;
+  }
+
+  await reply(chatId, `🔄 Sending ${String(order.network ?? "").toUpperCase()} ${order.bundle_size} to <code>${order.phone}</code>…`);
+
+  const isVoucher = order.network === "voucher";
+  let ok = false;
+  let errorBody: Record<string, unknown> = {};
+
+  if (isVoucher) {
+    const voucherTypeMatch = String(order.bundle_size ?? "").match(/^(BECE|WASSCE)/i);
+    const qtyMatch = String(order.bundle_size ?? "").match(/x(\d+)/i);
+    const voucherType = voucherTypeMatch ? voucherTypeMatch[1].toUpperCase() : "BECE";
+    const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+    try {
+      const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/vouchers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
+        body: JSON.stringify({ voucherType, recipient: order.phone, quantity: qty }),
+        signal: AbortSignal.timeout(15000),
+      });
+      const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+      ok = res.ok && body.success === true;
+      if (!ok) errorBody = body;
+    } catch (err) {
+      errorBody = { error: String(err) };
+    }
+  } else {
+    const networkApiMap: Record<string, string> = { mtn: "MTN", telecel: "TELECEL", airteltigo: "AT ISHARE" };
+    const sizeGB = Number(order.bundle_size_gb ?? 1);
+    try {
+      const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
+        body: JSON.stringify({
+          network: networkApiMap[order.network as string] ?? networkApiName[order.network as keyof typeof networkApiName] ?? "MTN",
+          Phone: order.phone,
+          Datasize: sizeGB,
+          reference,
+        }),
+        signal: AbortSignal.timeout(25000),
+      });
+      const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+      const bodyData = (body.data as Record<string, unknown>) ?? {};
+      const orderData = (bodyData.order as Record<string, unknown>) ?? bodyData;
+      const rawStatus = String(orderData.status ?? bodyData.status ?? body.status ?? "").toLowerCase();
+      const isProcessing = res.status === 409 || rawStatus.includes("process") || rawStatus.includes("progress") || rawStatus.includes("pending");
+      ok = res.ok || res.status === 409 || isProcessing;
+      if (!ok) errorBody = body;
+    } catch (err) {
+      errorBody = { error: String(err) };
+    }
+  }
+
+  if (ok) {
+    await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
+
+    // Credit agent commission now that delivery is confirmed
+    if (order.agent_id && Number(order.agent_commission ?? 0) > 0) {
+      const { data: ag } = await supabase.from("agents")
+        .select("agent_type, plan, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue")
+        .eq("id", order.agent_id).maybeSingle();
+      if (ag) {
+        if (ag.agent_type === "custom_price" && ag.plan === "free") {
+          const adminTierPrice = Number(order.cost_price ?? 0) + Number(order.admin_commission ?? 0);
+          await supabase.from("agents").update({
+            wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - adminTierPrice),
+            paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - adminTierPrice),
+            commission_balance: Number(ag.commission_balance ?? 0) + Number(order.agent_commission),
+            total_sales: Number(ag.total_sales ?? 0) + 1,
+          }).eq("id", order.agent_id);
+        } else {
+          await supabase.from("agents").update({
+            commission_balance: Number(ag.commission_balance ?? 0) + Number(order.agent_commission),
+            total_sales: Number(ag.total_sales ?? 0) + 1,
+            total_revenue: Number(ag.total_revenue ?? 0) + Number(order.amount ?? 0),
+          }).eq("id", order.agent_id);
+        }
+      }
+    }
+
+    // Notify customer via SMS
+    sendCustomerSMS(
+      order.phone,
+      orderDeliveredSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", order.phone, reference)
+    ).catch(() => {});
+
+    await reply(chatId,
+      `✅ <b>Approved &amp; Sent!</b>\n\n` +
+      `📱 ${String(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
+      `💰 GH₵${Number(order.amount ?? 0).toFixed(2)}\n` +
+      `📎 <code>${reference}</code>\n\n` +
+      `Status: PROCESSING — data is on its way.`
+    );
+  } else {
+    await supabase.from("orders").update({ status: "failed" }).eq("reference", reference);
+    await reply(chatId,
+      `❌ <b>Delivery failed after approval</b>\n\n` +
+      `📎 <code>${reference}</code>\n` +
+      `Error: <code>${JSON.stringify(errorBody).slice(0, 200)}</code>\n\n` +
+      `Use /retry ${reference} to try again.`
+    );
+    sendCustomerSMS(
+      order.phone,
+      orderFailedSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", reference)
+    ).catch(() => {});
+  }
+}
+
+async function rejectOrder(chatId: string, reference: string) {
+  const { data: order } = await supabase
+    .from("orders")
+    .select("phone, network, bundle_size, amount, status")
+    .eq("reference", reference)
+    .maybeSingle();
+
+  if (!order) { await reply(chatId, `❌ Order <code>${reference}</code> not found.`); return; }
+  if (order.status !== "pending_approval") {
+    await reply(chatId, `ℹ️ Order <code>${reference}</code> is <b>${String(order.status).toUpperCase()}</b> — cannot reject.`);
+    return;
+  }
+
+  await supabase.from("orders").update({ status: "rejected" }).eq("reference", reference);
+
+  sendCustomerSMS(
+    order.phone,
+    `Hi! Your ${String(order.network ?? "").toUpperCase()} ${order.bundle_size} order (Ref: ${reference}) was cancelled. If you were charged, contact us on WhatsApp for a refund.`
+  ).catch(() => {});
+
+  await reply(chatId,
+    `❌ <b>Order Rejected</b>\n\n` +
+    `📎 <code>${reference}</code>\n` +
+    `📱 ${String(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
+    `💰 GH₵${Number(order.amount ?? 0).toFixed(2)}\n\n` +
+    `Customer notified via SMS. Issue refund manually if needed.`
+  );
+}
+
 async function approveAgent(chatId: string, agentId: string) {
   const { data: agent } = await supabase.from("agents").select("name, phone, email, referral_code").eq("id", agentId).maybeSingle();
   if (!agent) { await reply(chatId, `❌ Agent not found.`); return; }
@@ -617,7 +769,13 @@ export async function POST(request: NextRequest) {
     await answerCb(id, "Processing…");
     const chatId = String(from.chat_id ?? from.id);
 
-    if (data?.startsWith("retry:")) {
+    if (data?.startsWith("approve_order:")) {
+      await approveOrder(chatId, data.replace("approve_order:", ""));
+
+    } else if (data?.startsWith("reject_order:")) {
+      await rejectOrder(chatId, data.replace("reject_order:", ""));
+
+    } else if (data?.startsWith("retry:")) {
       await retryOrder(chatId, data.replace("retry:", ""));
 
     } else if (data?.startsWith("approve_retry:")) {

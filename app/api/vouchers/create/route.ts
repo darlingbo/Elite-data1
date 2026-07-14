@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendAdminAlert } from "@/lib/telegram";
+import { sendAdminAlert, orderApprovalKeyboard } from "@/lib/telegram";
 
 const PLATFORM_FEE_RATE = 0.02;
 
@@ -99,40 +99,14 @@ export async function POST(request: NextRequest) {
     admin_commission: profit,
     agent_commission: 0,
     agent_id: null,
-    status: "pending",
+    status: "pending_approval",
   });
 
-  await sendAdminAlert(`🎟 VOUCHER ORDER\nRef: ${paystackRef}\n${label} x${qty}\nPhone: ${phone}\nCharged: GH₵${chargedAmount}`).catch(() => {});
+  // Voucher order held for admin approval
+  await sendAdminAlert(
+    `🎟 <b>VOUCHER ORDER — APPROVE TO DELIVER</b>\n${label} x${qty}\n📞 <code>${phone}</code>\n💰 GH₵${chargedAmount}\n📎 <code>${paystackRef}</code>`,
+    orderApprovalKeyboard(String(paystackRef))
+  ).catch(() => {});
 
-  // Call Inventor vouchers API
-  let inventorBody: Record<string, unknown> = {};
-  let inventorOk = false;
-  try {
-    const invRes = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/vouchers`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-      body: JSON.stringify({
-        voucherType: vType,
-        recipient: String(phone),
-        quantity: qty,
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-    inventorBody = await invRes.json().catch(() => ({}));
-    inventorOk = invRes.ok && (inventorBody.success === true);
-  } catch (err) {
-    inventorBody = { error: String(err) };
-  }
-
-  if (inventorOk) {
-    await supabase.from("orders").update({ status: "completed" }).eq("reference", String(paystackRef));
-    await sendAdminAlert(`✅ VOUCHER DELIVERED\nRef: ${paystackRef}\n${label} x${qty} → ${phone}\nProfit: GH₵${profit.toFixed(2)}`).catch(() => {});
-    return Response.json({ success: true, reference: paystackRef, status: "completed" });
-  }
-
-  // Failed
-  await supabase.from("orders").update({ status: "failed" }).eq("reference", String(paystackRef));
-  const errMsg = `❌ VOUCHER FAILED\nRef: ${paystackRef}\n${label} x${qty}\nError: ${JSON.stringify(inventorBody).slice(0, 200)}`;
-  await sendAdminAlert(errMsg).catch(() => {});
-  return Response.json({ error: "Voucher delivery failed. Support has been notified. You will be refunded." }, { status: 502 });
+  return Response.json({ success: true, reference: paystackRef, pendingApproval: true });
 }

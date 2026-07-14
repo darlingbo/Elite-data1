@@ -37,6 +37,10 @@ type FailedState = {
   bundleSize: string;
 };
 
+type PendingApprovalState = {
+  reference: string;
+};
+
 // ── Beneficiary list (localStorage) ─────────────────────────────────────────
 type Beneficiary = { label: string; phone: string };
 const BEN_KEY = "elite_beneficiaries";
@@ -118,6 +122,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const [success, setSuccess] = useState<SuccessState | null>(null);
   const [fraudTrap, setFraudTrap] = useState(false);
   const [failedOrder, setFailedOrder] = useState<FailedState | null>(null);
+  const [pendingApproval, setPendingApproval] = useState<PendingApprovalState | null>(null);
   const [waPhone, setWaPhone] = useState("");
   const [waNote, setWaNote] = useState("");
   const [waSending, setWaSending] = useState(false);
@@ -324,7 +329,9 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
                 if (promoResult?.id) {
                   fetch("/api/use-coupon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: promoResult.id }) }).catch(() => {});
                 }
-                if (data.failed) {
+                if (data.pendingApproval) {
+                  setPendingApproval({ reference: data.reference });
+                } else if (data.failed) {
                   setFailedOrder({ reference: data.reference, network: data.network, bundleSize: data.bundleSize });
                 } else {
                   setSuccess({ reference: data.reference, loyalty: data.loyalty });
@@ -440,6 +447,34 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
 
             <button onClick={onClose} className="w-full border border-gray-200 text-gray-500 font-semibold py-2.5 rounded-xl text-sm hover:bg-gray-50">
               Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pendingApproval) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+          <div className="p-6 text-center">
+            <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg className="w-7 h-7 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-black text-gray-800 mb-2">Order Received!</h2>
+            <p className="text-gray-500 text-sm mb-4">
+              Your payment was confirmed. Your <span className="font-bold">{net.name} {bundle.size}</span> bundle is being reviewed and will be delivered to <span className="font-bold">{phone}</span> shortly.
+            </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-left">
+              <p className="text-xs text-amber-600 font-semibold mb-0.5">Order Reference</p>
+              <p className="font-mono font-bold text-amber-900 text-sm break-all">{pendingApproval.reference}</p>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">You will receive an SMS when your bundle has been sent.</p>
+            <button onClick={onClose} className="w-full bg-amber-500 text-white font-bold py-2.5 rounded-xl text-sm hover:bg-amber-600 transition-colors">
+              OK, Got it
             </button>
           </div>
         </div>

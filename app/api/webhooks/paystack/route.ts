@@ -1,25 +1,8 @@
 import { NextRequest } from "next/server";
 import crypto from "crypto";
 import { supabase } from "@/lib/supabase";
-import { bundles, networkApiName, sizeLabel, type Network } from "@/lib/bundles";
-import { sendAdminAlert, fmtDelivered, fmtFailed } from "@/lib/telegram";
-
-const INVENTOR_TIMEOUT_MS = 15_000;
-
-async function callInventor(payload: Record<string, unknown>): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
-  try {
-    const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(INVENTOR_TIMEOUT_MS),
-    });
-    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-    return { ok: res.ok, status: res.status, body };
-  } catch (err) {
-    return { ok: false, status: 0, body: { error: String(err) } };
-  }
-}
+import { bundles, type Network } from "@/lib/bundles";
+import { sendAdminAlert, orderApprovalKeyboard } from "@/lib/telegram";
 
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
@@ -120,7 +103,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Save order as pending first
+  // Save order as pending_approval — do not call Inventor until admin approves
   await supabase.from("orders").insert({
     reference,
     paystack_reference: reference,
@@ -135,49 +118,13 @@ export async function POST(request: NextRequest) {
     admin_commission: adminCommission,
     agent_commission: agentCommission,
     agent_id: agentId,
-    status: "pending",
+    status: "pending_approval",
   }).then(() => {});
 
   await sendAdminAlert(
-    `🔔 <b>Webhook Order</b> (browser may have closed)\n📱 ${(network ?? "").toUpperCase()} ${bundleSize} → <code>${phone}</code>\n💰 GH₵${chargedAmount} | ${agentName ? `Agent: ${agentName}` : "Direct"}\n📎 <code>${reference}</code>`
+    `🔔 <b>Webhook Order — APPROVE TO DELIVER</b>\n📱 ${(network ?? "").toUpperCase()} ${bundleSize} → <code>${phone}</code>\n💰 GH₵${chargedAmount} | ${agentName ? `Agent: ${agentName}` : "Direct"}\n📎 <code>${reference}</code>`,
+    orderApprovalKeyboard(reference)
   ).catch(() => {});
-
-  // Deliver via Inventor
-  const { ok: invOk, status: invHttpStatus, body: invBody } = await callInventor({
-    network: networkApiName[network],
-    Phone: phone,
-    Datasize: sizeGB,
-    reference,
-  });
-
-  const invData = (invBody.data as Record<string, unknown>) ?? {};
-  const invOrder = (invData.order as Record<string, unknown>) ?? invData;
-  const rawStatus = String(invOrder.status ?? invData.status ?? invBody.status ?? "").toLowerCase();
-  // 409 = order already submitted (race between webhook + client callback) — treat as processing
-  const isDuplicate = invHttpStatus === 409;
-  const isProcessing = isDuplicate || rawStatus.includes("process") || rawStatus.includes("progress") || rawStatus.includes("dispatch") || rawStatus.includes("pending");
-  const isCompleted = invOk && !isProcessing && (rawStatus.includes("complet") || rawStatus.includes("success") || rawStatus.includes("deliver") || rawStatus === "00");
-  const deliveryStatus = isCompleted ? "completed" : isProcessing ? "processing" : "failed";
-
-  await supabase.from("orders").update({ status: deliveryStatus }).eq("reference", reference);
-
-  if (isCompleted) {
-    if (agentId && agentCommission > 0) {
-      const { data: ag } = await supabase.from("agents").select("commission_balance, total_sales, total_revenue").eq("id", agentId).maybeSingle();
-      if (ag) {
-        await supabase.from("agents").update({
-          commission_balance: Number(ag.commission_balance ?? 0) + agentCommission,
-          total_sales: Number(ag.total_sales ?? 0) + 1,
-          total_revenue: Number(ag.total_revenue ?? 0) + chargedAmount,
-        }).eq("id", agentId);
-      }
-    }
-    await sendAdminAlert(`${fmtDelivered(reference, phone, network, bundleSize)} [via webhook]`).catch(() => {});
-  } else if (!isProcessing) {
-    await sendAdminAlert(
-      `${fmtFailed(reference, phone, network, bundleSize, chargedAmount)}\n\n[via webhook — Inventor: ${JSON.stringify(invBody).slice(0, 200)}]`
-    ).catch(() => {});
-  }
 
   return Response.json({ ok: true });
 }
