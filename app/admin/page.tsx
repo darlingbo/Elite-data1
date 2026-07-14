@@ -198,28 +198,6 @@ function getRevenueBreakdown(orders: Order[]) {
     }));
 }
 
-function getProfitByPeriod(orders: Order[]) {
-  const now = new Date();
-  function startOf(period: "day" | "week" | "month" | "year") {
-    const d = new Date(now);
-    if (period === "day")   { d.setHours(0, 0, 0, 0); }
-    if (period === "week")  { const day = d.getDay(); d.setDate(d.getDate() - day); d.setHours(0, 0, 0, 0); }
-    if (period === "month") { d.setDate(1); d.setHours(0, 0, 0, 0); }
-    if (period === "year")  { d.setMonth(0, 1); d.setHours(0, 0, 0, 0); }
-    return d;
-  }
-  function calc(period: "day" | "week" | "month" | "year") {
-    const start = startOf(period);
-    const slice = orders.filter(o => o.status.toLowerCase() === "completed" && new Date(o.created_at) >= start);
-    return {
-      profit:  slice.reduce((s, o) => s + Number(o.admin_commission ?? 0), 0),
-      revenue: slice.reduce((s, o) => s + Number(o.amount), 0),
-      orders:  slice.length,
-    };
-  }
-  return { day: calc("day"), week: calc("week"), month: calc("month"), year: calc("year") };
-}
-
 function getNetBadge(network: string) {
   const net = (network ?? "").toLowerCase();
   if (net === "mtn") return { bg: "#78350f", color: "#fbbf24", label: "MTN" };
@@ -267,43 +245,6 @@ function LineChart({ data }: { data: { label: string; revenue: number }[] }) {
       {data.map((d, i) => (
         <text key={i} x={pts[i].x} y={H - pad.b + 16} textAnchor="middle" fontSize={9} fill="#6b7280">{d.label}</text>
       ))}
-    </svg>
-  );
-}
-
-function DonutChart({ bundles, total }: { bundles: { pct: number; color: string }[]; total: number }) {
-  const R = 52, r = 34, cx = 70, cy = 70;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-
-  function arc(start: number, pct: number) {
-    const sweep = (pct / 100) * 360;
-    const end = start + sweep;
-    const x1 = cx + R * Math.cos(toRad(start));
-    const y1 = cy + R * Math.sin(toRad(start));
-    const x2 = cx + R * Math.cos(toRad(end));
-    const y2 = cy + R * Math.sin(toRad(end));
-    const ix1 = cx + r * Math.cos(toRad(end));
-    const iy1 = cy + r * Math.sin(toRad(end));
-    const ix2 = cx + r * Math.cos(toRad(start));
-    const iy2 = cy + r * Math.sin(toRad(start));
-    const lg = sweep > 180 ? 1 : 0;
-    return `M${x1} ${y1} A${R} ${R} 0 ${lg} 1 ${x2} ${y2} L${ix1} ${iy1} A${r} ${r} 0 ${lg} 0 ${ix2} ${iy2}Z`;
-  }
-
-  // Pre-compute each slice's start angle so there's no mutation inside JSX
-  const slices = bundles.reduce<{ start: number; pct: number; color: string }[]>((acc, b) => {
-    const prev = acc[acc.length - 1];
-    const start = prev ? prev.start + (prev.pct / 100) * 360 : -90;
-    return [...acc, { start, pct: b.pct, color: b.color }];
-  }, []);
-
-  return (
-    <svg viewBox="0 0 140 140" width={140} height={140}>
-      {slices.map((s, i) => (
-        <path key={i} d={arc(s.start, s.pct)} fill={s.color} />
-      ))}
-      <text x={cx} y={cy - 5} textAnchor="middle" fontSize={16} fontWeight="800" fill="white">{total.toLocaleString()}</text>
-      <text x={cx} y={cy + 12} textAnchor="middle" fontSize={8} fill="#6b7280">Total Sales</text>
     </svg>
   );
 }
@@ -699,7 +640,7 @@ function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; animated
                 return (
                   <tr key={i} className="border-b" style={{ borderColor: BORDER }}>
                     <td className="px-3 py-2.5 font-mono font-bold" style={{ color: "#60a5fa" }}>{shortRef}</td>
-                    <td className="px-3 py-2.5 text-white font-medium max-w-[70px] truncate">{(o.customer_name || o.phone || "—").slice(0, 10)}</td>
+                    <td className="px-3 py-2.5 text-white font-medium max-w-17.5 truncate">{(o.customer_name || o.phone || "—").slice(0, 10)}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <span className="text-[10px] font-black px-1.5 py-0.5 rounded mr-1" style={{ background: nb.bg, color: nb.color }}>{nb.label}</span>
                       <span className="text-slate-400">{cleanSize}</span>
@@ -1147,7 +1088,7 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
                 const st = statusStyle[o.status.toUpperCase()] ?? { bg: "transparent", color: "#94a3b8" };
                 const cleanSize = (o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel)\s+/i, "").trim();
                 return (
-                  <tr key={o.reference ?? idx} className="border-b hover:bg-white/[0.02] transition-colors last:border-0" style={{ borderColor: BORDER }}>
+                  <tr key={o.reference ?? idx} className="border-b hover:bg-white/2 transition-colors last:border-0" style={{ borderColor: BORDER }}>
                     <td className="px-4 py-3.5 text-slate-600 text-xs font-mono">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="px-4 py-3.5">
                       <p className="font-semibold text-white whitespace-nowrap">{o.customer_name || o.phone || "—"}</p>
@@ -1171,7 +1112,7 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
                     <td className="px-4 py-3.5 font-black" style={{ color: "#4ade80" }}>GH₵{Number(o.admin_commission).toFixed(2)}</td>
                     <td className="px-4 py-3.5">
                       {o.agent_name ? (
-                        <button onClick={() => { setAgentFilter(o.agent_name!); setPage(1); }} className="text-xs font-semibold px-2 py-0.5 rounded-full truncate max-w-[100px]" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }} title={o.agent_name}>{o.agent_name}</button>
+                        <button onClick={() => { setAgentFilter(o.agent_name!); setPage(1); }} className="text-xs font-semibold px-2 py-0.5 rounded-full truncate max-w-25" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }} title={o.agent_name}>{o.agent_name}</button>
                       ) : (
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: BORDER2, color: "#64748b" }}>Direct</span>
                       )}
@@ -1410,7 +1351,7 @@ function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats: Stats
             </thead>
             <tbody>
               {shown.map(a => (
-                <tr key={a.id} className="border-b last:border-0 hover:bg-white/[0.02] transition-colors" style={{ borderColor: BORDER }}>
+                <tr key={a.id} className="border-b last:border-0 hover:bg-white/2 transition-colors" style={{ borderColor: BORDER }}>
                   <td className="px-4 py-3.5 font-semibold text-white">{a.name}</td>
                   <td className="px-4 py-3.5 text-slate-400 text-xs">{a.email}</td>
                   <td className="px-4 py-3.5 font-mono text-xs text-slate-400">{a.phone}</td>
@@ -1631,7 +1572,7 @@ function LeaderboardView({ stats }: { stats: StatsData }) {
               {agents.map((a, i) => {
                 const share = totalRevenue > 0 ? (Number(a.total_revenue) / totalRevenue) * 100 : 0;
                 return (
-                  <tr key={a.id} className="border-b last:border-0 hover:bg-white/[0.02] transition-colors" style={{ borderColor: BORDER }}>
+                  <tr key={a.id} className="border-b last:border-0 hover:bg-white/2 transition-colors" style={{ borderColor: BORDER }}>
                     <td className="px-4 py-3.5 text-center">
                       {i < 3
                         ? <span className="text-xl">{medals[i]}</span>
@@ -2083,7 +2024,6 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
       const d = await fetch("/api/admin/inventor-balance").then(r => r.json());
       results["Inventor API"] = d.balance !== null ? { value: `✓ Balance: GH₵${Number(d.balance).toFixed(2)}`, ok: true } : { value: "✗ Unreachable", ok: false };
     } catch { results["Inventor API"] = { value: "✗ Error", ok: false }; }
-    const atKey = !!process.env.AT_API_KEY; // won't work client-side but shows intent
     results["Africa's Talking SMS"] = { value: "Check Vercel env: AT_API_KEY + AT_USERNAME", ok: false };
     results["Supabase DB"] = net ? { value: "✓ Connected", ok: true } : { value: "✗ Not connected — run SQL below", ok: false };
     setIntStatus(results);
@@ -2277,17 +2217,6 @@ function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
         </div>
       )}
 
-    </div>
-  );
-}
-
-// ─── Placeholder ─────────────────────────────────────────────────────────────
-function ComingSoon({ label }: { label: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-40 gap-3">
-      <span className="text-5xl">🚧</span>
-      <p className="text-lg font-bold text-white">{label}</p>
-      <p className="text-sm text-slate-500">Coming soon</p>
     </div>
   );
 }

@@ -37,7 +37,7 @@ export default function PricesView() {
     setBundles(data.bundles ?? []);
     setLoading(false);
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { const t = setTimeout(() => void load(), 0); return () => clearTimeout(t); }, [load]);
 
   async function handleAddBundle() {
     setAddMsg("");
