@@ -1265,15 +1265,27 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
                             <span className={`text-xs font-bold ${approveMsgThis.ok ? "text-green-400" : "text-red-400"}`}>{approveMsgThis.text}</span>
                           ) : (
                             <>
-                              <button onClick={() => handleApproveOrReject([o.reference], "approve")} disabled={isApprovingThis}
-                                title="Approve & send" className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50 whitespace-nowrap"
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`Approve this order and send data to ${o.phone}?`))
+                                    handleApproveOrReject([o.reference], "approve");
+                                }}
+                                disabled={isApprovingThis}
+                                title="Approve & send"
+                                className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50 whitespace-nowrap"
                                 style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid rgba(16,185,129,0.4)" }}>
-                                {isApprovingThis ? "…" : "✅ Approve"}
+                                {isApprovingThis ? "…" : "Approve"}
                               </button>
-                              <button onClick={() => { if (window.confirm("Reject this order? Customer will be notified.")) handleApproveOrReject([o.reference], "reject"); }} disabled={isApprovingThis}
-                                title="Reject order" className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
+                              <button
+                                onClick={() => {
+                                  if (window.confirm("Reject this order? The customer will be notified."))
+                                    handleApproveOrReject([o.reference], "reject");
+                                }}
+                                disabled={isApprovingThis}
+                                title="Reject order"
+                                className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
                                 style={{ background: "rgba(239,68,68,0.12)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }}>
-                                ❌
+                                Reject
                               </button>
                             </>
                           )
