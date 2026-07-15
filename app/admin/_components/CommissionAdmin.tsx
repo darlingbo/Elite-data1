@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface AgentOverride {
   agent_id: string;
@@ -31,16 +31,25 @@ export default function CommissionAdmin() {
   const [overrideNote, setOverrideNote] = useState("");
   const [toast, setToast] = useState("");
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch("/api/admin/commission-settings");
-    const json = await res.json();
-    setData(json);
-    setGlobalPct(json.global_agent_pct ?? 80);
-    setLoading(false);
-  }
+    try {
+      const res = await fetch("/api/admin/commission-settings");
+      const json = await res.json() as CommissionData & { error?: string };
+      if (!res.ok || json.error) {
+        setData(null);
+      } else {
+        setData(json);
+        setGlobalPct(json.global_agent_pct ?? 80);
+      }
+    } catch {
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void load(); }, [load]); // eslint-disable-line
 
   function showToast(msg: string) {
     setToast(msg);
@@ -101,7 +110,7 @@ export default function CommissionAdmin() {
 
   const overrideMap = new Map(data.overrides.map(o => [o.agent_id, o]));
   const filtered = data.agents.filter(a =>
-    !search || a.name.toLowerCase().includes(search.toLowerCase()) || a.referral_code.toLowerCase().includes(search.toLowerCase())
+    !search || a.name.toLowerCase().includes(search.toLowerCase()) || (a.referral_code ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
   const adminPct = 100 - globalPct;

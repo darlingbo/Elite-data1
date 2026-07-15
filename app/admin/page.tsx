@@ -838,6 +838,10 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
   const [selectedRefs, setSelectedRefs] = useState<Set<string>>(new Set());
   const [approving, setApproving] = useState<Set<string>>(new Set());
   const [approveMsg, setApproveMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
+  // Send SMS
+  const [smsModal, setSmsModal] = useState<{ phone: string; name: string; message: string } | null>(null);
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsResult, setSmsResult] = useState<{ ok: boolean; text: string } | null>(null);
 
 
   async function handleApproveOrReject(references: string[], action: "approve" | "reject") {
@@ -864,6 +868,30 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
       setApproveMsg(prev => ({ ...prev, ...msgs }));
     } finally {
       setApproving(prev => { const n = new Set(prev); for (const ref of references) n.delete(ref); return n; });
+    }
+  }
+
+  async function handleSendSMS() {
+    if (!smsModal) return;
+    setSmsSending(true);
+    setSmsResult(null);
+    try {
+      const res = await fetch("/api/admin/send-sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: smsModal.phone, message: smsModal.message }),
+      });
+      const d = await res.json() as { success?: boolean; error?: string };
+      if (d.success) {
+        setSmsResult({ ok: true, text: "SMS sent!" });
+        setTimeout(() => { setSmsModal(null); setSmsResult(null); }, 1800);
+      } else {
+        setSmsResult({ ok: false, text: d.error ?? "Failed to send" });
+      }
+    } catch {
+      setSmsResult({ ok: false, text: "Network error" });
+    } finally {
+      setSmsSending(false);
     }
   }
 
@@ -1286,6 +1314,18 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
                           className="text-xs font-bold px-2.5 py-1.5 rounded-lg" style={{ background: "rgba(99,102,241,0.12)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.3)" }}>
                           📋
                         </button>
+                        <button
+                          onClick={() => {
+                            const firstName = (o.customer_name ?? "Customer").split(" ")[0];
+                            const shortRef = o.reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
+                            setSmsModal({ phone: o.phone ?? "", name: firstName, message: `Hi ${firstName}! Your order (Ref: ${shortRef}) has been processed. Thank you for choosing Elite Data!` });
+                            setSmsResult(null);
+                          }}
+                          title="Send SMS to customer"
+                          className="text-xs font-bold px-2.5 py-1.5 rounded-lg"
+                          style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)" }}>
+                          💬
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -1343,6 +1383,52 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
           </div>
         )}
       </div>
+      {/* Send SMS Modal */}
+      {smsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={() => { setSmsModal(null); setSmsResult(null); }}>
+          <div className="rounded-2xl shadow-2xl w-full max-w-md border" style={{ background: "#0e1928", borderColor: BORDER2 }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: BORDER }}>
+              <div>
+                <p className="font-black text-white">Send SMS</p>
+                <p className="text-xs text-slate-500 mt-0.5">To: {smsModal.phone}</p>
+              </div>
+              <button onClick={() => { setSmsModal(null); setSmsResult(null); }} className="text-slate-500 hover:text-white text-lg">✕</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-1.5">Phone</label>
+                <input
+                  value={smsModal.phone}
+                  onChange={e => setSmsModal(m => m ? { ...m, phone: e.target.value } : m)}
+                  className="w-full px-3 py-2 text-sm rounded-xl border text-white focus:outline-none"
+                  style={{ background: "#162032", borderColor: BORDER }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-1.5">Message</label>
+                <textarea
+                  rows={4}
+                  value={smsModal.message}
+                  onChange={e => setSmsModal(m => m ? { ...m, message: e.target.value } : m)}
+                  className="w-full px-3 py-2 text-sm rounded-xl border text-white focus:outline-none resize-none"
+                  style={{ background: "#162032", borderColor: BORDER }}
+                />
+                <p className="text-right text-[11px] text-slate-600 mt-1">{smsModal.message.length}/500</p>
+              </div>
+              {smsResult && (
+                <p className={`text-sm font-bold text-center ${smsResult.ok ? "text-green-400" : "text-red-400"}`}>{smsResult.text}</p>
+              )}
+              <button
+                onClick={() => void handleSendSMS()}
+                disabled={smsSending || !smsModal.phone || !smsModal.message}
+                className="w-full py-2.5 rounded-xl text-sm font-black text-white disabled:opacity-50"
+                style={{ background: "linear-gradient(90deg,#16a34a,#22c55e)" }}>
+                {smsSending ? "Sending…" : "Send SMS"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Order Logs Modal */}
       {logsRef && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={() => setLogsRef(null)}>
