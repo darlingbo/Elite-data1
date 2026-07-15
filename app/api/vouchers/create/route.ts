@@ -87,8 +87,8 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: `Payment verification failed — ${reason}.` }, { status: 400 });
   }
 
-  // Save order first
-  await supabase.from("orders").insert({
+  // Save order
+  const { error: insertError } = await supabase.from("orders").insert({
     reference: String(paystackRef),
     paystack_reference: String(paystackRef),
     customer_name: String(name),
@@ -104,6 +104,16 @@ export async function POST(request: NextRequest) {
     agent_id: null,
     status: "pending_approval",
   });
+
+  if (insertError) {
+    await sendAdminAlert(
+      `🚨 VOUCHER ORDER SAVE FAILED\nRef: ${paystackRef}\nPhone: ${phone}\n${label} x${qty}\nGH₵${chargedAmount}\nError: ${insertError.message} (${insertError.code})\n\nCustomer paid but order NOT saved — deliver manually!`
+    ).catch(() => {});
+    return Response.json(
+      { error: `Order could not be saved: ${insertError.message}. Screenshot this and contact support on WhatsApp.` },
+      { status: 500 }
+    );
+  }
 
   // Voucher order held for admin approval
   await sendAdminAlert(
