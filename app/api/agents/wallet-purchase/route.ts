@@ -1,45 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendAgentNotification, sendAdminAlert } from "@/lib/telegram";
-import { sendAdminWhatsApp } from "@/lib/whatsapp";
+import { sendAgentNotification, sendAdminAlert, orderApprovalKeyboard } from "@/lib/telegram";
 import { getAgentBundleCost } from "@/lib/agent-pricing";
-import { datacityPurchase, isDatacityEnabled, isInventorEnabled } from "@/lib/datacity";
-import { datifyPurchase, isDatifyEnabled } from "@/lib/datify";
-
-const INVENTOR_TIMEOUT_MS = 10_000;
-
-const NETWORK_API_MAP: Record<string, string> = {
-  mtn: "MTN",
-  telecel: "TELECEL",
-  airteltigo: "AT ISHARE",
-};
-
-async function callInventor(network: string, phone: string, sizeGB: number, reference: string) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), INVENTOR_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.INVENTOR_API_KEY}`,
-      },
-      body: JSON.stringify({
-        network: NETWORK_API_MAP[network] ?? "MTN",
-        Phone: phone,
-        Datasize: sizeGB,
-        reference,
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-    return { ok: res.ok, status: res.status, body };
-  } catch (err) {
-    clearTimeout(timer);
-    return { ok: false, status: 0, body: { error: String(err) } };
-  }
-}
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -54,7 +16,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Enter a valid Ghana phone number (e.g. 0241234567)." }, { status: 400 });
   }
 
-  // Load agent (including registration_ref to determine Free vs Pro pricing)
+  // Load agent
   const agentRes = await supabase
     .from("agents")
     .select("id, name, wallet_balance, status, telegram_chat_id, registration_ref, agent_type")
@@ -68,7 +30,6 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Agent account not found or not approved." }, { status: 403 });
   }
 
-  // Commission/Free agents pay bundle_prices.price × 0.96 — Price-mode/Pro agents pay custom_tier_prices.price
   const [costPrice, bundleRes] = await Promise.all([
     getAgentBundleCost(bundleId, agent.registration_ref, agent.agent_type),
     supabase.from("bundle_prices").select("size_label, size_gb").eq("id", bundleId).maybeSingle(),
@@ -87,7 +48,7 @@ export async function POST(request: NextRequest) {
     }, { status: 400 });
   }
 
-  // Deduct from wallet upfront
+  // Deduct from wallet upfront (reserves balance, prevents double-spend)
   const { error: deductError } = await supabase
     .from("agents")
     .update({ wallet_balance: walletBalance - costPrice })
@@ -101,179 +62,60 @@ export async function POST(request: NextRequest) {
   const numericSizeGB = sizeGB ?? bundleRes.data?.size_gb ?? 1;
   const label = bundleSize ?? bundleRes.data?.size_label ?? `${numericSizeGB}GB`;
 
-  await supabase.from("orders").insert({
+  // Save as pending_approval — admin must approve before delivery
+  const { error: insertError } = await supabase.from("orders").insert({
     reference,
     customer_name: agent.name,
     phone: cleaned,
     network,
     bundle_size: label,
+    bundle_size_gb: numericSizeGB,
     amount: costPrice,
     cost_price: costPrice,
     admin_commission: 0,
     agent_commission: 0,
     agent_id: agentId,
-    status: "processing",
+    status: "pending_approval",
   });
 
-  // Sequential fallback: Inventor → DataCity → Datify
-  // Each provider is only called if the previous one definitively failed.
-  const [inventorOn, datacityOn, datifyOn] = await Promise.all([isInventorEnabled(), isDatacityEnabled(), isDatifyEnabled()]);
+  if (insertError) {
+    // Refund wallet if order couldn't be saved
+    await supabase.from("agents").update({ wallet_balance: walletBalance }).eq("id", agentId);
+    return Response.json({ error: "Order could not be saved. Your wallet has been refunded." }, { status: 500 });
+  }
 
-  const result = inventorOn
-    ? await callInventor(network, cleaned, numericSizeGB, reference)
-    : { ok: false, status: -1, body: { error: "Inventor disabled" } as Record<string, unknown> };
+  // Alert admin with Approve / Reject keyboard
+  sendAdminAlert(
+    `🟡 <b>WALLET ORDER — APPROVE TO DELIVER</b>\n\n` +
+    `👤 ${agent.name} · <code>${referralCode.toUpperCase()}</code>\n` +
+    `📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n` +
+    `💰 GH₵${costPrice.toFixed(2)} deducted from wallet\n` +
+    `📎 <code>${reference}</code>`,
+    orderApprovalKeyboard(reference)
+  ).catch(() => {});
 
-  const isSuccess = result.ok && result.status !== 500;
-  const isFailed = result.status === 400 || result.status === 422 || result.status === -1;
-  const isDuplicate = result.status === 409;
-
-  const errMsg = String(
-    (result.body.message as string) ??
-    (result.body.error as string) ??
-    (result.body.description as string) ??
-    (result.status === -1 ? "Inventor disabled" : "")
-  );
-
-  // ── Inventor delivered ────────────────────────────────────────────────────
-  if (isSuccess || isDuplicate) {
-    await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
-
-    if (agent.telegram_chat_id) {
-      sendAgentNotification(
-        agent.telegram_chat_id,
-        `✅ <b>Delivered!</b>\n\n📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n💰 GH₵${costPrice.toFixed(2)} deducted\n📡 Provider: Inventor\n📎 <code>${reference}</code>`
-      ).catch(() => {});
-    }
-
-    sendAdminAlert(
-      `✅ <b>DELIVERED VIA INVENTOR (Agent Wallet)</b>\n\n` +
-      `👤 ${agent.name} · <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
-      `📡 Provider: Inventor · Ref: <code>${reference}</code>`
+  // Notify agent that order is awaiting approval
+  if (agent.telegram_chat_id) {
+    sendAgentNotification(
+      agent.telegram_chat_id,
+      `⏳ <b>Order Submitted</b>\n\n` +
+      `📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n` +
+      `💰 GH₵${costPrice.toFixed(2)} reserved from wallet\n` +
+      `📎 <code>${reference}</code>\n\n` +
+      `Awaiting admin approval. You'll be notified when it's processed.`
     ).catch(() => {});
-
-    return Response.json({
-      success: true,
-      reference,
-      network,
-      bundleSize: label,
-      phone: cleaned,
-      costDeducted: costPrice,
-      newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
-    });
   }
-
-  // ── Inventor failed → try DataCity ───────────────────────────────────────
-  const dcRes = datacityOn
-    ? await datacityPurchase(network, cleaned, numericSizeGB)
-    : { success: false as const, error: "DataCity disabled" };
-
-  if (dcRes.success) {
-    await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
-
-    if (agent.telegram_chat_id) {
-      sendAgentNotification(
-        agent.telegram_chat_id,
-        `✅ <b>Delivered!</b>\n\n📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n💰 GH₵${costPrice.toFixed(2)} deducted\n📡 Provider: DataCity\n📎 <code>${reference}</code>`
-      ).catch(() => {});
-    }
-
-    sendAdminAlert(
-      `✅ <b>DELIVERED VIA DATACITY (Agent Wallet)</b>\n\n` +
-      `👤 ${agent.name} · <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
-      `📡 Provider: DataCity · 🔗 <code>${dcRes.reference}</code>\n❌ Inventor: ${errMsg}`
-    ).catch(() => {});
-
-    return Response.json({
-      success: true,
-      reference,
-      message: "Data delivered successfully.",
-      costDeducted: costPrice,
-      newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
-    });
-  }
-
-  // DataCity timed out → stop, don't try Datify (might still deliver)
-  if (dcRes.timedOut) {
-    await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
-    sendAdminAlert(`⏳ ORDER PROCESSING (Agent Wallet)\n👤 ${agent.name} · ${cleaned}\n📦 ${network.toUpperCase()} ${label}\n⚠️ DataCity timed out — awaiting confirmation`).catch(() => {});
-    return Response.json({ success: true, pending: true, reference, message: "Order placed. Delivery in 1–5 minutes.", costDeducted: costPrice, newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)) });
-  }
-
-  // ── DataCity rejected → try Datify ────────────────────────────────────────
-  const dtRes = datifyOn
-    ? await datifyPurchase(network, cleaned, numericSizeGB)
-    : { success: false as const, error: "Datify disabled" };
-
-  if (dtRes.success) {
-    await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
-
-    if (agent.telegram_chat_id) {
-      sendAgentNotification(
-        agent.telegram_chat_id,
-        `✅ <b>Delivered!</b>\n\n📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n💰 GH₵${costPrice.toFixed(2)} deducted\n📡 Provider: Datify\n📎 <code>${reference}</code>`
-      ).catch(() => {});
-    }
-
-    sendAdminAlert(
-      `✅ <b>DELIVERED VIA DATIFY (Agent Wallet)</b>\n\n` +
-      `👤 ${agent.name} · <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
-      `📡 Provider: Datify · 🔗 <code>${dtRes.reference}</code>\n❌ Inventor: ${errMsg}\n❌ DataCity: ${dcRes.error ?? "failed"}`
-    ).catch(() => {});
-
-    return Response.json({
-      success: true,
-      reference,
-      message: "Data delivered successfully.",
-      costDeducted: costPrice,
-      newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
-    });
-  }
-
-  // ── All APIs failed ───────────────────────────────────────────────────────
-  if (isFailed) {
-    const isBeneficiary = errMsg.toLowerCase().includes("beneficiary");
-    await supabase.from("orders").update({ status: isBeneficiary ? "not_on_list" : "failed" }).eq("reference", reference);
-
-    const manualAlert =
-      `🔴 <b>${isBeneficiary ? "ALL APIS BLOCKED" : "ALL APIS FAILED"} (Agent Wallet)</b>\n\n` +
-      `👤 ${agent.name} · <code>${cleaned}</code>\n📦 ${network.toUpperCase()} ${label}\n` +
-      `💰 GH₵${costPrice.toFixed(2)} deducted · Ref: <code>${reference}</code>\n\n` +
-      `❌ Inventor: ${errMsg}\n❌ DataCity: ${dcRes.error ?? "failed"}\n❌ Datify: ${dtRes.error ?? "failed"}\n\n` +
-      `➡️ Send manually then mark completed.`;
-
-    sendAdminAlert(manualAlert).catch(() => {});
-    sendAdminWhatsApp(manualAlert.replace(/<[^>]*>/g, "")).catch(() => {});
-
-    if (agent.telegram_chat_id) {
-      sendAgentNotification(
-        agent.telegram_chat_id,
-        `⏳ Order queued for manual delivery\n\n📱 ${network.toUpperCase()} ${label} → ${cleaned}\n💰 GH₵${costPrice.toFixed(2)} deducted\nAdmin will deliver shortly.\n📎 <code>${reference}</code>`
-      ).catch(() => {});
-    }
-
-    if (!isBeneficiary) {
-      await supabase.from("agents").update({ wallet_balance: walletBalance }).eq("id", agentId);
-    }
-
-    return Response.json({
-      success: true,
-      pending: true,
-      reference,
-      message: "Order queued for manual delivery. Admin has been notified.",
-      costDeducted: costPrice,
-      newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
-    });
-  }
-
-  // Timeout — monitor will retry
-  await supabase.from("orders").update({ status: "pending" }).eq("reference", reference);
 
   return Response.json({
     success: true,
     pending: true,
+    awaitingApproval: true,
     reference,
-    message: "Order placed. Delivery in 1–5 minutes.",
+    network,
+    bundleSize: label,
+    phone: cleaned,
     costDeducted: costPrice,
     newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
+    message: "Order submitted — awaiting admin approval. You'll be notified when it's processed.",
   });
 }

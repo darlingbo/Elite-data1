@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
+import { sendAgentNotification } from "@/lib/telegram";
 
 const ADMIN_BOT_TOKEN = process.env.TELEGRAM_ADMIN_BOT_TOKEN!;
 const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID!;
@@ -667,7 +668,7 @@ async function approveOrder(chatId: string, reference: string) {
 async function rejectOrder(chatId: string, reference: string) {
   const { data: order } = await supabase
     .from("orders")
-    .select("phone, network, bundle_size, amount, status")
+    .select("phone, network, bundle_size, amount, status, agent_id")
     .eq("reference", reference)
     .maybeSingle();
 
@@ -679,13 +680,35 @@ async function rejectOrder(chatId: string, reference: string) {
 
   await supabase.from("orders").update({ status: "rejected" }).eq("reference", reference);
 
+  // Wallet orders: refund the deducted amount and notify agent
+  if (reference.startsWith("AGTWALLET-") && order.agent_id) {
+    const { data: ag } = await supabase
+      .from("agents")
+      .select("wallet_balance, telegram_chat_id, name")
+      .eq("id", order.agent_id)
+      .maybeSingle();
+    if (ag) {
+      await supabase.from("agents")
+        .update({ wallet_balance: Number(ag.wallet_balance ?? 0) + Number(order.amount ?? 0) })
+        .eq("id", order.agent_id);
+      if (ag.telegram_chat_id) {
+        sendAgentNotification(
+          ag.telegram_chat_id,
+          `❌ <b>Order Rejected</b>\n\n` +
+          `📱 ${String(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
+          `💰 GH₵${Number(order.amount ?? 0).toFixed(2)} refunded to your wallet\n` +
+          `📎 <code>${reference}</code>\n\nContact admin for details.`
+        ).catch(() => {});
+      }
+    }
+  }
 
   await reply(chatId,
     `❌ <b>Order Rejected</b>\n\n` +
     `📎 <code>${reference}</code>\n` +
     `📱 ${String(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
     `💰 GH₵${Number(order.amount ?? 0).toFixed(2)}\n\n` +
-    `Customer notified via SMS. Issue refund manually if needed.`
+    `${reference.startsWith("AGTWALLET-") ? "Agent wallet refunded." : "Issue refund manually if needed."}`
   );
 }
 

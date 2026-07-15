@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
+import { sendAgentNotification } from "@/lib/telegram";
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -97,6 +98,20 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
       }
     }
 
+    // Wallet orders: notify agent of successful delivery
+    if (reference.startsWith("AGTWALLET-") && order.agent_id) {
+      const { data: ag } = await supabase
+        .from("agents").select("telegram_chat_id").eq("id", order.agent_id).maybeSingle();
+      if (ag?.telegram_chat_id) {
+        sendAgentNotification(
+          ag.telegram_chat_id,
+          `✅ <b>Delivered!</b>\n\n` +
+          `📱 ${order.network?.toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
+          `📎 <code>${reference}</code>`
+        ).catch(() => {});
+      }
+    }
+
     return { ok: true, message: "Approved & sent" };
   } else {
     await supabase.from("orders").update({ status: "failed" }).eq("reference", reference);
@@ -107,7 +122,7 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
 async function runReject(reference: string): Promise<{ ok: boolean; message: string }> {
   const { data: order } = await supabase
     .from("orders")
-    .select("phone, network, bundle_size, amount, status, customer_name")
+    .select("phone, network, bundle_size, amount, status, customer_name, agent_id")
     .eq("reference", reference)
     .maybeSingle();
 
@@ -117,6 +132,29 @@ async function runReject(reference: string): Promise<{ ok: boolean; message: str
   }
 
   await supabase.from("orders").update({ status: "rejected" }).eq("reference", reference);
+
+  // Wallet orders: refund the deducted amount and notify agent
+  if (reference.startsWith("AGTWALLET-") && order.agent_id) {
+    const { data: ag } = await supabase
+      .from("agents")
+      .select("wallet_balance, telegram_chat_id, name")
+      .eq("id", order.agent_id)
+      .maybeSingle();
+    if (ag) {
+      await supabase.from("agents")
+        .update({ wallet_balance: Number(ag.wallet_balance ?? 0) + Number(order.amount ?? 0) })
+        .eq("id", order.agent_id);
+      if (ag.telegram_chat_id) {
+        sendAgentNotification(
+          ag.telegram_chat_id,
+          `❌ <b>Order Rejected</b>\n\n` +
+          `📱 ${order.network?.toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
+          `💰 GH₵${Number(order.amount).toFixed(2)} refunded to your wallet\n` +
+          `📎 <code>${reference}</code>\n\nContact admin for details.`
+        ).catch(() => {});
+      }
+    }
+  }
 
   return { ok: true, message: "Rejected" };
 }
