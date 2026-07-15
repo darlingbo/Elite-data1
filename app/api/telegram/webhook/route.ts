@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
-import { sendCustomerSMS, orderDeliveredSMS, orderFailedSMS } from "@/lib/sms";
 
 const ADMIN_BOT_TOKEN = process.env.TELEGRAM_ADMIN_BOT_TOKEN!;
 const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID!;
@@ -646,11 +645,6 @@ async function approveOrder(chatId: string, reference: string) {
       }
     }
 
-    // Notify customer via SMS
-    sendCustomerSMS(
-      order.phone,
-      orderDeliveredSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", order.phone, reference)
-    ).catch(() => {});
 
     await reply(chatId,
       `✅ <b>Approved &amp; Sent!</b>\n\n` +
@@ -667,10 +661,6 @@ async function approveOrder(chatId: string, reference: string) {
       `Error: <code>${JSON.stringify(errorBody).slice(0, 200)}</code>\n\n` +
       `Use /retry ${reference} to try again.`
     );
-    sendCustomerSMS(
-      order.phone,
-      orderFailedSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", reference)
-    ).catch(() => {});
   }
 }
 
@@ -689,10 +679,6 @@ async function rejectOrder(chatId: string, reference: string) {
 
   await supabase.from("orders").update({ status: "rejected" }).eq("reference", reference);
 
-  sendCustomerSMS(
-    order.phone,
-    `Hi! Your ${String(order.network ?? "").toUpperCase()} ${order.bundle_size} order (Ref: ${reference}) was cancelled. If you were charged, contact us on WhatsApp for a refund.`
-  ).catch(() => {});
 
   await reply(chatId,
     `❌ <b>Order Rejected</b>\n\n` +

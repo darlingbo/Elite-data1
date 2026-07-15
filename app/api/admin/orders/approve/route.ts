@@ -1,7 +1,6 @@
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
-import { sendCustomerSMS, orderDeliveredSMS, orderFailedSMS } from "@/lib/sms";
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -98,18 +97,9 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
       }
     }
 
-    sendCustomerSMS(
-      order.phone,
-      orderDeliveredSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", order.phone, reference)
-    ).catch(() => {});
-
     return { ok: true, message: "Approved & sent" };
   } else {
     await supabase.from("orders").update({ status: "failed" }).eq("reference", reference);
-    sendCustomerSMS(
-      order.phone,
-      orderFailedSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", reference)
-    ).catch(() => {});
     return { ok: false, message: `API error: ${JSON.stringify(errorBody).slice(0, 120)}` };
   }
 }
@@ -127,11 +117,6 @@ async function runReject(reference: string): Promise<{ ok: boolean; message: str
   }
 
   await supabase.from("orders").update({ status: "rejected" }).eq("reference", reference);
-
-  sendCustomerSMS(
-    order.phone,
-    `Hi ${order.customer_name ?? ""}! Your ${String(order.network ?? "").toUpperCase()} ${order.bundle_size} order (Ref: ${reference}) was cancelled. If you were charged, contact us on WhatsApp for a refund.`
-  ).catch(() => {});
 
   return { ok: true, message: "Rejected" };
 }
