@@ -582,7 +582,7 @@ async function approveOrder(chatId: string, reference: string) {
       const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/vouchers`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-        body: JSON.stringify({ voucherType, Phone: order.phone, quantity: qty }),
+        body: JSON.stringify({ voucherType, recipient: order.phone.startsWith("0") ? `233${order.phone.slice(1)}` : order.phone, quantity: qty }),
         signal: AbortSignal.timeout(15000),
       });
       const body = await res.json().catch(() => ({})) as Record<string, unknown>;
