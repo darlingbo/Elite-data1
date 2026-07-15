@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   if (!body) return Response.json({ error: "Invalid request." }, { status: 400 });
 
   const { name, email, phone, voucherType, quantity, paystackRef } = body as Record<string, string | number>;
-  const qty = Math.max(1, Math.min(10, Number(quantity) || 1));
+  const qty = Math.max(1, Math.min(100, Number(quantity) || 1));
 
   if (!name || !email || !phone || !voucherType || !paystackRef) {
     return Response.json({ error: "Missing required fields." }, { status: 400 });
@@ -111,13 +111,13 @@ export async function POST(request: NextRequest) {
     orderApprovalKeyboard(String(paystackRef))
   ).catch(() => {});
 
-  // SMS customer immediately so they know the order was received
+  // Await so Vercel doesn't kill the function before the SMS fetch completes
   const firstName = String(name).split(" ")[0] || "Customer";
   const shortRef = String(paystackRef).replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
-  sendCustomerSMS(
+  await sendCustomerSMS(
     String(phone),
     `Hi ${firstName}! Your ${label} x${qty} order (Ref: ${shortRef}) has been received. Your voucher codes will be sent to you shortly. Thank you for choosing Elite Data!`
-  ).catch(() => {});
+  );
 
   return Response.json({ success: true, reference: paystackRef, pendingApproval: true });
 }
