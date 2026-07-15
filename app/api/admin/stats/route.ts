@@ -19,6 +19,11 @@ export async function GET() {
     supabase.from("agents").select("id, name, email, phone, whatsapp, business_name, referral_code, status, agent_type, plan, commission_balance, wallet_balance, total_sales, total_revenue, created_at, registration_ref"),
   ]);
 
+  if (ordersRes.error) {
+    console.error("[stats] orders query failed:", ordersRes.error.message, ordersRes.error.code);
+    return Response.json({ error: "DB error: " + ordersRes.error.message }, { status: 500 });
+  }
+
   type AgentRow = { id: string; name: string; email: string; phone: string; whatsapp: string; business_name: string; referral_code: string; status: string; agent_type?: string; plan?: string | null; commission_balance: number; wallet_balance: number; total_sales: number; total_revenue: number; created_at: string; registration_ref?: string | null };
   type OrderRow = { status: string; amount: number; cost_price: number; admin_commission: number; agent_commission: number; agent_id: string | null; created_at: string; network: string; bundle_size: string; phone: string; reference: string; customer_name: string; refund_phone: string | null; agent_name: string | null; agent_code: string | null };
 

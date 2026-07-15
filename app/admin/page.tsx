@@ -2380,6 +2380,7 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>("overview");
   const [stats, setStats] = useState<StatsData | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
   const [animated, setAnimated] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showChangePw, setShowChangePw] = useState(false);
@@ -2389,8 +2390,16 @@ export default function AdminDashboard() {
     try {
       const res = await fetch("/api/admin/stats");
       if (res.status === 401) { router.push("/admin/login"); return; }
-      setStats(await res.json());
+      const data = await res.json() as Record<string, unknown>;
+      if (!res.ok) {
+        setStatsError((data.error as string) ?? `Server error (${res.status})`);
+        return;
+      }
+      setStatsError(null);
+      setStats(data as unknown as StatsData);
       setTimeout(() => setAnimated(true), 80);
+    } catch (err) {
+      setStatsError(String(err));
     } finally { setLoadingStats(false); }
   }, [router]);
 
@@ -2498,6 +2507,12 @@ export default function AdminDashboard() {
 
         {/* Content */}
         <main className="flex-1 px-3 sm:px-6 py-5 pb-24 md:pb-5">
+          {statsError && (
+            <div style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 12, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ color: "#f87171", fontSize: 13, fontWeight: 700, flex: 1 }}>Dashboard error: {statsError}</span>
+              <button onClick={() => void fetchStats()} style={{ background: "rgba(239,68,68,0.2)", color: "#f87171", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Retry</button>
+            </div>
+          )}
           {loadingStats && !stats ? (
             <div className="flex flex-col items-center justify-center py-40 gap-4">
               <div className="w-10 h-10 border-4 border-[#3b82f6] border-t-transparent rounded-full animate-spin" />
