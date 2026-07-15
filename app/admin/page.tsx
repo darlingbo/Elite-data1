@@ -410,7 +410,10 @@ function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingApproval, o
           <div className="w-10 h-10 rounded-2xl flex items-center justify-center font-black text-white text-base shadow-lg" style={{ background: "linear-gradient(135deg,#3b82f6,#7c3aed)" }}>E</div>
           <div>
             <p className="font-black text-white text-sm leading-none">Elite Data</p>
-            <p className="text-[10px] uppercase tracking-widest mt-0.5" style={{ color: "#3b82f6" }}>Admin Panel</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              <p className="text-[10px] uppercase tracking-widest" style={{ color: "#3b82f6" }}>Admin · Live</p>
+            </div>
           </div>
         </div>
       </div>
@@ -2393,6 +2396,12 @@ export default function AdminDashboard() {
 
   useEffect(() => { const t = setTimeout(() => void fetchStats(), 0); return () => clearTimeout(t); }, [fetchStats]);
   useEffect(() => { if (tab === "overview") { setTimeout(() => setAnimated(false), 0); setTimeout(() => setAnimated(true), 60); } }, [tab]);
+
+  // Auto-refresh every 30 s so new orders appear without manual refresh
+  useEffect(() => {
+    const id = setInterval(() => void fetchStats(), 30_000);
+    return () => clearInterval(id);
+  }, [fetchStats]);
 
   // Auto-logout after 30 minutes of inactivity
   useEffect(() => {

@@ -12,7 +12,10 @@ export async function GET() {
   }
 
   const [ordersRes, agentsRes] = await Promise.all([
-    supabase.from("orders").select("status, amount, cost_price, admin_commission, agent_commission, agent_id, created_at, network, bundle_size, phone, reference, customer_name, refund_phone"),
+    supabase.from("orders")
+      .select("status, amount, cost_price, admin_commission, agent_commission, agent_id, created_at, network, bundle_size, phone, reference, customer_name, refund_phone")
+      .order("created_at", { ascending: false })
+      .limit(5000),
     supabase.from("agents").select("id, name, email, phone, whatsapp, business_name, referral_code, status, agent_type, plan, commission_balance, wallet_balance, total_sales, total_revenue, created_at, registration_ref"),
   ]);
 
