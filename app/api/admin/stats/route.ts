@@ -48,7 +48,7 @@ export async function GET() {
 
   return Response.json({
     orders: {
-      all: orders,
+      all: orders.slice(0, 200), // send only 200 most recent; full array used for aggregates above
       total: orders.length,
       completed: (byStatus["completed"] ?? 0) + (byStatus["COMPLETED"] ?? 0),
       processing: (byStatus["processing"] ?? 0) + (byStatus["PROCESSING"] ?? 0),
