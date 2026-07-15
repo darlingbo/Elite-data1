@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { sendAdminAlert, orderApprovalKeyboard } from "@/lib/telegram";
+import { sendCustomerSMS } from "@/lib/sms";
 
 const PLATFORM_FEE_RATE = 0.02;
 
@@ -48,7 +49,9 @@ export async function POST(request: NextRequest) {
   const prices = await getVoucherPrices();
   const vPrice = prices[vType] ?? DEFAULT_PRICES[vType];
 
-  const totalSell = vPrice.sellPrice * qty;
+  // Bulk discount: buying more than 9 vouchers drops the price from GH₵18 to GH₵17.50 each
+  const effectiveSellPrice = qty > 9 ? 17.5 : vPrice.sellPrice;
+  const totalSell = effectiveSellPrice * qty;
   const totalCost = vPrice.costPrice * qty;
   const profit = totalSell - totalCost;
   const chargedAmount = parseFloat((totalSell * (1 + PLATFORM_FEE_RATE)).toFixed(2));
@@ -106,6 +109,14 @@ export async function POST(request: NextRequest) {
   await sendAdminAlert(
     `🎟 <b>VOUCHER ORDER — APPROVE TO DELIVER</b>\n${label} x${qty}\n📞 <code>${phone}</code>\n💰 GH₵${chargedAmount}\n📎 <code>${paystackRef}</code>`,
     orderApprovalKeyboard(String(paystackRef))
+  ).catch(() => {});
+
+  // SMS customer immediately so they know the order was received
+  const firstName = String(name).split(" ")[0] || "Customer";
+  const shortRef = String(paystackRef).replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
+  sendCustomerSMS(
+    String(phone),
+    `Hi ${firstName}! Your ${label} x${qty} order (Ref: ${shortRef}) has been received. Your voucher codes will be sent to you shortly. Thank you for choosing Elite Data!`
   ).catch(() => {});
 
   return Response.json({ success: true, reference: paystackRef, pendingApproval: true });
