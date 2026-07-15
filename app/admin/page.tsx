@@ -842,6 +842,8 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
   const [smsModal, setSmsModal] = useState<{ phone: string; name: string; message: string } | null>(null);
   const [smsSending, setSmsSending] = useState(false);
   const [smsResult, setSmsResult] = useState<{ ok: boolean; text: string } | null>(null);
+  // Network filter
+  const [networkFilter, setNetworkFilter] = useState<string>("ALL");
 
 
   async function handleApproveOrReject(references: string[], action: "approve" | "reject") {
@@ -1061,6 +1063,7 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
   const aq = agentFilter.toLowerCase().trim();
   const filtered = orders.slice().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).filter(o => {
     if (statusFilter !== "ALL" && o.status.toUpperCase() !== statusFilter && !(statusFilter === "PENDING_APPROVAL" && o.status === "pending_approval")) return false;
+    if (networkFilter !== "ALL" && (o.network ?? "").toLowerCase() !== networkFilter.toLowerCase()) return false;
     if (aq && !(o.agent_name ?? "").toLowerCase().includes(aq) && !(o.agent_code ?? "").toLowerCase().includes(aq)) return false;
     if (!q) return true;
     return (o.customer_name ?? "").toLowerCase().includes(q) || (o.phone ?? "").includes(q) || (o.reference ?? "").toLowerCase().includes(q) || (o.network ?? "").toLowerCase().includes(q) || (o.agent_name ?? "").toLowerCase().includes(q);
@@ -1111,6 +1114,15 @@ function OrdersView({ orders, onRefresh, defaultFilter = "ALL" }: { orders: Orde
           <input value={agentFilter} onChange={e => { setAgentFilter(e.target.value); setPage(1); }} placeholder="Filter by agent…"
             className="px-3 py-2 text-sm rounded-xl border focus:outline-none w-36 text-white placeholder-slate-600"
             style={{ background: agentFilter ? "rgba(139,92,246,0.12)" : CARD, borderColor: agentFilter ? "rgba(139,92,246,0.5)" : BORDER }} />
+          <select value={networkFilter} onChange={e => { setNetworkFilter(e.target.value); setPage(1); }}
+            className="px-3 py-2 text-sm rounded-xl border focus:outline-none text-white"
+            style={{ background: networkFilter !== "ALL" ? "rgba(251,191,36,0.1)" : CARD, borderColor: networkFilter !== "ALL" ? "rgba(251,191,36,0.5)" : BORDER }}>
+            <option value="ALL">All Networks</option>
+            <option value="mtn">MTN</option>
+            <option value="telecel">Telecel</option>
+            <option value="airteltigo">AirtelTigo</option>
+            <option value="voucher">Voucher</option>
+          </select>
           <button onClick={onRefresh} className="text-sm font-medium text-slate-400 hover:text-white border px-3 py-2 rounded-xl transition-colors" style={{ background: CARD, borderColor: BORDER }}>↻ Refresh</button>
           <button onClick={handleSync} disabled={syncing} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl transition-colors" style={{ background: "rgba(59,130,246,0.1)", borderColor: "#3b82f660", color: "#60a5fa" }}>{syncing ? "Syncing…" : "⚡ Sync"}</button>
           <button onClick={handleRecalculate} disabled={recalculating} className="text-sm font-medium disabled:opacity-60 border px-3 py-2 rounded-xl" style={{ background: "rgba(34,197,94,0.1)", borderColor: "#22c55e60", color: "#4ade80" }}>{recalculating ? "Fixing…" : "💰 Fix Commissions"}</button>
@@ -2590,6 +2602,17 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
+
+        {/* Pending approval alert banner */}
+        {stats && stats.orders.pendingApproval > 0 && tab !== "approval-queue" && (
+          <button onClick={() => setTab("approval-queue")} className="w-full flex items-center gap-3 px-4 sm:px-6 py-2.5 text-left transition-opacity hover:opacity-90" style={{ background: "rgba(245,158,11,0.12)", borderBottom: "1px solid rgba(245,158,11,0.3)" }}>
+            <span className="w-2 h-2 rounded-full flex-shrink-0 animate-pulse" style={{ background: "#f59e0b" }} />
+            <span className="text-sm font-bold" style={{ color: "#fbbf24" }}>
+              {stats.orders.pendingApproval} order{stats.orders.pendingApproval > 1 ? "s" : ""} awaiting your approval
+            </span>
+            <span className="ml-auto text-xs font-semibold" style={{ color: "#f59e0b" }}>Review →</span>
+          </button>
+        )}
 
         {/* Content */}
         <main className="flex-1 px-3 sm:px-6 py-5 pb-24 md:pb-5">
