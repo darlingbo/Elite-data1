@@ -1277,10 +1277,18 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
     fetch(`/api/agents/manual-order?agentId=${data.id}`).then(r => r.json()).then(d => { setHistory(d.orders ?? []); setHistLoading(false); }).catch(() => setHistLoading(false));
   }, [data.id, data.referral_code]);
 
+  function normalizeGhana(raw: string): string {
+    let v = raw.replace(/[\s\-\(\)]/g, "");
+    if (v.startsWith("+233")) v = v.slice(4);
+    else if (v.startsWith("233")) v = v.slice(3);
+    if (!v.startsWith("0")) v = "0" + v;
+    return v;
+  }
+
   async function submitWalletOrder() {
-    const cleaned = phone.replace(/\s/g, "");
+    const cleaned = normalizeGhana(phone);
     if (!selected) { setMsg({ text: "Select a bundle first.", ok: false }); return; }
-    if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setMsg({ text: "Enter a valid Ghana phone number (e.g. 0241234567).", ok: false }); return; }
+    if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setMsg({ text: "Enter a valid Ghana phone number (e.g. 0241234567 or +233241234567).", ok: false }); return; }
     const cost = getBuyPrice(selected);
     if (walletBalance < cost) {
       setMsg({ text: `Insufficient wallet balance. Need GH₵${cost.toFixed(2)}, you have GH₵${walletBalance.toFixed(2)}.`, ok: false });
@@ -1315,9 +1323,9 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
   }
 
   async function submitManualOrder() {
-    const cleaned = phone.replace(/\s/g, "");
+    const cleaned = normalizeGhana(phone);
     if (!selected) { setMsg({ text: "Select a bundle first.", ok: false }); return; }
-    if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setMsg({ text: "Enter a valid Ghana phone number (e.g. 0241234567).", ok: false }); return; }
+    if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setMsg({ text: "Enter a valid Ghana phone number (e.g. 0241234567 or +233241234567).", ok: false }); return; }
     setLoading(true); setMsg(null);
     try {
       const res = await fetch("/api/agents/manual-order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: data.id, agentCode: data.referral_code, agentName: data.name, customerPhone: cleaned, network: selected.network, bundleId: selected.id, bundleSize: selected.size }) });

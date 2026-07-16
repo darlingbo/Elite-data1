@@ -34,6 +34,14 @@ function usePaystackReady() {
   return ready;
 }
 
+function normalizeGhana(raw: string): string {
+  let v = raw.replace(/[\s\-\(\)]/g, "");
+  if (v.startsWith("+233")) v = v.slice(4);
+  else if (v.startsWith("233")) v = v.slice(3);
+  if (!v.startsWith("0")) v = "0" + v;
+  return v;
+}
+
 const HOW_TO_BUY = [
   "Tap a card below to flip it — you'll see the price. Press \"Select\" to choose that exam type.",
   "Pick how many vouchers you need. Buying 11 or more unlocks the bulk price of GH₵18 each.",
@@ -85,7 +93,9 @@ export default function VouchersPage() {
   const subtotal      = parseFloat((effectivePrice * quantity).toFixed(2));
   const fee           = parseFloat((subtotal * 0.02).toFixed(2));
   const total         = parseFloat((subtotal + fee).toFixed(2));
-  const canPay        = !!phone && !phoneError && phone.replace(/\s/g, "").length === 10 && paystackReady && !loading;
+  const normalizedPhone = normalizeGhana(phone);
+  const phoneValid      = /^0[2-5][0-9]{8}$/.test(normalizedPhone);
+  const canPay          = phoneValid && !phoneError && paystackReady && !loading;
   const bulkLeft      = selected.bulkThreshold + 1 - quantity;
 
   function changeQty(val: number) {
@@ -125,8 +135,8 @@ export default function VouchersPage() {
 
   function handlePay() {
     setError("");
-    const cleaned = phone.replace(/\s/g, "");
-    if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setError("Enter a valid Ghana phone number (e.g. 0241234567)."); return; }
+    const cleaned = normalizeGhana(phone);
+    if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setError("Enter a valid Ghana phone number (e.g. 0241234567 or +233241234567)."); return; }
     if (!paystackReady) { setError("Payment loading, try again."); return; }
     const key = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
     if (!key) { setError("Paystack key missing."); return; }
@@ -423,16 +433,12 @@ export default function VouchersPage() {
             <input
               type="tel" placeholder="0241234567" value={phone}
               onChange={e => {
-                const v = e.target.value;
-                setPhone(v);
-                const cleaned = v.replace(/\s/g, "");
-                if (cleaned.length > 0 && !/^0[2-5][0-9]{0,8}$/.test(cleaned)) {
-                  setPhoneError("Enter a valid Ghana number starting with 024, 025, 026, 027, 028, 055, 050, etc.");
-                } else if (cleaned.length === 10 && !/^0[2-5][0-9]{8}$/.test(cleaned)) {
-                  setPhoneError("This doesn't look like a valid Ghana phone number.");
-                } else {
-                  setPhoneError("");
-                }
+                const raw = e.target.value;
+                setPhone(raw);
+                if (!raw.replace(/[\s\-\(\)]/g, "")) { setPhoneError(""); return; }
+                const norm = normalizeGhana(raw);
+                if (norm.length < 10) { setPhoneError(""); return; } // still typing
+                setPhoneError(/^0[2-5][0-9]{8}$/.test(norm) ? "" : "Enter a valid Ghana number (e.g. 0241234567 or +233241234567).");
               }}
               onFocus={() => setPhoneFocus(true)}
               onBlur={() => setPhoneFocus(false)}
@@ -441,7 +447,7 @@ export default function VouchersPage() {
             {phoneError && (
               <p style={{ color: "#f87171", fontSize: 12, fontWeight: 600, margin: "8px 0 0" }}>⚠️ {phoneError}</p>
             )}
-            {phone && !phoneError && phone.replace(/\s/g, "").length === 10 && (
+            {phoneValid && !phoneError && (
               <p style={{ color: "#4ade80", fontSize: 12, fontWeight: 600, margin: "8px 0 0" }}>✓ Valid Ghana number</p>
             )}
           </div>
