@@ -116,7 +116,7 @@ function netBadge(network: string) {
 function statusBadge(status: string) {
   const s = status.toLowerCase();
   if (s === "completed") return { bg: "#dcfce7", color: "#16a34a", label: "Completed" };
-  if (s === "processing") return { bg: "#dbeafe", color: "#2563eb", label: "Processing" };
+  if (s === "processing" || s === "pending_approval") return { bg: "#dbeafe", color: "#2563eb", label: "Processing" };
   if (s === "pending") return { bg: "#fef9c3", color: "#ca8a04", label: "Pending" };
   return { bg: "#fee2e2", color: "#dc2626", label: "Failed" };
 }
@@ -557,7 +557,7 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
       {(() => { const n = data.orders.filter(o => o.status === "pending_approval").length; return n > 0 && (
         <div style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 14, padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <p style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13, margin: 0 }}>
-            ⏳ {n} order{n > 1 ? "s" : ""} awaiting admin approval — you will get an SMS once delivered.
+            🔄 {n} order{n > 1 ? "s" : ""} processing — you will get an SMS once delivered.
           </p>
           <button onClick={() => onNavigate("orders")} style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>View Orders</button>
         </div>

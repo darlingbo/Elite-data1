@@ -98,11 +98,11 @@ export async function POST(request: NextRequest) {
   if (agent.telegram_chat_id) {
     sendAgentNotification(
       agent.telegram_chat_id,
-      `⏳ <b>Order Submitted</b>\n\n` +
+      `✅ <b>Order Placed!</b>\n\n` +
       `📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n` +
-      `💰 GH₵${costPrice.toFixed(2)} reserved from wallet\n` +
+      `💰 GH₵${costPrice.toFixed(2)} deducted from wallet\n` +
       `📎 <code>${reference}</code>\n\n` +
-      `Awaiting admin approval. You'll be notified when it's processed.`
+      `Your order is being processed. You will receive an SMS once your bundle is delivered.`
     ).catch(() => {});
   }
 
@@ -116,6 +116,6 @@ export async function POST(request: NextRequest) {
     phone: cleaned,
     costDeducted: costPrice,
     newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
-    message: "Order submitted — awaiting admin approval. You'll be notified when it's processed.",
+    message: "Order placed successfully! Your bundle is being processed. You will receive an SMS once delivered.",
   });
 }

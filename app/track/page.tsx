@@ -30,11 +30,12 @@ interface VerifiedOrder {
 }
 
 const STATUS: Record<string, { label: string; color: string; bg: string; icon: string; desc: string }> = {
-  pending:      { label: "Pending",    color: "#f59e0b", bg: "rgba(245,158,11,0.12)",  icon: "⏳", desc: "Order received — waiting to be sent to provider." },
-  processing:   { label: "Processing", color: "#3b82f6", bg: "rgba(59,130,246,0.12)",  icon: "🔄", desc: "Provider is delivering your bundle. Usually 1–5 minutes." },
-  completed:    { label: "Delivered",  color: "#22c55e", bg: "rgba(34,197,94,0.12)",   icon: "✅", desc: "Bundle delivered successfully to your phone!" },
-  failed:       { label: "Failed",     color: "#ef4444", bg: "rgba(239,68,68,0.12)",   icon: "❌", desc: "Delivery failed. Click below to request your refund." },
-  not_on_list:  { label: "Failed",     color: "#ef4444", bg: "rgba(239,68,68,0.12)",   icon: "❌", desc: "Delivery failed. Click below to request your refund." },
+  pending:          { label: "Pending",    color: "#f59e0b", bg: "rgba(245,158,11,0.12)",  icon: "⏳", desc: "Order received — waiting to be sent to provider." },
+  pending_approval: { label: "Processing", color: "#3b82f6", bg: "rgba(59,130,246,0.12)",  icon: "🔄", desc: "Your order has been received and is being processed. Bundle will be delivered shortly." },
+  processing:       { label: "Processing", color: "#3b82f6", bg: "rgba(59,130,246,0.12)",  icon: "🔄", desc: "Provider is delivering your bundle. Usually 1–5 minutes." },
+  completed:        { label: "Delivered",  color: "#22c55e", bg: "rgba(34,197,94,0.12)",   icon: "✅", desc: "Bundle delivered successfully to your phone!" },
+  failed:           { label: "Failed",     color: "#ef4444", bg: "rgba(239,68,68,0.12)",   icon: "❌", desc: "Delivery failed. Click below to request your refund." },
+  not_on_list:      { label: "Failed",     color: "#ef4444", bg: "rgba(239,68,68,0.12)",   icon: "❌", desc: "Delivery failed. Click below to request your refund." },
 };
 
 function fmtDate(iso: string) {
@@ -172,7 +173,7 @@ function TrackContent() {
   // Poll every 5s while single order is still active
   useEffect(() => {
     const status = order?.status?.toLowerCase();
-    if (status !== "processing" && status !== "pending") return;
+    if (status !== "processing" && status !== "pending" && status !== "pending_approval") return;
     const id = setInterval(() => searchByRef(order!.reference, true), 5000);
     return () => clearInterval(id);
   }, [order?.status, order?.reference, searchByRef]);
@@ -186,7 +187,7 @@ function TrackContent() {
   }
 
   const st = order ? (STATUS[order.status?.toLowerCase()] ?? STATUS.pending) : null;
-  const isActive = order && ["processing", "pending"].includes(order.status?.toLowerCase());
+  const isActive = order && ["processing", "pending", "pending_approval"].includes(order.status?.toLowerCase());
   const statusKey = order?.status?.toLowerCase() ?? "";
   const isFailed = statusKey === "failed" || statusKey === "not_on_list";
 
