@@ -3,17 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // MAINTENANCE MODE — redirect all customer routes to maintenance page
-  // Remove this block when maintenance is complete
-  if (
-    !pathname.startsWith("/admin") &&
-    !pathname.startsWith("/api/admin") &&
-    !pathname.startsWith("/api/webhooks") &&
-    pathname !== "/maintenance"
-  ) {
-    return NextResponse.redirect(new URL("/maintenance", request.url));
-  }
-
   // Admin route protection — redirect unauthenticated visitors to login
   if (
     pathname.startsWith("/admin") &&
