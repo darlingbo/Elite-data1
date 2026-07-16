@@ -23,6 +23,14 @@ export async function POST(req: NextRequest) {
   if (!order) return Response.json({ error: "Order not found" }, { status: 404 });
   if (order.refunded) return Response.json({ error: "Order has already been refunded" }, { status: 409 });
 
+  const s = (order.status ?? "").toLowerCase();
+  if (s === "processing" || s === "pending_approval" || s === "pending") {
+    return Response.json(
+      { error: `Cannot refund an order with status "${order.status}". Wait for it to complete or fail first.` },
+      { status: 409 }
+    );
+  }
+
   const paystackRef = order.paystack_reference ?? reference;
   const refundAmount = amount ? Math.round(amount * 100) : undefined; // Paystack uses kobo (pesewas)
 

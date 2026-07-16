@@ -325,7 +325,8 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                 const statusLower = (o.status ?? "").toLowerCase();
                 const canComplete = ["processing", "pending", "failed", "not_on_list"].includes(statusLower);
                 const canDelete   = ["failed", "pending", "processing"].includes(statusLower);
-                const canRefund   = ["failed", "completed"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
+                const canRefund   = ["failed", "completed", "not_on_list", "rejected"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
+                const refundBlocked = statusLower === "processing" && !o.refunded && Number(o.amount) > 0;
 
                 return (
                   <tr key={o.reference ?? idx} className="border-b hover:bg-white/2 transition-colors last:border-0"
@@ -451,6 +452,9 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                           )}
                           {o.refunded && (
                             <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: "rgba(251,191,36,0.08)", color: "#fbbf24" }}>Refunded</span>
+                          )}
+                          {refundBlocked && (
+                            <span className="text-xs font-bold px-2 py-1 rounded-lg" title="Cannot refund while order is processing — wait for it to complete or fail" style={{ background: "rgba(59,130,246,0.08)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.2)", cursor: "help" }}>No refund yet</span>
                           )}
 
                           {/* Delete */}
