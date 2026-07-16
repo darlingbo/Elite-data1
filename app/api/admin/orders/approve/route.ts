@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
-import { sendAgentNotification } from "@/lib/telegram";
+import { sendAgentNotification, sendAdminAlert } from "@/lib/telegram";
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -97,6 +97,29 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
         }
       }
     }
+
+    // Check Inventor balance after approval — alert if low (fire-and-forget)
+    ;(async () => {
+      try {
+        const balRes = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/balance`, {
+          headers: { Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
+          cache: "no-store",
+          signal: AbortSignal.timeout(5000),
+        });
+        if (balRes.ok) {
+          const balData = await balRes.json() as Record<string, unknown>;
+          const inner = (balData?.data as Record<string, unknown>) ?? {};
+          const raw = balData?.balance ?? inner?.balance ?? balData?.wallet_balance ?? inner?.wallet_balance ?? balData?.amount ?? inner?.amount ?? null;
+          if (raw !== null) {
+            const bal = Number(raw);
+            const low = Number(process.env.INVENTOR_LOW_BALANCE_GHS ?? 50);
+            if (bal < low) {
+              sendAdminAlert(`⚠️ <b>Inventor balance low: GH₵${bal.toFixed(2)}</b> — top up now to avoid delivery failures.`).catch(() => {});
+            }
+          }
+        }
+      } catch { /* never break the approval flow */ }
+    })();
 
     // Wallet orders: notify agent of successful delivery
     if (reference.startsWith("AGTWALLET-") && order.agent_id) {
