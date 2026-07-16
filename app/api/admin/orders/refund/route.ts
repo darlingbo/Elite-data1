@@ -24,9 +24,12 @@ export async function POST(req: NextRequest) {
   if (order.refunded) return Response.json({ error: "Order has already been refunded" }, { status: 409 });
 
   const s = (order.status ?? "").toLowerCase();
+  if (s === "completed") {
+    return Response.json({ error: "Cannot refund a completed order — the bundle was already delivered." }, { status: 409 });
+  }
   if (s === "processing" || s === "pending_approval" || s === "pending") {
     return Response.json(
-      { error: `Cannot refund an order with status "${order.status}". Wait for it to complete or fail first.` },
+      { error: `Cannot refund an order with status "${order.status}". Wait for it to fail first.` },
       { status: 409 }
     );
   }

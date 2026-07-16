@@ -325,8 +325,8 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                 const statusLower = (o.status ?? "").toLowerCase();
                 const canComplete = ["processing", "pending", "failed", "not_on_list"].includes(statusLower);
                 const canDelete   = ["failed", "pending", "processing"].includes(statusLower);
-                const canRefund   = ["failed", "completed", "not_on_list", "rejected"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
-                const refundBlocked = statusLower === "processing" && !o.refunded && Number(o.amount) > 0;
+                const canRefund   = ["failed", "not_on_list", "rejected"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
+                const refundBlocked = ["processing", "completed"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
 
                 return (
                   <tr key={o.reference ?? idx} className="border-b hover:bg-white/2 transition-colors last:border-0"
@@ -351,10 +351,15 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                     </td>
 
                     <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[10px] font-black px-2 py-0.5 rounded" style={{ background: nb.bg, color: nb.color }}>{nb.label}</span>
                         <span className="text-slate-300 text-xs font-semibold">{cleanSize}</span>
                       </div>
+                      {o.network === "voucher" && isPendingApproval && (
+                        <p className="text-[11px] font-bold mt-1" style={{ color: "#a78bfa" }}>
+                          SMS → <span className="font-mono">{o.phone}</span>
+                        </p>
+                      )}
                     </td>
 
                     <td className="px-4 py-3.5 font-mono text-xs text-slate-400">{o.phone}</td>
@@ -454,7 +459,11 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                             <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: "rgba(251,191,36,0.08)", color: "#fbbf24" }}>Refunded</span>
                           )}
                           {refundBlocked && (
-                            <span className="text-xs font-bold px-2 py-1 rounded-lg" title="Cannot refund while order is processing — wait for it to complete or fail" style={{ background: "rgba(59,130,246,0.08)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.2)", cursor: "help" }}>No refund yet</span>
+                            <span className="text-xs font-bold px-2 py-1 rounded-lg"
+                              title={statusLower === "processing" ? "Cannot refund while order is still processing" : "Order was delivered — no refund"}
+                              style={{ background: "rgba(100,116,139,0.1)", color: "#64748b", border: "1px solid rgba(100,116,139,0.2)", cursor: "help" }}>
+                              {statusLower === "processing" ? "Still processing" : "Delivered"}
+                            </span>
                           )}
 
                           {/* Delete */}

@@ -50,6 +50,7 @@ export default function VouchersPage() {
   const [promoMsg, setPromoMsg]       = useState<{ ok: boolean; text: string } | null>(null);
   const [promoChecking, setPromoChecking] = useState(false);
   const [showPromo, setShowPromo]     = useState(false);
+  const [phoneError, setPhoneError]   = useState("");
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState("");
   const [success, setSuccess]         = useState<{ reference: string } | null>(null);
@@ -84,7 +85,7 @@ export default function VouchersPage() {
   const subtotal      = parseFloat((effectivePrice * quantity).toFixed(2));
   const fee           = parseFloat((subtotal * 0.02).toFixed(2));
   const total         = parseFloat((subtotal + fee).toFixed(2));
-  const canPay        = !!phone && paystackReady && !loading;
+  const canPay        = !!phone && !phoneError && phone.replace(/\s/g, "").length === 10 && paystackReady && !loading;
   const bulkLeft      = selected.bulkThreshold + 1 - quantity;
 
   function changeQty(val: number) {
@@ -421,11 +422,28 @@ export default function VouchersPage() {
             <p style={{ color: D.muted, fontSize: 12, margin: "0 0 12px" }}>📱 Voucher codes will be sent here via SMS</p>
             <input
               type="tel" placeholder="0241234567" value={phone}
-              onChange={e => setPhone(e.target.value)}
+              onChange={e => {
+                const v = e.target.value;
+                setPhone(v);
+                const cleaned = v.replace(/\s/g, "");
+                if (cleaned.length > 0 && !/^0[2-5][0-9]{0,8}$/.test(cleaned)) {
+                  setPhoneError("Enter a valid Ghana number starting with 024, 025, 026, 027, 028, 055, 050, etc.");
+                } else if (cleaned.length === 10 && !/^0[2-5][0-9]{8}$/.test(cleaned)) {
+                  setPhoneError("This doesn't look like a valid Ghana phone number.");
+                } else {
+                  setPhoneError("");
+                }
+              }}
               onFocus={() => setPhoneFocus(true)}
               onBlur={() => setPhoneFocus(false)}
-              style={{ width: "100%", background: "#050b15", border: `1px solid ${phoneFocus ? selected.color : D.border}`, borderRadius: 14, padding: "15px 18px", color: D.text, fontSize: 18, outline: "none", boxSizing: "border-box", transition: "border-color .2s", letterSpacing: 1 }}
+              style={{ width: "100%", background: "#050b15", border: `1px solid ${phoneError ? "#f87171" : phoneFocus ? selected.color : D.border}`, borderRadius: 14, padding: "15px 18px", color: D.text, fontSize: 18, outline: "none", boxSizing: "border-box", transition: "border-color .2s", letterSpacing: 1 }}
             />
+            {phoneError && (
+              <p style={{ color: "#f87171", fontSize: 12, fontWeight: 600, margin: "8px 0 0" }}>⚠️ {phoneError}</p>
+            )}
+            {phone && !phoneError && phone.replace(/\s/g, "").length === 10 && (
+              <p style={{ color: "#4ade80", fontSize: 12, fontWeight: 600, margin: "8px 0 0" }}>✓ Valid Ghana number</p>
+            )}
           </div>
         </div>
 
