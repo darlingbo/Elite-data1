@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { supabase } from "@/lib/supabase";
 import { bundles, type Network } from "@/lib/bundles";
 import { sendAdminAlert, orderApprovalKeyboard } from "@/lib/telegram";
+import { sendCustomerSMS, orderReceivedSMS } from "@/lib/sms";
 
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
@@ -125,6 +126,8 @@ export async function POST(request: NextRequest) {
     `🔔 <b>Webhook Order — APPROVE TO DELIVER</b>\n📱 ${(network ?? "").toUpperCase()} ${bundleSize} → <code>${phone}</code>\n💰 GH₵${chargedAmount} | ${agentName ? `Agent: ${agentName}` : "Direct"}\n📎 <code>${reference}</code>`,
     orderApprovalKeyboard(reference)
   ).catch(() => {});
+
+  sendCustomerSMS(phone, orderReceivedSMS(name, network, bundleSize, phone, reference)).catch(() => {});
 
   return Response.json({ ok: true });
 }
