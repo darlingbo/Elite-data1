@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { sendAdminAlert } from "@/lib/telegram";
+import { inventorPurchase } from "@/lib/inventor";
 
 const networkApiName: Record<string, string> = {
   mtn: "MTN",
@@ -29,84 +30,23 @@ export async function POST(request: NextRequest) {
 
   if (!order) return Response.json({ error: "Order not found" }, { status: 404 });
 
-  // Re-call Inventor
-  let inventorBody: Record<string, unknown> = {};
-  let inventorOk = false;
-  let inventorHttpStatus = 0;
-  try {
-    const invRes = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-      body: JSON.stringify({
-        network: (() => {
-          const net = order.network?.toLowerCase() ??
-            (order.bundle_size?.toLowerCase().startsWith("mtn") ? "mtn" :
-             order.bundle_size?.toLowerCase().startsWith("telecel") ? "telecel" :
-             order.bundle_size?.toLowerCase().includes("airtel") ? "airteltigo" : null);
-          return net ? (networkApiName[net] ?? net.toUpperCase()) : order.network;
-        })(),
-        Phone: order.phone,
-        Datasize: order.bundle_size_gb ?? (() => {
-          const m = (order.bundle_size ?? "").match(/(\d+(?:\.\d+)?)\s*gb/i);
-          return m ? parseFloat(m[1]) : 1;
-        })(),
-        reference: order.reference,
-      }),
-    });
-    inventorHttpStatus = invRes.status;
-    inventorBody = await invRes.json().catch(() => ({}));
-    // 409 = duplicate reference — check if the existing order is already completed
-    const existingOrder = (inventorBody.existingOrder as Record<string, unknown>) ?? {};
-    const existingStatus = String(existingOrder.status ?? "").toLowerCase();
-    const duplicateCompleted = inventorHttpStatus === 409 && (existingStatus.includes("complet") || existingStatus === "00");
+  const networkKey = (order.network?.toLowerCase() ??
+    (order.bundle_size?.toLowerCase().startsWith("mtn") ? "mtn" :
+     order.bundle_size?.toLowerCase().startsWith("telecel") ? "telecel" :
+     order.bundle_size?.toLowerCase().includes("airtel") ? "airteltigo" : "mtn")) as string;
+  const network = networkApiName[networkKey] ?? networkKey.toUpperCase();
+  const sizeGB = order.bundle_size_gb ?? (() => {
+    const m = (order.bundle_size ?? "").match(/(\d+(?:\.\d+)?)\s*gb/i);
+    return m ? parseFloat(m[1]) : 1;
+  })();
 
-    inventorOk =
-      invRes.ok ||
-      inventorBody.success === true ||
-      inventorBody.status === "success" ||
-      inventorBody.status === "00" ||
-      duplicateCompleted;
-  } catch (err) {
-    inventorBody = { error: String(err) };
-  }
+  const { ok: inventorOk, body: inventorBody } = await inventorPurchase(network, order.phone, sizeGB, reference);
+  const inventorLog = `Inventor response: ${JSON.stringify(inventorBody).slice(0, 300)}`;
 
-  const inventorLog = `Inventor HTTP ${inventorHttpStatus}: ${JSON.stringify(inventorBody).slice(0, 300)}`;
-
-  const invData = (inventorBody.data as Record<string, unknown>) ?? {};
-  const invOrderData = (invData.order as Record<string, unknown>) ?? {};
-  const existingOrderData = (inventorBody.existingOrder as Record<string, unknown>) ?? {};
-  const rawStatus = String(invOrderData.status ?? invData.status ?? existingOrderData.status ?? "").toLowerCase();
-
-  const isProcessing =
-    rawStatus.includes("process") || rawStatus.includes("progress") || rawStatus.includes("dispatch") || rawStatus.includes("pending");
-
-  if (inventorOk && !isProcessing) {
-    const orderId = (invOrderData.id as string) ?? (invData.id as string) ?? (existingOrderData.id as string) ?? null;
-    await supabase.from("orders").update({ status: "completed", inventor_order_id: orderId }).eq("reference", reference);
-
-    if (order.agent_id) {
-      const commission = Number(order.agent_commission) || 0;
-      const revenue = (Number(order.cost_price) || 0) + (Number(order.agent_commission) || 0) + (Number(order.admin_commission) || 0);
-      const { data: ag } = await supabase.from("agents").select("commission_balance, total_sales, total_revenue").eq("id", order.agent_id).maybeSingle();
-      if (ag) {
-        await supabase.from("agents").update({
-          commission_balance: (Number(ag.commission_balance) || 0) + commission,
-          total_sales: (Number(ag.total_sales) || 0) + 1,
-          total_revenue: (Number(ag.total_revenue) || 0) + revenue,
-          updated_at: new Date().toISOString(),
-        }).eq("id", order.agent_id);
-      }
-    }
-
-    try { await supabase.from("order_logs").insert({ reference, action: "retry_success", note: "Admin retry — delivered successfully", details: { log: inventorLog } }); } catch { /* non-critical */ }
-    await sendAdminAlert(`✅ RETRY SUCCEEDED\nRef: ${reference}\nPhone: ${order.phone}\n${(order.network ?? "").toUpperCase()} ${order.bundle_size}\n${inventorLog}`);
-    return Response.json({ success: true, status: "completed" });
-  }
-
-  if (isProcessing) {
+  if (inventorOk) {
     await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
-    try { await supabase.from("order_logs").insert({ reference, action: "retry_processing", note: "Admin retry — Inventor processing", details: { log: inventorLog } }); } catch { /* non-critical */ }
-    await sendAdminAlert(`⏳ RETRY → PROCESSING\nRef: ${reference}\nPhone: ${order.phone}\n${inventorLog}`);
+    try { await supabase.from("order_logs").insert({ reference, action: "retry_success", note: "Admin retry — Inventor accepted", details: { log: inventorLog } }); } catch { /* non-critical */ }
+    await sendAdminAlert(`✅ RETRY SENT\nRef: ${reference}\nPhone: ${order.phone}\n${(order.network ?? "").toUpperCase()} ${order.bundle_size}\nStatus: PROCESSING`);
     return Response.json({ success: true, status: "processing" });
   }
 

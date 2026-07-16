@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
 import { sendAgentNotification, sendAdminAlert } from "@/lib/telegram";
+import { inventorPurchase, inventorVoucher } from "@/lib/inventor";
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -22,6 +23,7 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
 
   const isVoucher = order.network === "voucher";
   let apiOk = false;
+  let balanceAfter: number | null = null;
   let errorBody: Record<string, unknown> = {};
 
   if (isVoucher) {
@@ -29,44 +31,18 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
     const qtyMatch = String(order.bundle_size ?? "").match(/x(\d+)/i);
     const voucherType = voucherTypeMatch ? voucherTypeMatch[1].toUpperCase() : "BECE";
     const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
-    try {
-      const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/vouchers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-        body: JSON.stringify({ voucherType, recipient: order.phone.startsWith("0") ? `233${order.phone.slice(1)}` : order.phone, quantity: qty }),
-        signal: AbortSignal.timeout(15000),
-      });
-      const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-      apiOk = res.ok && body.success === true;
-      if (!apiOk) errorBody = body;
-    } catch (err) {
-      errorBody = { error: String(err) };
-    }
+    const recipient = order.phone.startsWith("0") ? `233${order.phone.slice(1)}` : order.phone;
+    const result = await inventorVoucher(voucherType, recipient, qty);
+    apiOk = result.ok;
+    if (!apiOk) errorBody = result.body;
   } else {
     const networkApiMap: Record<string, string> = { mtn: "MTN", telecel: "TELECEL", airteltigo: "AT ISHARE" };
+    const network = networkApiMap[order.network as string] ?? networkApiName[order.network as keyof typeof networkApiName] ?? "MTN";
     const sizeGB = Number(order.bundle_size_gb ?? 1);
-    try {
-      const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-        body: JSON.stringify({
-          network: networkApiMap[order.network as string] ?? networkApiName[order.network as keyof typeof networkApiName] ?? "MTN",
-          Phone: order.phone,
-          Datasize: sizeGB,
-          reference,
-        }),
-        signal: AbortSignal.timeout(25000),
-      });
-      const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-      const bodyData = (body.data as Record<string, unknown>) ?? {};
-      const orderData = (bodyData.order as Record<string, unknown>) ?? bodyData;
-      const rawStatus = String(orderData.status ?? bodyData.status ?? body.status ?? "").toLowerCase();
-      const isProcessing = res.status === 409 || rawStatus.includes("process") || rawStatus.includes("progress") || rawStatus.includes("pending");
-      apiOk = res.ok || res.status === 409 || isProcessing;
-      if (!apiOk) errorBody = body;
-    } catch (err) {
-      errorBody = { error: String(err) };
-    }
+    const result = await inventorPurchase(network, order.phone, sizeGB, reference);
+    apiOk = result.ok;
+    balanceAfter = result.balance;
+    if (!apiOk) errorBody = result.body;
   }
 
   if (apiOk) {
@@ -98,24 +74,15 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
       }
     }
 
-    // Check Inventor balance after approval — alert if low (fire-and-forget)
+    // Check balance from purchase response; alert if low (fire-and-forget)
     ;(async () => {
       try {
-        const balRes = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/balance`, {
-          headers: { Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-          cache: "no-store",
-          signal: AbortSignal.timeout(5000),
-        });
-        if (balRes.ok) {
-          const balData = await balRes.json() as Record<string, unknown>;
-          const inner = (balData?.data as Record<string, unknown>) ?? {};
-          const raw = balData?.balance ?? inner?.balance ?? balData?.wallet_balance ?? inner?.wallet_balance ?? balData?.amount ?? inner?.amount ?? null;
-          if (raw !== null) {
-            const bal = Number(raw);
-            const low = Number(process.env.INVENTOR_LOW_BALANCE_GHS ?? 50);
-            if (bal < low) {
-              sendAdminAlert(`⚠️ <b>Inventor balance low: GH₵${bal.toFixed(2)}</b> — top up now to avoid delivery failures.`).catch(() => {});
-            }
+        const { inventorBalance } = await import("@/lib/inventor");
+        const bal = balanceAfter ?? await inventorBalance();
+        if (bal !== null) {
+          const low = Number(process.env.INVENTOR_LOW_BALANCE_GHS ?? 50);
+          if (bal < low) {
+            sendAdminAlert(`⚠️ <b>Inventor balance low: GH₵${bal.toFixed(2)}</b> — top up now to avoid delivery failures.`).catch(() => {});
           }
         }
       } catch { /* never break the approval flow */ }
@@ -138,7 +105,11 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
     return { ok: true, message: "Approved & sent" };
   } else {
     await supabase.from("orders").update({ status: "failed" }).eq("reference", reference);
-    return { ok: false, message: `API error: ${JSON.stringify(errorBody).slice(0, 120)}` };
+    // Extract human-readable error from Inventor response
+    const errMsg = String(
+      (errorBody.error as string) ?? (errorBody.message as string) ?? JSON.stringify(errorBody)
+    ).slice(0, 160);
+    return { ok: false, message: errMsg };
   }
 }
 

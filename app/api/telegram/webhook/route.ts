@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
 import { sendAgentNotification } from "@/lib/telegram";
+import { inventorPurchase, inventorVoucher } from "@/lib/inventor";
 
 const ADMIN_BOT_TOKEN = process.env.TELEGRAM_ADMIN_BOT_TOKEN!;
 const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID!;
@@ -135,33 +136,21 @@ async function retryOrder(chatId: string, reference: string) {
   }
 
   await reply(chatId, `🔄 Retrying <code>${reference}</code>…`);
-  const networkKey = order.network as keyof typeof networkApiName;
+  const networkApiMap: Record<string, string> = { mtn: "MTN", telecel: "TELECEL", airteltigo: "AT ISHARE" };
+  const network = networkApiMap[order.network as string] ?? networkApiName[order.network as keyof typeof networkApiName] ?? "MTN";
+  const sizeGB = Number(order.bundle_size_gb ?? 1);
 
-  try {
-    const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-      body: JSON.stringify({
-        network: networkApiName[networkKey],
-        Phone: order.phone,
-        Datasize: order.bundle_size_gb,
-        reference: `${reference}-r`,
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-
-    if (res.ok) {
-      await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
-      await reply(chatId,
-        `✅ <b>Retry successful!</b>\n` +
-        `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
-        `Status: PROCESSING — bundle on its way.`
-      );
-    } else {
-      await reply(chatId, `❌ Retry failed.\nInventor: <code>${JSON.stringify(data).slice(0, 200)}</code>`);
-    }
-  } catch (e) {
-    await reply(chatId, `❌ Network error during retry: ${String(e)}`);
+  const { ok, body } = await inventorPurchase(network, order.phone, sizeGB, `${reference}-r`);
+  if (ok) {
+    await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
+    await reply(chatId,
+      `✅ <b>Retry sent!</b>\n` +
+      `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
+      `Status: PROCESSING — bundle on its way.`
+    );
+  } else {
+    const errMsg = String((body.error as string) ?? (body.message as string) ?? JSON.stringify(body)).slice(0, 200);
+    await reply(chatId, `❌ Retry failed.\nInventor: <code>${errMsg}</code>`);
   }
 }
 
@@ -413,25 +402,8 @@ async function cmdSend(chatId: string, arg: string) {
 
   const ref = `manual-tg-${Date.now()}`;
 
-  try {
-    const invRes = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-      body: JSON.stringify({
-        network: networkApiMap[network],
-        Phone: phone.trim(),
-        Datasize: sizeGB,
-        reference: ref,
-      }),
-      signal: AbortSignal.timeout(20000),
-    });
-
-    const invBody = await invRes.json().catch(() => ({})) as Record<string, unknown>;
-    const ok =
-      invRes.ok ||
-      invBody.success === true ||
-      invBody.status === "success" ||
-      invBody.status === "00";
+  {
+    const { ok, body: invBody } = await inventorPurchase(networkApiMap[network], phone.trim(), sizeGB, ref, 20_000);
 
     if (ok) {
       // Mark any pending/processing orders for this phone+network+size as completed
@@ -475,16 +447,14 @@ async function cmdSend(chatId: string, arg: string) {
         (cancelledRefs.length > 0 ? `\n\n⚠️ Closed ${cancelledRefs.length} pending order(s) for this number so cron won't re-deliver.` : "")
       );
     } else {
-      const errMsg = JSON.stringify(invBody).slice(0, 300);
+      const errMsg = String((invBody.error as string) ?? (invBody.message as string) ?? JSON.stringify(invBody)).slice(0, 300);
       await reply(chatId,
         `❌ <b>Delivery failed</b>\n\n` +
         `Phone: <code>${phone}</code>\n` +
         `Bundle: ${network.toUpperCase()} ${bundle.size}\n\n` +
-        `Inventor response:\n<code>${errMsg}</code>`
+        `Inventor: <code>${errMsg}</code>`
       );
     }
-  } catch (err) {
-    await reply(chatId, `❌ Error sending bundle: ${String(err)}`);
   }
 }
 
@@ -579,44 +549,17 @@ async function approveOrder(chatId: string, reference: string) {
     const qtyMatch = String(order.bundle_size ?? "").match(/x(\d+)/i);
     const voucherType = voucherTypeMatch ? voucherTypeMatch[1].toUpperCase() : "BECE";
     const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
-    try {
-      const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/vouchers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-        body: JSON.stringify({ voucherType, recipient: order.phone.startsWith("0") ? `233${order.phone.slice(1)}` : order.phone, quantity: qty }),
-        signal: AbortSignal.timeout(15000),
-      });
-      const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-      ok = res.ok && body.success === true;
-      if (!ok) errorBody = body;
-    } catch (err) {
-      errorBody = { error: String(err) };
-    }
+    const recipient = order.phone.startsWith("0") ? `233${order.phone.slice(1)}` : order.phone;
+    const result = await inventorVoucher(voucherType, recipient, qty);
+    ok = result.ok;
+    if (!ok) errorBody = result.body;
   } else {
     const networkApiMap: Record<string, string> = { mtn: "MTN", telecel: "TELECEL", airteltigo: "AT ISHARE" };
+    const network = networkApiMap[order.network as string] ?? networkApiName[order.network as keyof typeof networkApiName] ?? "MTN";
     const sizeGB = Number(order.bundle_size_gb ?? 1);
-    try {
-      const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-        body: JSON.stringify({
-          network: networkApiMap[order.network as string] ?? networkApiName[order.network as keyof typeof networkApiName] ?? "MTN",
-          Phone: order.phone,
-          Datasize: sizeGB,
-          reference,
-        }),
-        signal: AbortSignal.timeout(25000),
-      });
-      const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-      const bodyData = (body.data as Record<string, unknown>) ?? {};
-      const orderData = (bodyData.order as Record<string, unknown>) ?? bodyData;
-      const rawStatus = String(orderData.status ?? bodyData.status ?? body.status ?? "").toLowerCase();
-      const isProcessing = res.status === 409 || rawStatus.includes("process") || rawStatus.includes("progress") || rawStatus.includes("pending");
-      ok = res.ok || res.status === 409 || isProcessing;
-      if (!ok) errorBody = body;
-    } catch (err) {
-      errorBody = { error: String(err) };
-    }
+    const result = await inventorPurchase(network, order.phone, sizeGB, reference);
+    ok = result.ok;
+    if (!ok) errorBody = result.body;
   }
 
   if (ok) {
@@ -656,10 +599,11 @@ async function approveOrder(chatId: string, reference: string) {
     );
   } else {
     await supabase.from("orders").update({ status: "failed" }).eq("reference", reference);
+    const errMsg = String((errorBody.error as string) ?? (errorBody.message as string) ?? JSON.stringify(errorBody)).slice(0, 200);
     await reply(chatId,
       `❌ <b>Delivery failed after approval</b>\n\n` +
       `📎 <code>${reference}</code>\n` +
-      `Error: <code>${JSON.stringify(errorBody).slice(0, 200)}</code>\n\n` +
+      `Error: <code>${errMsg}</code>\n\n` +
       `Use /retry ${reference} to try again.`
     );
   }
@@ -792,42 +736,24 @@ export async function POST(request: NextRequest) {
       const { data: order } = await supabase.from("orders").select("*").eq("reference", ref).maybeSingle();
       if (!order) { await reply(chatId, `❌ Order <code>${ref}</code> not found.`); return Response.json({ ok: true }); }
 
-      const networkApiMap: Record<string, string> = { mtn: "MTN", telecel: "TELECEL", airteltigo: "AT ISHARE" };
-      const sizeGb = order.bundle_size_gb ?? (() => {
+      const networkApiMapR: Record<string, string> = { mtn: "MTN", telecel: "TELECEL", airteltigo: "AT ISHARE" };
+      const networkR = networkApiMapR[order.network as string] ?? (order.network as string ?? "MTN").toUpperCase();
+      const sizeGb = Number(order.bundle_size_gb ?? (() => {
         const m = (order.bundle_size ?? "").match(/(\d+(?:\.\d+)?)\s*gb/i);
         return m ? parseFloat(m[1]) : 1;
-      })();
-
-      try {
-        const retryRef = `${ref}-rs`;
-        const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-          body: JSON.stringify({
-            network: networkApiMap[order.network] ?? order.network.toUpperCase(),
-            Phone: order.phone,
-            Datasize: sizeGb,
-            reference: retryRef,
-          }),
-          signal: AbortSignal.timeout(20000),
-        });
-        const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-        const ok = res.ok || body.success === true || body.status === "success" || body.status === "00" || res.status === 409;
-
-        if (ok) {
-          await supabase.from("orders").update({ status: "processing" }).eq("reference", ref);
-          await reply(chatId,
-            `✅ <b>Sent!</b>\n\n` +
-            `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
-            `📎 Ref: <code>${retryRef}</code>\n\nBundle is on its way.`
-          );
-        } else {
-          await reply(chatId,
-            `❌ <b>Delivery failed</b>\n\nInventor: <code>${JSON.stringify(body).slice(0, 200)}</code>`
-          );
-        }
-      } catch (err) {
-        await reply(chatId, `❌ Error: ${String(err)}`);
+      })());
+      const retryRef = `${ref}-rs`;
+      const { ok: retryOk, body: retryBody } = await inventorPurchase(networkR, order.phone, sizeGb, retryRef);
+      if (retryOk) {
+        await supabase.from("orders").update({ status: "processing" }).eq("reference", ref);
+        await reply(chatId,
+          `✅ <b>Sent!</b>\n\n` +
+          `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
+          `📎 Ref: <code>${retryRef}</code>\n\nBundle is on its way.`
+        );
+      } else {
+        const errMsg = String((retryBody.error as string) ?? (retryBody.message as string) ?? JSON.stringify(retryBody)).slice(0, 200);
+        await reply(chatId, `❌ <b>Delivery failed</b>\n\nInventor: <code>${errMsg}</code>`);
       }
 
     } else if (data?.startsWith("skip_retry:")) {

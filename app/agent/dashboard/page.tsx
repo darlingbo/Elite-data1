@@ -2019,14 +2019,12 @@ function ApiPage({ data }: { data: AgentData }) {
 }
 
 // ─── Affiliate Page (Referrals + Leaderboard combined) ───────────────────────
-function AffiliatePage({ data }: { data: AgentData }) {
+function AffiliatePage({ data, onWithdraw }: { data: AgentData; onWithdraw: () => void }) {
   const [tab, setTab] = useState<"how" | "store" | "sales">("store");
   const [storeName, setStoreName] = useState(data.business_name ?? "");
   const [whatsapp, setWhatsapp] = useState(data.phone ?? "");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
-  const [withdrawing, setWithdrawing] = useState(false);
-  const [withdrawMsg, setWithdrawMsg] = useState("");
   const [editStoreName, setEditStoreName] = useState(!data.business_name);
   const [editWhatsapp, setEditWhatsapp] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -2045,17 +2043,6 @@ function AffiliatePage({ data }: { data: AgentData }) {
     } catch { setSaveMsg("Failed"); }
     setSaving(false);
     setTimeout(() => setSaveMsg(""), 3000);
-  }
-
-  async function requestWithdraw() {
-    if (totalEarned < minWithdraw) { setWithdrawMsg(`You need at least GH₵${minWithdraw} to withdraw.`); return; }
-    setWithdrawing(true); setWithdrawMsg("");
-    try {
-      const res = await fetch("/api/agents/withdraw", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: data.id, amount: totalEarned }) });
-      const j = await res.json();
-      setWithdrawMsg(j.message ?? (res.ok ? "Withdrawal request sent!" : "Failed"));
-    } catch { setWithdrawMsg("Failed to submit request."); }
-    setWithdrawing(false);
   }
 
   const GOLD = "#f59e0b";
@@ -2132,9 +2119,8 @@ function AffiliatePage({ data }: { data: AgentData }) {
                 <p style={{ color: M.text, fontWeight: 800, fontSize: 18, margin: 0 }}>GH₵ {minWithdraw}.00</p>
               </div>
             </div>
-            {withdrawMsg && <p style={{ color: totalEarned >= minWithdraw ? M.green : M.red, fontSize: 13, margin: "0 0 10px", fontWeight: 700 }}>{withdrawMsg}</p>}
-            <button onClick={requestWithdraw} disabled={withdrawing} style={{ width: "100%", padding: "14px", borderRadius: 12, background: GOLD, color: "#000", border: "none", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
-              {withdrawing ? "Submitting..." : "⬇️ Request Withdrawal"}
+            <button onClick={onWithdraw} style={{ width: "100%", padding: "14px", borderRadius: 12, background: GOLD, color: "#000", border: "none", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
+              ⬇️ Request Withdrawal
             </button>
             <p style={{ color: M.muted, fontSize: 12, textAlign: "center", margin: "8px 0 0" }}>You need at least GH₵ {minWithdraw} to withdraw. Keep selling!</p>
           </div>
@@ -3003,7 +2989,7 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
           {page === "settings"     && <SettingsPage />}
           {page === "prices"       && <PricesPage data={data} />}
           {(page === "place_order" || page === "buy_data") && <PlaceOrderPage data={data} onRefresh={onRefresh} />}
-          {page === "affiliate"    && <AffiliatePage data={data} />}
+          {page === "affiliate"    && <AffiliatePage data={data} onWithdraw={() => setShowWithdraw(true)} />}
           {page === "notifications" && <NotificationsPage data={data} />}
           {page === "support"      && <SupportPage />}
           {page === "pro"          && <ProPage data={data} onNavigate={setPage} />}

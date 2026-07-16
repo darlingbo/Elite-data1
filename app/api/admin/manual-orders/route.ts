@@ -3,8 +3,7 @@ import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName } from "@/lib/bundles";
 import { sendAdminAlert, sendAgentNotification } from "@/lib/telegram";
-
-const INVENTOR_TIMEOUT_MS = 7_000;
+import { inventorPurchase } from "@/lib/inventor";
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -12,28 +11,10 @@ async function isAdmin(): Promise<boolean> {
 }
 
 async function deliverBundle(phone: string, network: string, sizeGB: number, reference: string): Promise<{ ok: boolean; log: string }> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), INVENTOR_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-      body: JSON.stringify({
-        network: networkApiName[network as keyof typeof networkApiName] ?? network.toUpperCase(),
-        Phone: phone,
-        Datasize: sizeGB,
-        reference,
-      }),
-      signal: ctrl.signal,
-    });
-    clearTimeout(timer);
-    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-    const ok = res.ok || body.success === true || body.status === "success" || body.status === "00";
-    return { ok, log: `HTTP ${res.status}: ${JSON.stringify(body).slice(0, 200)}` };
-  } catch (e) {
-    clearTimeout(timer);
-    return { ok: false, log: String(e) };
-  }
+  const apiNetwork = networkApiName[network as keyof typeof networkApiName] ?? network.toUpperCase();
+  const { ok, body } = await inventorPurchase(apiNetwork, phone, sizeGB, reference, 20_000);
+  const errMsg = ok ? "" : String((body.error as string) ?? (body.message as string) ?? JSON.stringify(body)).slice(0, 200);
+  return { ok, log: ok ? "Accepted by Inventor" : errMsg };
 }
 
 export async function GET() {

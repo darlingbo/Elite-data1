@@ -20,18 +20,23 @@ export async function POST(req: NextRequest) {
     bundleSize?: string;
     status?: string;
     creditAgent?: boolean;
+    refunded?: boolean;
   };
 
   const { reference, agentId, costPrice, agentCommission, adminCommission, bundleSize, status, creditAgent } = body;
   if (!reference) return Response.json({ error: "reference required" }, { status: 400 });
 
   const patch: Record<string, unknown> = {};
-  if (agentId !== undefined)       patch.agent_id = agentId;
-  if (costPrice !== undefined)     patch.cost_price = costPrice;
-  if (agentCommission !== undefined) patch.agent_commission = agentCommission;
-  if (adminCommission !== undefined) patch.admin_commission = adminCommission;
-  if (bundleSize !== undefined)    patch.bundle_size = bundleSize;
-  if (status !== undefined)        patch.status = status;
+  if (agentId !== undefined)          patch.agent_id = agentId;
+  if (costPrice !== undefined)        patch.cost_price = costPrice;
+  if (agentCommission !== undefined)  patch.agent_commission = agentCommission;
+  if (adminCommission !== undefined)  patch.admin_commission = adminCommission;
+  if (bundleSize !== undefined)       patch.bundle_size = bundleSize;
+  if (status !== undefined)           patch.status = status;
+  if (body.refunded !== undefined) {
+    patch.refunded = body.refunded;
+    if (body.refunded) patch.refunded_at = new Date().toISOString();
+  }
 
   if (Object.keys(patch).length === 0) return Response.json({ error: "No fields to update" }, { status: 400 });
 

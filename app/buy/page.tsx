@@ -138,12 +138,11 @@ function BuyContent() {
         </a>
 
         {/* Quick links */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 28 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 28 }}>
           {[
             { label: "Track Order",      sub: "Check delivery status",    icon: "📦", href: "/track",    color: "#22c55e" },
             { label: "Result Checker",   sub: "BECE & WASSCE vouchers",   icon: "📗", href: "/vouchers", color: "#a855f7" },
             { label: "Business Top-up",  sub: "2–50 numbers at once",     icon: "🏢", href: "/business", color: "#f59e0b" },
-            { label: "Become an Agent",  sub: "Earn on every sale",       icon: "🤝", href: "/agent",    color: "#3b82f6" },
           ].map(item => (
             <a key={item.label} href={item.href} style={{ display: "flex", alignItems: "center", gap: 10, background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: "12px 14px", textDecoration: "none" }}>
               <div style={{ width: 38, height: 38, borderRadius: 10, background: `${item.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{item.icon}</div>
