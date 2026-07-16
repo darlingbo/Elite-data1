@@ -140,16 +140,14 @@ function BuyContent() {
         {/* Quick links */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 28 }}>
           {[
-            { label: "Track Order",      sub: "Check delivery status",    icon: "📦", href: "/track",    color: "#22c55e" },
-            { label: "Result Checker",   sub: "BECE & WASSCE vouchers",   icon: "📗", href: "/vouchers", color: "#a855f7" },
-            { label: "Business Top-up",  sub: "2–50 numbers at once",     icon: "🏢", href: "/business", color: "#f59e0b" },
+            { label: "Track Order",     sub: "Check delivery status",  icon: "📦", href: "/track",    color: "#22c55e" },
+            { label: "Result Checker",  sub: "BECE & WASSCE",          icon: "📗", href: "/vouchers", color: "#a855f7" },
+            { label: "Business Top-up", sub: "2–50 numbers",           icon: "🏢", href: "/business", color: "#f59e0b" },
           ].map(item => (
-            <a key={item.label} href={item.href} style={{ display: "flex", alignItems: "center", gap: 10, background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: "12px 14px", textDecoration: "none" }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: `${item.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{item.icon}</div>
-              <div>
-                <p style={{ fontSize: 13, fontWeight: 700, color: D.text, margin: 0 }}>{item.label}</p>
-                <p style={{ fontSize: 11, color: D.muted, margin: 0 }}>{item.sub}</p>
-              </div>
+            <a key={item.label} href={item.href} style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 6, background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, padding: "14px 8px 12px", textDecoration: "none" }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: `${item.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{item.icon}</div>
+              <p style={{ fontSize: 12, fontWeight: 700, color: D.text, margin: 0, lineHeight: 1.2 }}>{item.label}</p>
+              <p style={{ fontSize: 10, color: D.muted, margin: 0, lineHeight: 1.3 }}>{item.sub}</p>
             </a>
           ))}
         </div>
