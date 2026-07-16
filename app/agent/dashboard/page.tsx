@@ -530,15 +530,15 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
     { label: "Rewards", icon: "🎁", bg: "linear-gradient(135deg,#10b981,#059669)", page: "referrals" as Page },
   ];
 
-  const statCards = [
+  const statCards: { label: string; icon: string; value: string; sub?: string | null; action?: React.ReactNode; iconBg: string; trend?: number }[] = [
     {
       label: "Wallet Balance", icon: "💳", value: `GH₵${(data.wallet_balance ?? 0).toFixed(2)}`,
       sub: null, action: <button onClick={onAddFunds} style={{ display: "flex", alignItems: "center", gap: 6, background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 10 }}>+ Deposit Funds</button>,
       iconBg: "rgba(59,130,246,0.15)",
     },
     { label: "Today's Orders", icon: "📈", value: String(todayCount), sub: `+${todayCount} today`, iconBg: "rgba(74,222,128,0.15)" },
-    { label: "Total Orders", icon: "📦", value: String(data.total_sales ?? data.orders.length), sub: `${ms.count} this month`, iconBg: "rgba(249,115,22,0.15)" },
-    { label: "Total Earned", icon: "💰", value: `GH₵${(data.commission_balance ?? 0).toFixed(2)}`, sub: `GH₵${ms.revenue.toFixed(2)} this month`, iconBg: "rgba(245,158,11,0.15)" },
+    { label: "Total Orders", icon: "📦", value: String(data.total_sales ?? data.orders.length), sub: `${ms.count} this month`, iconBg: "rgba(249,115,22,0.15)", trend: ms.cntPct },
+    { label: "Total Earned", icon: "💰", value: `GH₵${(data.commission_balance ?? 0).toFixed(2)}`, sub: `GH₵${ms.revenue.toFixed(2)} this month`, iconBg: "rgba(245,158,11,0.15)", trend: ms.revPct },
   ];
 
   return (
@@ -552,6 +552,16 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
           <button onClick={onAddFunds} style={{ background: "linear-gradient(90deg,#3b82f6,#7c3aed)", color: "white", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>Top Up Now</button>
         </div>
       )}
+
+      {/* Pending approval orders */}
+      {(() => { const n = data.orders.filter(o => o.status === "pending_approval").length; return n > 0 && (
+        <div style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 14, padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <p style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13, margin: 0 }}>
+            ⏳ {n} order{n > 1 ? "s" : ""} awaiting admin approval — you will get an SMS once delivered.
+          </p>
+          <button onClick={() => onNavigate("orders")} style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>View Orders</button>
+        </div>
+      ); })()}
 
       {/* Page title */}
       <div>
@@ -624,7 +634,16 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
               <div style={{ width: 36, height: 36, borderRadius: 10, background: c.iconBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>{c.icon}</div>
             </div>
             <p style={{ fontSize: 26, fontWeight: 900, color: M.text, margin: 0, lineHeight: 1 }}>{c.value}</p>
-            {c.action ?? (c.sub && <p style={{ fontSize: 12, color: M.muted, margin: "8px 0 0" }}>{c.sub}</p>)}
+            {c.action ?? (
+              <>
+                {c.sub && <p style={{ fontSize: 12, color: M.muted, margin: "6px 0 0" }}>{c.sub}</p>}
+                {c.trend !== undefined && ms.count > 0 && (
+                  <p style={{ fontSize: 11, fontWeight: 700, margin: "4px 0 0", color: c.trend >= 0 ? "#4ade80" : "#f87171" }}>
+                    {c.trend >= 0 ? "↑" : "↓"} {Math.abs(c.trend)}% vs last month
+                  </p>
+                )}
+              </>
+            )}
           </div>
         ))}
       </div>
@@ -719,7 +738,7 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
 // ─── Orders Page ──────────────────────────────────────────────────────────────
 function OrdersPage({ orders, agentId, onPlaceOrder, isPro }: { orders: Order[]; agentId: string; onPlaceOrder: () => void; isPro?: boolean }) {
   const [tab, setTab] = useState<"regular" | "manual">("regular");
-  const [search, setSearch] = useState(""); const [filter, setFilter] = useState("ALL");
+  const [search, setSearch] = useState(""); const [filter, setFilter] = useState("ALL"); const [netFilter, setNetFilter] = useState("ALL");
   const [manualOrders, setManualOrders] = useState<ManualOrder[]>([]);
   const [manualLoading, setManualLoading] = useState(false);
 
@@ -733,10 +752,11 @@ function OrdersPage({ orders, agentId, onPlaceOrder, isPro }: { orders: Order[];
     const q = search.toLowerCase();
     return orders.filter(o => {
       if (filter !== "ALL" && o.status.toUpperCase() !== filter) return false;
+      if (netFilter !== "ALL" && (o.network ?? "").toLowerCase() !== netFilter.toLowerCase()) return false;
       if (!q) return true;
       return (o.phone ?? "").includes(q) || (o.reference ?? "").toLowerCase().includes(q) || (o.network ?? "").toLowerCase().includes(q) || (o.bundle_size ?? "").toLowerCase().includes(q);
     });
-  }, [orders, search, filter]);
+  }, [orders, search, filter, netFilter]);
 
   const filteredManual = useMemo(() => {
     const q = search.toLowerCase();
@@ -763,10 +783,16 @@ function OrdersPage({ orders, agentId, onPlaceOrder, isPro }: { orders: Order[];
             ⭐ Export CSV
           </button>
         )}
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search orders…" style={{ background: "white", border: `1px solid ${M.border}`, borderRadius: 10, padding: "9px 14px", color: M.text, fontSize: 13, width: "min(200px, 100%)", maxWidth: 200, outline: "none", minWidth: 0, flex: "1 1 auto" }} />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search orders…" style={{ background: M.card, border: `1px solid ${M.border}`, borderRadius: 10, padding: "9px 14px", color: M.text, fontSize: 13, width: "min(200px, 100%)", maxWidth: 200, outline: "none", minWidth: 0, flex: "1 1 auto" }} />
+        <select value={netFilter} onChange={e => setNetFilter(e.target.value)} style={{ background: M.card, border: `1px solid ${netFilter !== "ALL" ? "rgba(251,191,36,0.5)" : M.border}`, borderRadius: 10, padding: "9px 12px", color: netFilter !== "ALL" ? "#fbbf24" : M.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", outline: "none" }}>
+          <option value="ALL">All Networks</option>
+          <option value="mtn">MTN</option>
+          <option value="telecel">Telecel</option>
+          <option value="airteltigo">AirtelTigo</option>
+        </select>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} className="orders-filter-row">
           {["ALL", "COMPLETED", "PENDING", "PROCESSING", "FAILED"].map(s => (
-            <button key={s} onClick={() => setFilter(s)} style={{ padding: "7px 14px", borderRadius: 10, border: `1px solid ${filter === s ? M.blue : M.border}`, background: filter === s ? "#eff6ff" : "white", color: filter === s ? M.blue : M.muted, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{s === "ALL" ? "All" : s.charAt(0) + s.slice(1).toLowerCase()}</button>
+            <button key={s} onClick={() => setFilter(s)} style={{ padding: "7px 14px", borderRadius: 10, border: `1px solid ${filter === s ? M.blue : M.border}`, background: filter === s ? "rgba(59,130,246,0.15)" : M.card, color: filter === s ? "#60a5fa" : M.muted, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{s === "ALL" ? "All" : s.charAt(0) + s.slice(1).toLowerCase()}</button>
           ))}
         </div>
       </div>
@@ -774,7 +800,7 @@ function OrdersPage({ orders, agentId, onPlaceOrder, isPro }: { orders: Order[];
       {/* Tab switcher */}
       <div style={{ display: "flex", gap: 8 }}>
         {([["regular", "Online Orders"], ["manual", "Manual Orders"]] as const).map(([t, label]) => (
-          <button key={t} onClick={() => setTab(t)} style={{ padding: "8px 18px", borderRadius: 10, border: `2px solid ${tab === t ? M.blue : M.border}`, background: tab === t ? "#eff6ff" : "white", color: tab === t ? M.blue : M.muted, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{label}</button>
+          <button key={t} onClick={() => setTab(t)} style={{ padding: "8px 18px", borderRadius: 10, border: `2px solid ${tab === t ? M.blue : M.border}`, background: tab === t ? "rgba(59,130,246,0.15)" : M.card, color: tab === t ? "#60a5fa" : M.muted, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{label}</button>
         ))}
       </div>
 
@@ -784,7 +810,7 @@ function OrdersPage({ orders, agentId, onPlaceOrder, isPro }: { orders: Order[];
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "rgba(255,255,255,0.04)", borderBottom: `1px solid ${M.border}` }}>
-                  {["#", "Order ID", "Network", "Bundle", "Phone", "Amount", "Date", "Status"].map(h => (
+                  {["#", "Order ID", "Network", "Bundle", "Phone", "Amount", "Commission", "Date", "Status"].map(h => (
                     <th key={h} style={{ padding: "11px 16px", textAlign: "left", color: M.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -802,12 +828,13 @@ function OrdersPage({ orders, agentId, onPlaceOrder, isPro }: { orders: Order[];
                       <td style={{ padding: "12px 16px", color: M.text, fontWeight: 600 }}>{cleanSize}</td>
                       <td style={{ padding: "12px 16px", color: M.muted, fontFamily: "monospace", fontSize: 12 }}>{o.phone}</td>
                       <td style={{ padding: "12px 16px", color: M.text, fontWeight: 800 }}>GH₵{Number(o.amount).toFixed(2)}</td>
+                      <td style={{ padding: "12px 16px", color: "#4ade80", fontWeight: 700, fontSize: 12 }}>{o.agent_commission ? `+GH₵${Number(o.agent_commission).toFixed(2)}` : "—"}</td>
                       <td style={{ padding: "12px 16px", color: M.muted, fontSize: 12, whiteSpace: "nowrap" }}>{new Date(o.created_at).toLocaleDateString("en-GH", { day: "2-digit", month: "short", year: "numeric" })}</td>
                       <td style={{ padding: "12px 16px" }}><span style={{ background: sb.bg, color: sb.color, padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{sb.label}</span></td>
                     </tr>
                   );
                 })}
-                {filtered.length === 0 && <tr><td colSpan={8} style={{ padding: 48, textAlign: "center", color: M.muted }}>No orders found</td></tr>}
+                {filtered.length === 0 && <tr><td colSpan={9} style={{ padding: 48, textAlign: "center", color: M.muted }}>No orders found</td></tr>}
               </tbody>
             </table>
           </div>
