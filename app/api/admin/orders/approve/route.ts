@@ -22,6 +22,46 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
   }
 
   const isVoucher = order.network === "voucher";
+
+  // Detect mashup orders — manually fulfilled by admin, skip Inventor
+  const { data: mashupBundleList } = await supabase
+    .from("mashup_bundles")
+    .select("id, data_value, data_unit, minutes")
+    .eq("active", true);
+  const isMashupOrder = !isVoucher && (mashupBundleList ?? []).some(b => {
+    const label = b.minutes > 0
+      ? `${b.data_value}${b.data_unit} + ${b.minutes}min`
+      : `${b.data_value}${b.data_unit}`;
+    return label === order.bundle_size;
+  });
+
+  if (isMashupOrder) {
+    await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
+    if (order.agent_id && Number(order.agent_commission ?? 0) > 0) {
+      const { data: ag } = await supabase.from("agents")
+        .select("agent_type, plan, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue")
+        .eq("id", order.agent_id).maybeSingle();
+      if (ag) {
+        if (ag.agent_type === "custom_price" && ag.plan === "free") {
+          const adminTierPrice = Number(order.cost_price ?? 0) + Number(order.admin_commission ?? 0);
+          await supabase.from("agents").update({
+            wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - adminTierPrice),
+            paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - adminTierPrice),
+            commission_balance: Number(ag.commission_balance ?? 0) + Number(order.agent_commission),
+            total_sales: Number(ag.total_sales ?? 0) + 1,
+          }).eq("id", order.agent_id);
+        } else {
+          await supabase.from("agents").update({
+            commission_balance: Number(ag.commission_balance ?? 0) + Number(order.agent_commission),
+            total_sales: Number(ag.total_sales ?? 0) + 1,
+            total_revenue: Number(ag.total_revenue ?? 0) + Number(order.amount ?? 0),
+          }).eq("id", order.agent_id);
+        }
+      }
+    }
+    return { ok: true, message: `Mashup approved — deliver ${order.bundle_size} to ${order.phone} manually, then force-complete` };
+  }
+
   let apiOk = false;
   let balanceAfter: number | null = null;
   let errorBody: Record<string, unknown> = {};

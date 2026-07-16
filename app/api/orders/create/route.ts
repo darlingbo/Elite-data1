@@ -2,9 +2,8 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { rateLimit } from "@/lib/rate-limit";
 import { bundles, sizeLabel, type Network } from "@/lib/bundles";
-import { sendAdminAlert, sendAdminBotMessage, sendAgentNotification, fmtOrder, retryKeyboard, orderApprovalKeyboard } from "@/lib/telegram";
+import { sendAdminAlert, fmtOrder, orderApprovalKeyboard } from "@/lib/telegram";
 import { sendCustomerSMS, orderReceivedSMS } from "@/lib/sms";
-import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { getSurcharge, clearSurcharge } from "@/lib/surcharge";
 
 const PLATFORM_FEE_RATE = 0.02;
@@ -594,6 +593,7 @@ export async function POST(request: NextRequest) {
   }).catch(() => {});
 
   await sendAdminAlert(
+    (isMashup ? "🟡 <b>MASHUP — DELIVER MANUALLY AFTER APPROVING</b>\n" : "") +
     (fastDelivery ? "⚡ <b>FAST DELIVERY</b>\n" : "") +
     `🔔 <b>NEW ORDER — APPROVE TO DELIVER</b>\n\n` +
     fmtOrder({ ref: paystackRef, network: bundleMeta.network, size: bundleMeta.size, phone, amount: chargedAmount, profit, agentName }),
@@ -673,56 +673,7 @@ export async function POST(request: NextRequest) {
     })().catch(() => {});
   }
 
-  // ─── MASHUP: skip Inventor — admin fulfils manually ─────────────────────
-  if (isMashup) {
-    await supabase
-      .from("orders")
-      .update({ status: "processing", bundle_size: bundleMeta.size, network: bundleMeta.network, customer_name: name })
-      .eq("reference", paystackRef);
-
-    const mashupAlert =
-      `🟡 <b>MASHUP ORDER — SEND DATA MANUALLY</b>\n\n` +
-      `👤 <b>Customer:</b> ${name}\n` +
-      `📱 <b>Phone:</b> <code>${phone}</code>\n` +
-      `📦 <b>Bundle:</b> ${bundleMeta.size}\n` +
-      `💰 <b>Amount Paid:</b> GH₵${chargedAmount.toFixed(2)}\n` +
-      `📎 <b>Ref:</b> <code>${paystackRef}</code>\n\n` +
-      `➡️ Send the bundle to the customer's number then mark the order as completed in the admin panel.`;
-
-    await sendAdminAlert(mashupAlert);
-    await sendAdminBotMessage(mashupAlert, retryKeyboard(paystackRef));
-
-    // WhatsApp alert to admin
-    const waMsg =
-      `🟡 MASHUP ORDER - SEND DATA MANUALLY\n\n` +
-      `Customer: ${name}\n` +
-      `Phone: ${phone}\n` +
-      `Bundle: ${bundleMeta.size}\n` +
-      `Amount Paid: GH${chargedAmount.toFixed(2)}\n` +
-      `Ref: ${paystackRef}\n\n` +
-      `Send the bundle to the customer's number then mark order as completed.`;
-    sendAdminWhatsApp(waMsg).catch(() => {});
-
-    await sendCustomerSMS(phone, orderReceivedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef));
-
-    if (agentTelegramChatId) {
-      sendAgentNotification(
-        agentTelegramChatId,
-        `🛒 <b>New Mashup Sale!</b>\n\n` +
-        `📱 ${bundleMeta.size} → <code>${phone}</code>\n` +
-        `💰 Sold for: GH₵${chargedAmount.toFixed(2)}\n` +
-        `💵 Your commission: GH₵${agentCommission.toFixed(2)}\n` +
-        `🔄 Status: Processing (manual delivery)\n` +
-        `📎 Ref: <code>${paystackRef}</code>`
-      ).catch(() => {});
-    }
-
-    processLoyalty(phone, bundleMeta.network, paystackRef).catch(() => {});
-    return Response.json({ success: true, reference: paystackRef, status: "PROCESSING" });
-  }
-
-  // Order is held for admin approval — do not call Inventor yet.
-  // processLoyalty counts the purchase since payment was confirmed.
+  // All orders — including Mashup — are held for admin approval.
   processLoyalty(phone, bundleMeta.network, paystackRef).catch(() => {});
   return Response.json({ success: true, reference: paystackRef, pendingApproval: true });
 }

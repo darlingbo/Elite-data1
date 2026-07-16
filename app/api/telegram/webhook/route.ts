@@ -538,6 +538,52 @@ async function approveOrder(chatId: string, reference: string) {
     return;
   }
 
+  // Detect mashup orders — manually fulfilled, skip Inventor
+  const { data: mashupBundleList } = await supabase
+    .from("mashup_bundles")
+    .select("id, data_value, data_unit, minutes")
+    .eq("active", true);
+  const isMashupOrder = order.network !== "voucher" && (mashupBundleList ?? []).some(b => {
+    const label = b.minutes > 0
+      ? `${b.data_value}${b.data_unit} + ${b.minutes}min`
+      : `${b.data_value}${b.data_unit}`;
+    return label === order.bundle_size;
+  });
+
+  if (isMashupOrder) {
+    await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
+    if (order.agent_id && Number(order.agent_commission ?? 0) > 0) {
+      const { data: ag } = await supabase.from("agents")
+        .select("agent_type, plan, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue")
+        .eq("id", order.agent_id).maybeSingle();
+      if (ag) {
+        if (ag.agent_type === "custom_price" && ag.plan === "free") {
+          const adminTierPrice = Number(order.cost_price ?? 0) + Number(order.admin_commission ?? 0);
+          await supabase.from("agents").update({
+            wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - adminTierPrice),
+            paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - adminTierPrice),
+            commission_balance: Number(ag.commission_balance ?? 0) + Number(order.agent_commission),
+            total_sales: Number(ag.total_sales ?? 0) + 1,
+          }).eq("id", order.agent_id);
+        } else {
+          await supabase.from("agents").update({
+            commission_balance: Number(ag.commission_balance ?? 0) + Number(order.agent_commission),
+            total_sales: Number(ag.total_sales ?? 0) + 1,
+            total_revenue: Number(ag.total_revenue ?? 0) + Number(order.amount ?? 0),
+          }).eq("id", order.agent_id);
+        }
+      }
+    }
+    await reply(chatId,
+      `✅ <b>Mashup Order Approved!</b>\n\n` +
+      `📱 ${String(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
+      `💰 GH₵${Number(order.amount ?? 0).toFixed(2)}\n` +
+      `📎 <code>${reference}</code>\n\n` +
+      `⚠️ <b>Manual delivery required.</b> Send the bundle to <code>${order.phone}</code>, then force-complete from the admin panel.`
+    );
+    return;
+  }
+
   await reply(chatId, `🔄 Sending ${String(order.network ?? "").toUpperCase()} ${order.bundle_size} to <code>${order.phone}</code>…`);
 
   const isVoucher = order.network === "voucher";
