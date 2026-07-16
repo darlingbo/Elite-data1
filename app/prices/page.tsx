@@ -3,12 +3,19 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { type Network } from "@/lib/bundles";
 
+const BG = "#080f1e";
+const CARD = "#0d1b2e";
+const BORDER = "#1e3a5f";
+const TEXT = "#f8fafc";
+const MUTED = "#94a3b8";
+const SUB = "#64748b";
+
 type BundleItem = { id: string; network: Network; size: string; sizeGB: number; validity: string; price: number; costPrice: number; popular?: boolean };
 
-const NETS: { id: Network; label: string; color: string; textOnColor: string; bg: string; border: string; lightBg: string }[] = [
-  { id: "mtn",        label: "MTN",        color: "#f59e0b", textOnColor: "#78350f", bg: "#fef3c7", border: "#fcd34d", lightBg: "#fffbeb" },
-  { id: "telecel",    label: "Telecel",    color: "#ef4444", textOnColor: "#ffffff", bg: "#fee2e2", border: "#fca5a5", lightBg: "#fff5f5" },
-  { id: "airteltigo", label: "AirtelTigo", color: "#3b82f6", textOnColor: "#ffffff", bg: "#dbeafe", border: "#93c5fd", lightBg: "#eff6ff" },
+const NETS: { id: Network; label: string; color: string; textOnColor: string; lightBg: string }[] = [
+  { id: "mtn",        label: "MTN",        color: "#f59e0b", textOnColor: "#78350f", lightBg: "rgba(245,158,11,0.10)" },
+  { id: "telecel",    label: "Telecel",    color: "#ef4444", textOnColor: "#ffffff", lightBg: "rgba(239,68,68,0.10)" },
+  { id: "airteltigo", label: "AirtelTigo", color: "#3b82f6", textOnColor: "#ffffff", lightBg: "rgba(59,130,246,0.10)" },
 ];
 
 const USAGE = [
@@ -58,7 +65,7 @@ export default function PricesPage() {
   const recommended = calcBundles[0] ?? null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen" style={{ background: BG }}>
       {/* Header */}
       <div className="bg-gradient-to-br from-blue-800 via-blue-700 to-blue-500 text-white py-14 px-4 text-center">
         <div className="max-w-3xl mx-auto">
@@ -74,14 +81,14 @@ export default function PricesPage() {
       </div>
 
       {/* Network tabs */}
-      <div className="sticky top-0 z-20 bg-white border-b border-gray-100 shadow-sm">
+      <div className="sticky top-0 z-20" style={{ background: CARD, borderBottom: `1px solid ${BORDER}` }}>
         <div className="max-w-5xl mx-auto px-4">
           <div className="flex gap-0">
             {NETS.map(n => (
               <button key={n.id} onClick={() => setActiveNet(n.id)}
                 className="flex-1 py-4 text-sm font-bold transition-all relative"
                 style={{
-                  color: activeNet === n.id ? n.color : "#6b7280",
+                  color: activeNet === n.id ? n.color : MUTED,
                   borderBottom: activeNet === n.id ? `3px solid ${n.color}` : "3px solid transparent",
                 }}>
                 {n.label}
@@ -106,7 +113,8 @@ export default function PricesPage() {
             const isBest = b.id === bestValueId;
             const isPopular = b.popular;
             return (
-              <div key={b.id} style={{ borderColor: isBest ? net.color : "#e5e7eb", background: isBest ? net.lightBg : "white" }}
+              <div key={b.id}
+                style={{ borderColor: isBest ? net.color : BORDER, background: isBest ? net.lightBg : CARD }}
                 className={`rounded-2xl border-2 p-4 flex flex-col relative overflow-hidden transition-all hover:shadow-lg hover:-translate-y-0.5 ${isBest ? "shadow-md" : ""}`}>
 
                 {/* Badges */}
@@ -117,7 +125,7 @@ export default function PricesPage() {
                     </span>
                   )}
                   {isPopular && !isBest && (
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400">
                       Popular
                     </span>
                   )}
@@ -127,16 +135,16 @@ export default function PricesPage() {
                 <span style={{ color: net.color }} className="text-xs font-bold mb-1 uppercase tracking-wide">{net.label}</span>
 
                 {/* Size */}
-                <p className="text-2xl font-black text-gray-800 mb-1">{b.size}</p>
+                <p className="text-2xl font-black mb-1" style={{ color: TEXT }}>{b.size}</p>
 
                 {/* Price */}
                 <p style={{ color: net.color }} className="text-xl font-bold mb-1">GH₵{Number(b.price).toFixed(2)}</p>
 
                 {/* Per GB */}
-                <p className="text-xs text-gray-400 mb-1">GH₵{valuePerGB(b.price, b.sizeGB)}/GB</p>
+                <p className="text-xs mb-1" style={{ color: MUTED }}>GH₵{valuePerGB(b.price, b.sizeGB)}/GB</p>
 
                 {/* Validity */}
-                <p className="text-xs text-gray-400 mb-4">{b.validity}</p>
+                <p className="text-xs mb-4" style={{ color: MUTED }}>{b.validity}</p>
 
                 {/* Buy button */}
                 <Link href={`/buy?network=${b.network}`}
@@ -151,18 +159,18 @@ export default function PricesPage() {
 
         {/* Price comparison across networks */}
         <div className="mt-14">
-          <h2 className="text-2xl font-black text-gray-800 mb-2 text-center">Price Comparison</h2>
-          <p className="text-gray-500 text-center mb-6 text-sm">Same data size, different networks — see who's cheaper</p>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <h2 className="text-2xl font-black mb-2 text-center" style={{ color: TEXT }}>Price Comparison</h2>
+          <p className="text-center mb-6 text-sm" style={{ color: MUTED }}>Same data size, different networks — see who&apos;s cheaper</p>
+          <div className="rounded-2xl overflow-hidden" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="px-5 py-3.5 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Size</th>
+                  <tr style={{ background: BG, borderBottom: `1px solid ${BORDER}` }}>
+                    <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider" style={{ color: MUTED }}>Size</th>
                     {NETS.map(n => (
                       <th key={n.id} className="px-5 py-3.5 text-center text-xs font-bold uppercase tracking-wider" style={{ color: n.color }}>{n.label}</th>
                     ))}
-                    <th className="px-5 py-3.5 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Cheapest</th>
+                    <th className="px-5 py-3.5 text-center text-xs font-bold uppercase tracking-wider" style={{ color: MUTED }}>Cheapest</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -174,20 +182,20 @@ export default function PricesPage() {
                     const label = gb < 1 ? `${gb * 1000}MB` : `${gb}GB`;
                     if (row.every(b => !b)) return null;
                     return (
-                      <tr key={gb} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}>
-                        <td className="px-5 py-4 font-bold text-gray-800">{label}</td>
+                      <tr key={gb} style={{ background: i % 2 === 0 ? CARD : "rgba(255,255,255,0.02)" }}>
+                        <td className="px-5 py-4 font-bold" style={{ color: TEXT }}>{label}</td>
                         {NETS.map((n, ni) => {
                           const b = row[ni];
                           const isCheapest = b && b.price === minPrice;
                           return (
                             <td key={n.id} className="px-5 py-4 text-center">
                               {b ? (
-                                <span style={{ color: isCheapest ? n.color : "#374151", fontWeight: isCheapest ? 800 : 500 }}
+                                <span style={{ color: isCheapest ? n.color : MUTED, fontWeight: isCheapest ? 800 : 500 }}
                                   className="text-sm">
                                   GH₵{Number(b.price).toFixed(2)}
                                   {isCheapest && <span className="ml-1 text-xs">★</span>}
                                 </span>
-                              ) : <span className="text-gray-300 text-sm">—</span>}
+                              ) : <span className="text-sm" style={{ color: SUB }}>—</span>}
                             </td>
                           );
                         })}
@@ -207,28 +215,28 @@ export default function PricesPage() {
         </div>
 
         {/* Data Usage Calculator */}
-        <div className="mt-14 bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+        <div className="mt-14 rounded-2xl p-8" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
           <div className="text-center mb-8">
             <span className="text-3xl">🧮</span>
-            <h2 className="text-2xl font-black text-gray-800 mt-2 mb-1">Data Usage Calculator</h2>
-            <p className="text-gray-500 text-sm">Tell us how you use data — we'll find the right bundle</p>
+            <h2 className="text-2xl font-black mt-2 mb-1" style={{ color: TEXT }}>Data Usage Calculator</h2>
+            <p className="text-sm" style={{ color: MUTED }}>Tell us how you use data — we&apos;ll find the right bundle</p>
           </div>
 
           {/* Usage sliders */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 mb-8">
             {USAGE.map(u => (
-              <div key={u.id} className="bg-gray-50 rounded-xl p-4">
+              <div key={u.id} className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}` }}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-gray-700">{u.icon} {u.label}</span>
-                  <span className="text-sm font-bold text-blue-600">
+                  <span className="text-sm font-semibold" style={{ color: TEXT }}>{u.icon} {u.label}</span>
+                  <span className="text-sm font-bold text-blue-400">
                     {usageHours[u.id]}h/day
                   </span>
                 </div>
                 <input type="range" min={0} max={8} step={0.5}
                   value={usageHours[u.id]}
                   onChange={e => setUsageHours(h => ({ ...h, [u.id]: parseFloat(e.target.value) }))}
-                  className="w-full accent-blue-600" />
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
+                  className="w-full accent-blue-500" />
+                <div className="flex justify-between text-xs mt-1" style={{ color: SUB }}>
                   <span>0h</span><span>8h</span>
                 </div>
               </div>
@@ -237,13 +245,13 @@ export default function PricesPage() {
 
           {/* Network picker for recommendation */}
           <div className="flex justify-center gap-3 mb-6">
-            <p className="text-sm font-semibold text-gray-600 self-center">Your network:</p>
+            <p className="text-sm font-semibold self-center" style={{ color: MUTED }}>Your network:</p>
             {NETS.map(n => (
               <button key={n.id} onClick={() => setCalcNet(n.id)}
                 style={{
                   background: calcNet === n.id ? n.color : "transparent",
-                  color: calcNet === n.id ? n.textOnColor : "#6b7280",
-                  border: `2px solid ${calcNet === n.id ? n.color : "#e5e7eb"}`,
+                  color: calcNet === n.id ? n.textOnColor : MUTED,
+                  border: `2px solid ${calcNet === n.id ? n.color : BORDER}`,
                 }}
                 className="px-4 py-1.5 rounded-full text-sm font-bold transition-all">
                 {n.label}
@@ -253,28 +261,28 @@ export default function PricesPage() {
 
           {/* Result */}
           {totalGB === 0 ? (
-            <div className="text-center py-6 text-gray-400">
+            <div className="text-center py-6" style={{ color: MUTED }}>
               <p className="text-sm">Move the sliders above to see your recommendation</p>
             </div>
           ) : (
-            <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 text-center">
-              <p className="text-sm text-gray-600 mb-1">Your estimated monthly data usage</p>
-              <p className="text-4xl font-black text-blue-700 mb-1">{totalGB.toFixed(1)} GB</p>
-              <p className="text-sm text-gray-500 mb-5">per month</p>
+            <div className="rounded-2xl p-6 text-center" style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)" }}>
+              <p className="text-sm mb-1" style={{ color: MUTED }}>Your estimated monthly data usage</p>
+              <p className="text-4xl font-black mb-1 text-blue-400">{totalGB.toFixed(1)} GB</p>
+              <p className="text-sm mb-5" style={{ color: MUTED }}>per month</p>
               {recommended ? (
                 <>
-                  <p className="text-sm font-semibold text-gray-600 mb-3">Recommended bundle for you:</p>
+                  <p className="text-sm font-semibold mb-3" style={{ color: MUTED }}>Recommended bundle for you:</p>
                   <div className="inline-flex flex-col items-center gap-3">
                     {(() => {
                       const rNet = NETS.find(n => n.id === calcNet)!;
                       return (
                         <>
-                          <div style={{ borderColor: rNet.color, background: rNet.lightBg }}
-                            className="border-2 rounded-xl px-8 py-4 text-center">
+                          <div style={{ borderColor: rNet.color, background: rNet.lightBg, border: `2px solid ${rNet.color}` }}
+                            className="rounded-xl px-8 py-4 text-center">
                             <p style={{ color: rNet.color }} className="text-xs font-bold uppercase tracking-wide mb-1">{rNet.label}</p>
-                            <p className="text-3xl font-black text-gray-800">{recommended.size}</p>
+                            <p className="text-3xl font-black" style={{ color: TEXT }}>{recommended.size}</p>
                             <p style={{ color: rNet.color }} className="text-xl font-bold">GH₵{Number(recommended.price).toFixed(2)}</p>
-                            <p className="text-xs text-gray-400 mt-1">{recommended.validity}</p>
+                            <p className="text-xs mt-1" style={{ color: MUTED }}>{recommended.validity}</p>
                           </div>
                           <Link href={`/buy?network=${recommended.network}`}
                             style={{ background: rNet.color, color: rNet.textOnColor }}
@@ -287,7 +295,7 @@ export default function PricesPage() {
                   </div>
                 </>
               ) : (
-                <p className="text-sm text-gray-500">No single bundle covers this usage. Consider our largest bundle or contact us on WhatsApp for custom options.</p>
+                <p className="text-sm" style={{ color: MUTED }}>No single bundle covers this usage. Consider our largest bundle or contact us on WhatsApp for custom options.</p>
               )}
             </div>
           )}
@@ -295,7 +303,7 @@ export default function PricesPage() {
 
         {/* Bottom CTA */}
         <div className="mt-12 text-center">
-          <p className="text-gray-500 mb-4">Ready to buy?</p>
+          <p className="mb-4" style={{ color: MUTED }}>Ready to buy?</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link href="/buy" className="bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-8 py-3.5 rounded-xl transition-colors shadow-lg">
               Buy Data Now ⚡

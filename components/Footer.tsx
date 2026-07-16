@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function Footer() {
   return (
-    <footer className="bg-gray-900 text-gray-300 pt-12 pb-6">
+    <footer className="bg-[#080f1e] text-[#94a3b8] pt-12 pb-6">
       <div className="max-w-6xl mx-auto px-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-10">
           {/* Brand */}
@@ -15,10 +15,10 @@ export default function Footer() {
                 Elite<span className="text-blue-400">Data</span>
               </span>
             </div>
-            <p className="text-sm text-gray-400 leading-relaxed max-w-xs">
+            <p className="text-sm text-[#64748b] leading-relaxed max-w-xs">
               Ghana&apos;s trusted platform for cheap and instant data bundles. MTN, Telecel and AirtelTigo bundles delivered in minutes.
             </p>
-            <div className="mt-4 text-xs text-gray-500">
+            <div className="mt-4 text-xs text-[#64748b]">
               <p>Mon – Sat: 6:00am – 11:59pm</p>
               <p>Sunday: 7:00am – 11:30pm</p>
             </div>
@@ -50,7 +50,7 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-gray-800 pt-6 flex flex-col md:flex-row justify-between items-center gap-2 text-xs text-gray-500">
+        <div className="border-t border-[#1e3a5f] pt-6 flex flex-col md:flex-row justify-between items-center gap-2 text-xs text-[#64748b]">
           <p>© {new Date().getFullYear()} Elite Data. All rights reserved.</p>
           <p>Powered by Paystack &amp; secured payments</p>
         </div>

@@ -104,7 +104,7 @@ export default function PublicNav() {
   return (
     <>
       {/* Sticky top navbar */}
-      <nav className="sticky top-0 z-40 bg-blue-900/95 backdrop-blur border-b border-blue-800/60 h-14 flex items-center px-4 gap-3">
+      <nav className="sticky top-0 z-40 bg-[#0d1b2e]/95 backdrop-blur border-b border-[#1e3a5f]/60 h-14 flex items-center px-4 gap-3">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 shrink-0 mr-2">
           <Image src="/logo.png" alt="Elite Data" width={36} height={36} className="rounded-lg" priority />
@@ -167,7 +167,7 @@ export default function PublicNav() {
       )}
 
       {/* Slide-out drawer */}
-      <aside className={`fixed top-0 left-0 bottom-0 z-50 w-72 bg-linear-to-b from-blue-900 to-blue-800 flex flex-col transition-transform duration-300 ${open ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`fixed top-0 left-0 bottom-0 z-50 w-72 bg-linear-to-b from-[#0d1b2e] to-[#080f1e] flex flex-col transition-transform duration-300 ${open ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Header */}
         <div className="px-5 py-5 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">

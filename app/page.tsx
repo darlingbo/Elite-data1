@@ -4,10 +4,17 @@ import PopularBundlesSection from "@/components/PopularBundlesSection";
 import SocialProofTicker from "@/components/SocialProofTicker";
 import MascotBanner from "@/components/MascotBanner";
 
+const BG = "#080f1e";
+const CARD = "#0d1b2e";
+const BORDER = "#1e3a5f";
+const TEXT = "#f8fafc";
+const MUTED = "#94a3b8";
+const SUB = "#64748b";
+
 const networks = [
-  { name: "MTN", border: "border-yellow-300", desc: "MTN data bundles from GH₵4", logo: "MTN", logoColor: "bg-yellow-400", textColor: "text-yellow-700", btnColor: "bg-yellow-400" },
-  { name: "Telecel", border: "border-red-200", desc: "Telecel data bundles from GH₵3.50", logo: "T", logoColor: "bg-red-500", textColor: "text-red-600", btnColor: "bg-red-500" },
-  { name: "AirtelTigo", border: "border-rose-200", desc: "AirtelTigo bundles from GH₵3", logo: "AT", logoColor: "bg-rose-600", textColor: "text-rose-600", btnColor: "bg-rose-600" },
+  { name: "MTN", border: "border-yellow-400/40", desc: "MTN data bundles from GH₵4", logo: "MTN", logoColor: "bg-yellow-400", textColor: "text-yellow-400", btnColor: "bg-yellow-400" },
+  { name: "Telecel", border: "border-red-500/40", desc: "Telecel data bundles from GH₵3.50", logo: "T", logoColor: "bg-red-500", textColor: "text-red-400", btnColor: "bg-red-500" },
+  { name: "AirtelTigo", border: "border-blue-500/40", desc: "AirtelTigo bundles from GH₵3", logo: "AT", logoColor: "bg-blue-600", textColor: "text-blue-400", btnColor: "bg-blue-600" },
 ];
 
 const features = [
@@ -51,7 +58,7 @@ const faqs = [
 
 export default function Home() {
   return (
-    <div>
+    <div style={{ background: BG }}>
       {/* Monthly promo mascot banner */}
       <MascotBanner />
 
@@ -93,34 +100,35 @@ export default function Home() {
       </section>
 
       {/* Live stats bar */}
-      <section className="bg-blue-900 py-8 px-4">
-        <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 text-center text-white">
+      <section style={{ background: CARD }} className="py-8 px-4">
+        <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
           {stats.map((s) => (
             <div key={s.label}>
               <p className="text-3xl font-black text-yellow-400">{s.value}</p>
-              <p className="text-blue-200 text-sm mt-1">{s.label}</p>
+              <p className="text-sm mt-1" style={{ color: MUTED }}>{s.label}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* Networks */}
-      <section className="py-16 px-4">
+      <section className="py-16 px-4" style={{ background: BG }}>
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-10">
-            <h2 className="text-3xl font-black text-gray-800 mb-2">Choose Your Network</h2>
-            <p className="text-gray-500">We support all major telecom networks in Ghana</p>
+            <h2 className="text-3xl font-black mb-2" style={{ color: TEXT }}>Choose Your Network</h2>
+            <p style={{ color: MUTED }}>We support all major telecom networks in Ghana</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {networks.map((n) => (
               <Link href="/buy" key={n.name}
-                className={`bg-white rounded-2xl border-2 ${n.border} p-6 flex flex-col items-center gap-4 hover:shadow-xl transition-all hover:-translate-y-1 text-center group`}>
+                className={`rounded-2xl border-2 ${n.border} p-6 flex flex-col items-center gap-4 hover:shadow-xl transition-all hover:-translate-y-1 text-center group`}
+                style={{ background: CARD }}>
                 <div className={`w-20 h-20 rounded-full ${n.logoColor} flex items-center justify-center text-white font-black text-xl shadow-lg group-hover:scale-110 transition-transform`}>
                   {n.logo}
                 </div>
                 <div>
                   <h3 className={`text-xl font-black ${n.textColor}`}>{n.name}</h3>
-                  <p className="text-gray-500 text-sm mt-1">{n.desc}</p>
+                  <p className="text-sm mt-1" style={{ color: MUTED }}>{n.desc}</p>
                 </div>
                 <span className={`${n.btnColor} text-white text-sm font-semibold px-5 py-2 rounded-lg shadow`}>
                   Buy Now →
@@ -132,7 +140,7 @@ export default function Home() {
       </section>
 
       {/* Result Checker Vouchers banner */}
-      <section className="py-10 px-4 bg-gray-50">
+      <section className="py-10 px-4" style={{ background: BG }}>
         <div className="max-w-5xl mx-auto">
           <div className="rounded-2xl bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-700 p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-lg">
             <div className="flex items-center gap-5">
@@ -154,23 +162,23 @@ export default function Home() {
       <PopularBundlesSection />
 
       {/* How it works */}
-      <section className="bg-white py-16 px-4">
+      <section className="py-16 px-4" style={{ background: CARD }}>
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-10">
-            <h2 className="text-3xl font-black text-gray-800 mb-2">How It Works</h2>
-            <p className="text-gray-500">Buying data is fast, simple, and fully automatic</p>
+            <h2 className="text-3xl font-black mb-2" style={{ color: TEXT }}>How It Works</h2>
+            <p style={{ color: MUTED }}>Buying data is fast, simple, and fully automatic</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 relative">
             {howItWorks.map((h, i) => (
               <div key={h.step} className="text-center p-5 relative">
-                <div className="w-14 h-14 bg-blue-600 text-white rounded-full flex items-center justify-center font-black text-xl mx-auto mb-4 shadow-lg shadow-blue-200">
+                <div className="w-14 h-14 bg-blue-600 text-white rounded-full flex items-center justify-center font-black text-xl mx-auto mb-4 shadow-lg shadow-blue-900/50">
                   {h.step}
                 </div>
                 {i < howItWorks.length - 1 && (
-                  <div className="hidden md:block absolute top-7 left-[calc(50%+28px)] right-0 h-0.5 bg-blue-100" />
+                  <div className="hidden md:block absolute top-7 left-[calc(50%+28px)] right-0 h-0.5" style={{ background: BORDER }} />
                 )}
-                <h3 className="font-bold text-gray-800 mb-2">{h.title}</h3>
-                <p className="text-gray-500 text-sm">{h.desc}</p>
+                <h3 className="font-bold mb-2" style={{ color: TEXT }}>{h.title}</h3>
+                <p className="text-sm" style={{ color: MUTED }}>{h.desc}</p>
               </div>
             ))}
           </div>
@@ -178,19 +186,19 @@ export default function Home() {
       </section>
 
       {/* Features */}
-      <section className="py-16 px-4 bg-gray-50">
+      <section className="py-16 px-4" style={{ background: BG }}>
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-10">
-            <h2 className="text-3xl font-black text-gray-800 mb-2">Why Choose Elite Data?</h2>
-            <p className="text-gray-500">Built for speed, trust, and savings</p>
+            <h2 className="text-3xl font-black mb-2" style={{ color: TEXT }}>Why Choose Elite Data?</h2>
+            <p style={{ color: MUTED }}>Built for speed, trust, and savings</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
             {features.map((f) => (
-              <div key={f.title} className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 flex gap-4">
+              <div key={f.title} className="rounded-2xl p-6 transition-all hover:-translate-y-0.5 flex gap-4" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
                 <div className="text-3xl shrink-0">{f.icon}</div>
                 <div>
-                  <h3 className="font-bold text-gray-800 mb-1">{f.title}</h3>
-                  <p className="text-gray-500 text-sm">{f.desc}</p>
+                  <h3 className="font-bold mb-1" style={{ color: TEXT }}>{f.title}</h3>
+                  <p className="text-sm" style={{ color: MUTED }}>{f.desc}</p>
                 </div>
               </div>
             ))}
@@ -199,28 +207,28 @@ export default function Home() {
       </section>
 
       {/* Testimonials */}
-      <section className="py-16 px-4 bg-white">
+      <section className="py-16 px-4" style={{ background: CARD }}>
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-10">
-            <h2 className="text-3xl font-black text-gray-800 mb-2">What Customers Say</h2>
-            <p className="text-gray-500">Trusted by thousands of Ghanaians every day</p>
+            <h2 className="text-3xl font-black mb-2" style={{ color: TEXT }}>What Customers Say</h2>
+            <p style={{ color: MUTED }}>Trusted by thousands of Ghanaians every day</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5">
             {testimonials.map((t) => (
-              <div key={t.name} className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
+              <div key={t.name} className="rounded-2xl p-5" style={{ background: BG, border: `1px solid ${BORDER}` }}>
                 <div className="flex mb-3">
                   {Array.from({ length: t.stars }).map((_, i) => (
                     <span key={i} className="text-yellow-400 text-sm">★</span>
                   ))}
                 </div>
-                <p className="text-gray-600 text-sm mb-4 italic">&ldquo;{t.text}&rdquo;</p>
+                <p className="text-sm mb-4 italic" style={{ color: MUTED }}>&ldquo;{t.text}&rdquo;</p>
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-black">
                     {t.name.charAt(0)}
                   </div>
                   <div>
-                    <p className="font-bold text-gray-800 text-sm">{t.name}</p>
-                    <p className="text-gray-400 text-xs">{t.location}</p>
+                    <p className="font-bold text-sm" style={{ color: TEXT }}>{t.name}</p>
+                    <p className="text-xs" style={{ color: SUB }}>{t.location}</p>
                   </div>
                 </div>
               </div>
@@ -246,20 +254,20 @@ export default function Home() {
       </AgentAwareSection>
 
       {/* FAQ */}
-      <section className="py-16 px-4 bg-gray-50">
+      <section className="py-16 px-4" style={{ background: BG }}>
         <div className="max-w-3xl mx-auto">
           <div className="text-center mb-10">
-            <h2 className="text-3xl font-black text-gray-800 mb-2">Frequently Asked Questions</h2>
-            <p className="text-gray-500">Everything you need to know</p>
+            <h2 className="text-3xl font-black mb-2" style={{ color: TEXT }}>Frequently Asked Questions</h2>
+            <p style={{ color: MUTED }}>Everything you need to know</p>
           </div>
           <div className="space-y-3">
             {faqs.map((f) => (
-              <details key={f.q} className="bg-white rounded-2xl border border-gray-100 shadow-sm group">
-                <summary className="px-5 py-4 font-bold text-gray-800 cursor-pointer flex items-center justify-between list-none">
+              <details key={f.q} className="rounded-2xl group" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+                <summary className="px-5 py-4 font-bold cursor-pointer flex items-center justify-between list-none" style={{ color: TEXT }}>
                   {f.q}
-                  <span className="text-blue-500 text-xl group-open:rotate-45 transition-transform">+</span>
+                  <span className="text-blue-400 text-xl group-open:rotate-45 transition-transform">+</span>
                 </summary>
-                <p className="px-5 pb-4 text-gray-500 text-sm border-t border-gray-50 pt-3">{f.a}</p>
+                <p className="px-5 pb-4 text-sm pt-3" style={{ color: MUTED, borderTop: `1px solid ${BORDER}` }}>{f.a}</p>
               </details>
             ))}
           </div>
