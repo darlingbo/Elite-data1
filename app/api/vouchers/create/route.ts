@@ -11,9 +11,19 @@ const VOUCHER_LABELS: Record<string, string> = {
 };
 
 const DEFAULT_PRICES: Record<string, { sellPrice: number; costPrice: number }> = {
-  BECE:   { sellPrice: 18, costPrice: 15 },
-  WASSCE: { sellPrice: 18, costPrice: 15 },
+  BECE:   { sellPrice: 19, costPrice: 15 },
+  WASSCE: { sellPrice: 19, costPrice: 15 },
 };
+
+const BULK_THRESHOLD = 10; // qty > 10 gets bulk price
+const BULK_PRICE     = 18;
+
+async function getVoucherDiscountCode(): Promise<string> {
+  try {
+    const { data } = await supabase.from("system_settings").select("value").eq("key", "voucher_discount_code").maybeSingle();
+    return (data?.value ?? "").trim();
+  } catch { return ""; }
+}
 
 async function getVoucherPrices() {
   try {
@@ -34,8 +44,8 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   if (!body) return Response.json({ error: "Invalid request." }, { status: 400 });
 
-  const { name, email, phone, voucherType, quantity, paystackRef } = body as Record<string, string | number>;
-  const qty = Math.max(1, Math.min(100, Number(quantity) || 1));
+  const { name, email, phone, voucherType, quantity, paystackRef, promoCode } = body as Record<string, string | number>;
+  const qty = Math.max(1, Math.min(200, Number(quantity) || 1));
 
   if (!name || !email || !phone || !voucherType || !paystackRef) {
     return Response.json({ error: "Missing required fields." }, { status: 400 });
@@ -45,12 +55,18 @@ export async function POST(request: NextRequest) {
   const label = VOUCHER_LABELS[vType];
   if (!label) return Response.json({ error: "Invalid voucher type. Use BECE or WASSCE." }, { status: 400 });
 
-  // Load prices from DB (falls back to defaults if not set)
-  const prices = await getVoucherPrices();
+  // Load prices + validate promo code in parallel
+  const [prices, validDiscountCode] = await Promise.all([
+    getVoucherPrices(),
+    getVoucherDiscountCode(),
+  ]);
   const vPrice = prices[vType] ?? DEFAULT_PRICES[vType];
 
-  // Bulk discount: buying more than 9 vouchers drops the price from GH₵18 to GH₵17.50 each
-  const effectiveSellPrice = qty > 9 ? 17.5 : vPrice.sellPrice;
+  const promoCodeStr = String(promoCode ?? "").trim();
+  const promoApplied = !!(promoCodeStr && validDiscountCode && promoCodeStr === validDiscountCode);
+
+  // Bulk: qty > 10 → GH₵18. Promo code → GH₵18 regardless of qty.
+  const effectiveSellPrice = (qty > BULK_THRESHOLD || promoApplied) ? BULK_PRICE : vPrice.sellPrice;
   const totalSell = effectiveSellPrice * qty;
   const totalCost = vPrice.costPrice * qty;
   const profit = totalSell - totalCost;

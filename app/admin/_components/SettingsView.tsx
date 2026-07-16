@@ -132,6 +132,78 @@ function VoucherPricingSettings({ showToast }: { showToast: (msg: string, ok?: b
   );
 }
 
+function VoucherDiscountCode({ showToast }: { showToast: (msg: string, ok?: boolean) => void }) {
+  const [code, setCode] = useState("");
+  const [input, setInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/admin/voucher-discount-code")
+      .then(r => r.json())
+      .then(d => { setCode(d.code ?? ""); setInput(d.code ?? ""); setLoaded(true); })
+      .catch(() => setLoaded(true));
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    const r = await fetch("/api/admin/voucher-discount-code", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: input }),
+    }).then(r => r.json());
+    setSaving(false);
+    if (r.success) { setCode(r.code); showToast(r.code ? `✓ Discount code set to "${r.code}"` : "✓ Discount code cleared"); }
+    else showToast("❌ Save failed", false);
+  }
+
+  return (
+    <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
+      <h2 className="font-bold text-white mb-1">🏷️ Voucher VIP Discount Code</h2>
+      <p className="text-xs text-slate-500 mb-4">
+        Share this code with specific customers so they always get the <strong className="text-white">GH₵18 bulk price</strong> — even when buying just 1 voucher.
+        Leave blank to disable.
+      </p>
+      {!loaded ? <div className="text-sm text-slate-500">Loading…</div> : (
+        <div className="space-y-3">
+          {code && (
+            <div className="flex items-center gap-3 rounded-xl border px-4 py-3" style={{ background: BG, borderColor: BORDER }}>
+              <span className="text-xs text-slate-500">Current code:</span>
+              <span className="font-black text-amber-400 tracking-widest text-sm">{code}</span>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="e.g. ELITE18"
+              value={input}
+              onChange={e => setInput(e.target.value.toUpperCase())}
+              className="flex-1 rounded-xl px-4 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500 tracking-widest font-bold"
+              style={{ background: BG, borderColor: BORDER }}
+            />
+            <button
+              onClick={save} disabled={saving || input === code}
+              className="px-5 py-2.5 rounded-xl text-sm font-black text-white disabled:opacity-50"
+              style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+          {code && (
+            <button
+              onClick={() => { setInput(""); void save(); }}
+              className="text-xs text-red-400 hover:text-red-300">
+              Clear code (disable discount)
+            </button>
+          )}
+          <p className="text-xs text-slate-600">
+            Share the code with your VIP customers. They enter it on the voucher page before paying to unlock GH₵18 per voucher.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BiometricSettings({ showToast }: { showToast: (msg: string, ok?: boolean) => void }) {
   const [status, setStatus] = useState<"loading" | "unsupported" | "none" | "registered">(() =>
     typeof window !== "undefined" && !window.PublicKeyCredential ? "unsupported" : "loading"
@@ -500,6 +572,7 @@ export function SettingsView({ onChangePassword }: { onChangePassword: () => voi
 
       <BiometricSettings showToast={showToast} />
       <VoucherPricingSettings showToast={showToast} />
+      <VoucherDiscountCode showToast={showToast} />
 
       <div className="rounded-2xl border p-5" style={{ background: CARD, borderColor: BORDER }}>
         <p className="font-bold text-white mb-1">Admin Account</p>

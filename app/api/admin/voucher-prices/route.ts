@@ -7,8 +7,8 @@ async function isAdmin() {
 }
 
 const DEFAULT_PRICES = {
-  BECE:   { sellPrice: 18, costPrice: 15 },
-  WASSCE: { sellPrice: 18, costPrice: 15 },
+  BECE:   { sellPrice: 19, costPrice: 15 },
+  WASSCE: { sellPrice: 19, costPrice: 15 },
 };
 
 export async function GET() {
