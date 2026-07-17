@@ -173,23 +173,30 @@ export async function GET(request: NextRequest) {
           }
           retried++;
         } else {
-          // Normal orders: ask admin for approval before sending
-          await supabase.from("orders").update({ status: "pending_approval" }).eq("reference", order.reference);
-          await sendAdminAlert(
-            `⚠️ <b>STUCK ORDER — Approve Send?</b>\n\n` +
-            `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
-            `📎 Ref: <code>${order.reference}</code>\n\n` +
-            `This order has been stuck for 15+ min. Did you already send this manually?\n` +
-            `Tap <b>YES</b> to send now, or <b>NO</b> if already done.`,
-            {
-              inline_keyboard: [[
-                { text: "✅ YES — Send Now", callback_data: `approve_retry:${order.reference}` },
-                { text: "❌ NO — Already Done", callback_data: `skip_retry:${order.reference}` },
-              ]],
-            }
-          );
-          retried++;
-          retriedOrders.push(`⚠️ ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (awaiting approval)`);
+          // Normal orders already approved — auto-retry delivery without sending back to pending_approval.
+          // Admin already approved this order; putting it back in the queue would force double-approval.
+          const retryResult = await retryDelivery({ ...order, bundle_size_gb: sizeGb });
+          if (retryResult === "sent" || retryResult === "already_processing") {
+            await supabase.from("orders").update({ status: "processing" }).eq("reference", order.reference);
+            retried++;
+            retriedOrders.push(`🔁 ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (auto-retried)`);
+          } else {
+            // Retry failed — alert admin to handle manually, keep as processing (do NOT move to pending_approval)
+            await sendAdminAlert(
+              `⚠️ <b>STUCK ORDER — Auto-retry failed</b>\n\n` +
+              `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
+              `📎 Ref: <code>${order.reference}</code>\n\n` +
+              `Already approved. Inventor retry failed — please deliver manually or use /retry.`,
+              {
+                inline_keyboard: [[
+                  { text: "🔄 Retry Now", callback_data: `retry:${order.reference}` },
+                  { text: "✅ Mark Done", callback_data: `skip_retry:${order.reference}` },
+                ]],
+              }
+            );
+            retried++;
+            retriedOrders.push(`❌ ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (retry failed, alerted)`);
+          }
         }
       }
     }));
