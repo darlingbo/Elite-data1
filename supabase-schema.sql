@@ -90,6 +90,7 @@ create table if not exists agent_wallet_transactions (
   amount              numeric(12,2) not null,
   description         text,
   paystack_reference  text unique,      -- prevents duplicate Paystack top-up credits
+  status              text default 'pending',  -- pending | approved | rejected (used by withdrawal flow)
   created_at          timestamptz not null default now()
 );
 
