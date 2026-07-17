@@ -22,10 +22,6 @@
   ],
   "crons": [
     {
-      "path": "/api/cron/sync-orders",
-      "schedule": "*/15 * * * *"
-    },
-    {
       "path": "/api/cron/snapshot",
       "schedule": "0 6 * * *"
     },
