@@ -23,9 +23,10 @@ create table if not exists agents (
   total_revenue     numeric(12,2) not null default 0,
   rejection_reason  text,
   password_hash     text,
-  telegram_chat_id  text,
-  created_at        timestamptz not null default now(),
-  updated_at        timestamptz
+  telegram_chat_id          text,
+  paystack_subaccount_code  text,   -- Paystack ACCT_xxx subaccount for split payments
+  created_at                timestamptz not null default now(),
+  updated_at                timestamptz
 );
 
 -- ─── 2. ORDERS ───────────────────────────────────────────────────────────────

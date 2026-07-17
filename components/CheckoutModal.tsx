@@ -138,6 +138,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   const [promoResult, setPromoResult] = useState<{ discount: number; code: string; id: string; label: string } | null>(null);
   const [promoError, setPromoError] = useState("");
   const [surcharge, setSurcharge] = useState(0);
+  const [agentSubaccountCode, setAgentSubaccountCode] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [manualDeliveryWarning, setManualDeliveryWarning] = useState("");
   const [saveLabel, setSaveLabel] = useState("");
@@ -270,6 +271,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
           `/api/agents/can-fulfill?agentCode=${encodeURIComponent(agentCode)}&bundleId=${encodeURIComponent(bundle.id)}`
         );
         const checkData = await check.json();
+        if (checkData.subaccountCode) setAgentSubaccountCode(checkData.subaccountCode);
         if (!checkData.canFulfill) {
           setLoading(false);
           setError("This agent does not have enough wallet credit to fulfill this order right now. Please contact them to top up their account.");
@@ -289,6 +291,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
         amount: Math.round(totalAmount * 100),
         currency: "GHS",
         ref: `elite-${Date.now()}`,
+        ...(agentSubaccountCode ? { subaccount: agentSubaccountCode, bearer: "account" } : {}),
         metadata: {
           custom_fields: [
             { display_name: "Customer Name", variable_name: "name", value: name },

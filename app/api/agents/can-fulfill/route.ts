@@ -12,23 +12,30 @@ export async function GET(request: NextRequest) {
 
   const { data: agent } = await supabase
     .from("agents")
-    .select("wallet_balance, agent_type, status, registration_ref")
+    .select("wallet_balance, agent_type, status, registration_ref, paystack_subaccount_code")
     .eq("referral_code", agentCode.toUpperCase())
     .eq("status", "approved")
     .maybeSingle();
 
-  if (!agent || agent.agent_type !== "custom_price") {
+  if (!agent) {
     return Response.json({ canFulfill: true });
   }
 
+  const subaccountCode = (agent as { paystack_subaccount_code?: string | null }).paystack_subaccount_code ?? null;
+
+  if (agent.agent_type !== "custom_price") {
+    return Response.json({ canFulfill: true, subaccountCode });
+  }
+
   const cost = await getAgentBundleCost(bundleId, agent.registration_ref, agent.agent_type);
-  if (cost == null) return Response.json({ canFulfill: true });
+  if (cost == null) return Response.json({ canFulfill: true, subaccountCode });
 
   const walletBalance = Number(agent.wallet_balance ?? 0);
   const canFulfill = walletBalance >= cost;
 
   return Response.json({
     canFulfill,
+    subaccountCode,
     ...(canFulfill ? {} : { reason: "Agent wallet has insufficient funds." }),
   });
 }
