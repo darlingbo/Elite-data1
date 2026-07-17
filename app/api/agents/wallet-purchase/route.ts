@@ -48,6 +48,33 @@ export async function POST(request: NextRequest) {
     }, { status: 400 });
   }
 
+  // Deduplication: if an identical pending order was created in the last 2 min, return it
+  const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const { data: existingOrder } = await supabase
+    .from("orders")
+    .select("reference, bundle_size, amount")
+    .eq("agent_id", agentId)
+    .eq("phone", cleaned)
+    .eq("network", network)
+    .eq("status", "pending_approval")
+    .gte("created_at", twoMinAgo)
+    .maybeSingle();
+
+  if (existingOrder) {
+    return Response.json({
+      success: true,
+      pending: true,
+      awaitingApproval: true,
+      reference: existingOrder.reference,
+      network,
+      bundleSize: existingOrder.bundle_size,
+      phone: cleaned,
+      costDeducted: 0,
+      newWalletBalance: walletBalance,
+      message: "Order already submitted and awaiting approval.",
+    });
+  }
+
   // Deduct from wallet upfront (reserves balance, prevents double-spend)
   const { error: deductError } = await supabase
     .from("agents")

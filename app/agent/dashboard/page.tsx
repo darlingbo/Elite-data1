@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
@@ -1254,6 +1254,7 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
   const [history, setHistory] = useState<ManualOrder[]>([]);
   const [histLoading, setHistLoading] = useState(true);
   const [walletBalance, setWalletBalance] = useState(data.wallet_balance ?? 0);
+  const submittingRef = useRef(false);
 
   const isCommission = data.agent_type === "commission";
 
@@ -1286,6 +1287,7 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
   }
 
   async function submitWalletOrder() {
+    if (submittingRef.current) return; // block double-tap before React re-renders
     const cleaned = normalizeGhana(phone);
     if (!selected) { setMsg({ text: "Select a bundle first.", ok: false }); return; }
     if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setMsg({ text: "Enter a valid Ghana phone number (e.g. 0241234567 or +233241234567).", ok: false }); return; }
@@ -1294,6 +1296,7 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
       setMsg({ text: `Insufficient wallet balance. Need GH₵${cost.toFixed(2)}, you have GH₵${walletBalance.toFixed(2)}.`, ok: false });
       return;
     }
+    submittingRef.current = true;
     setLoading(true); setMsg(null);
     try {
       const res = await fetch("/api/agents/wallet-purchase", {
@@ -1319,7 +1322,7 @@ function PlaceOrderPage({ data, onRefresh }: { data: AgentData; onRefresh: () =>
         setMsg({ text: d.error ?? "Order failed. Try again.", ok: false });
       }
     } catch { setMsg({ text: "Network error. Try again.", ok: false }); }
-    finally { setLoading(false); }
+    finally { setLoading(false); submittingRef.current = false; }
   }
 
   async function submitManualOrder() {
