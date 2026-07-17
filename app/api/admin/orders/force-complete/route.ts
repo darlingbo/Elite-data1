@@ -21,11 +21,15 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (!order) return Response.json({ error: "Order not found" }, { status: 404 });
+  if (order.status === "completed") return Response.json({ error: "Order is already completed." }, { status: 409 });
 
   await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
 
-  // Credit agent commission if not already done
-  if (order.agent_id && (order.agent_commission || order.amount)) {
+  // Only credit commission if order was NOT previously in `processing`.
+  // `processing` means it already went through the approve route, which credits commission then.
+  // Orders coming from `failed`, `pending`, or `not_on_list` were never credited.
+  const commissonAlreadyCredited = order.status === "processing";
+  if (!commissonAlreadyCredited && order.agent_id && (order.agent_commission || order.amount)) {
     const commission = Number(order.agent_commission) || 0;
     const revenue = Number(order.amount) || 0;
     const { data: ag } = await supabase.from("agents").select("commission_balance, total_sales, total_revenue").eq("id", order.agent_id).maybeSingle();

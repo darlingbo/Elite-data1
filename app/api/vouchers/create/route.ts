@@ -69,9 +69,22 @@ export async function POST(request: NextRequest) {
   const effectiveSellPrice = (qty > BULK_THRESHOLD || promoApplied) ? BULK_PRICE : vPrice.sellPrice;
   const totalSell = effectiveSellPrice * qty;
   const totalCost = vPrice.costPrice * qty;
-  const profit = totalSell - totalCost;
   const chargedAmount = parseFloat((totalSell * (1 + PLATFORM_FEE_RATE)).toFixed(2));
+  // Include the 2% platform fee in admin profit so stats match what was actually collected
+  const profit = parseFloat((chargedAmount - totalCost).toFixed(2));
   const expectedKobo = Math.round(chargedAmount * 100);
+
+  // Phone blocklist check
+  const { data: blocklistData } = await supabase
+    .from("system_settings").select("value").eq("key", "phone_blocklist").maybeSingle();
+  let blocklist: string[] = [];
+  try { blocklist = JSON.parse(blocklistData?.value ?? "[]"); } catch { blocklist = []; }
+  const normalizePhone = (p: string) => String(p).trim().replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0");
+  const normalizedPhone = normalizePhone(String(phone));
+  if (blocklist.some((b: string) => normalizePhone(b) === normalizedPhone)) {
+    await sendAdminAlert(`🚫 BLOCKED VOUCHER ATTEMPT\nPhone: ${phone}\nVoucher: ${label} x${qty}\nRef: ${paystackRef}`).catch(() => {});
+    return Response.json({ error: "👀 I SEE WHAT YOU ARE DOING" }, { status: 403 });
+  }
 
   // Idempotency
   const { data: existing } = await supabase

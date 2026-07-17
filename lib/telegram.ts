@@ -27,13 +27,20 @@ export async function sendAgentNotification(agentChatId: string, message: string
   } catch { /* never crash the main flow */ }
 }
 
-// ── Assistant bot — all general alerts ───────────────────────────────────────
+// ── Admin alerts ─────────────────────────────────────────────────────────────
+// Messages with inline keyboards (approve/reject buttons) MUST be sent via
+// ADMIN_BOT_TOKEN — the same bot the Telegram webhook is registered on —
+// so button callbacks are received. Plain text alerts use ASSISTANT_TOKEN.
 export async function sendAdminAlert(message: string, markup?: object): Promise<void> {
-  await tgSend(ASSISTANT_TOKEN!, message, markup);
+  if (markup) {
+    await tgSend(ADMIN_BOT_TOKEN!, message, markup);
+  } else {
+    await tgSend(ASSISTANT_TOKEN!, message);
+  }
 }
 
 export async function sendAdminBotMessage(message: string, replyMarkup?: object): Promise<void> {
-  await tgSend(ASSISTANT_TOKEN!, message, replyMarkup);
+  await tgSend(ADMIN_BOT_TOKEN!, message, replyMarkup);
 }
 
 // ── @SWIFTDATAGH_BOT — stuck order approval alerts only ──────────────────────

@@ -130,9 +130,7 @@ export async function GET(request: NextRequest) {
 
       if (invStatus === "completed") {
         await supabase.from("orders").update({ status: "completed" }).eq("reference", order.reference);
-        if (order.agent_id) {
-          await creditAgent(order.agent_id, Number(order.agent_commission) || 0, Number(order.amount) || 0);
-        }
+        // Commission is already credited at approval time — do NOT credit again here
         if (!isWalletOrder) {
           const profit = (order.amount && order.cost_price) ? (Number(order.amount) - Number(order.cost_price)).toFixed(2) : null;
           completedOrders.push(

@@ -42,10 +42,10 @@ function greeting() {
 
 function getAgentTier(rev: number) {
   const tiers = [
-    { name: "Bronze", next: "Silver", lo: 0,    hi: 1000,  color: "#b45309", bg: "#fef3c7", icon: "🥉", benefits: ["Standard access", "Commission on all sales", "WhatsApp support"] },
-    { name: "Silver", next: "Gold",   lo: 1000,  hi: 5000,  color: "#64748b", bg: "#f1f5f9", icon: "🥈", benefits: ["12% Commission Rate", "Higher withdrawal limit", "Priority support"] },
-    { name: "Gold",   next: "Platinum", lo: 5000, hi: 20000, color: "#d97706", bg: "#fffbeb", icon: "🥇", benefits: ["15% Commission Rate", "VIP withdrawal limit", "Dedicated support", "Early bundle access"] },
-    { name: "Platinum", next: null, lo: 20000, hi: Infinity, color: "#7c3aed", bg: "#f5f3ff", icon: "💎", benefits: ["18% Commission Rate", "Unlimited withdrawals", "Account manager", "Custom pricing"] },
+    { name: "Bronze",   next: "Silver",   lo: 0,     hi: 1000,     color: "#b45309", bg: "#fef3c7", icon: "🥉", benefits: ["Standard access", "Commission on all sales", "WhatsApp support"] },
+    { name: "Silver",   next: "Gold",     lo: 1000,  hi: 5000,     color: "#64748b", bg: "#f1f5f9", icon: "🥈", benefits: ["Higher commission rate", "Higher withdrawal limit", "Priority support"] },
+    { name: "Gold",     next: "Platinum", lo: 5000,  hi: 20000,    color: "#d97706", bg: "#fffbeb", icon: "🥇", benefits: ["Premium commission rate", "VIP withdrawal limit", "Dedicated support", "Early bundle access"] },
+    { name: "Platinum", next: null,       lo: 20000, hi: Infinity,  color: "#7c3aed", bg: "#f5f3ff", icon: "💎", benefits: ["Top commission rate", "Unlimited withdrawals", "Account manager", "Custom pricing"] },
   ];
   const t = tiers.find(t => rev >= t.lo && rev < t.hi) ?? tiers[3];
   const pct = t.hi === Infinity ? 100 : Math.min(((rev - t.lo) / (t.hi - t.lo)) * 100, 100);

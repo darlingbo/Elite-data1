@@ -121,10 +121,7 @@ export async function POST(request: Request) {
 
       if (invStatus === "completed") {
         await supabase.from("orders").update({ status: "completed" }).eq("reference", order.reference);
-        // Credit agent commission now that order is confirmed complete
-        if (order.agent_id) {
-          await creditAgent(order.agent_id, Number(order.agent_commission) || 0, Number(order.amount) || 0);
-        }
+        // Commission is already credited at approval time — do NOT credit again here
         updated++;
         return;
       }

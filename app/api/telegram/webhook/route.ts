@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
 import { sendAgentNotification } from "@/lib/telegram";
 import { inventorPurchase, inventorVoucher } from "@/lib/inventor";
+import { sendCustomerSMS, orderFailedSMS } from "@/lib/sms";
 
 const ADMIN_BOT_TOKEN = process.env.TELEGRAM_ADMIN_BOT_TOKEN!;
 const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID!;
@@ -214,6 +215,7 @@ async function cmdRecover(chatId: string, reference: string) {
   const customerName = getField("name") || String(txn.customer ? (txn.customer as Record<string, string>).first_name : "") || "Customer";
   const phone = getField("phone") || "";
   const bundleLabel = getField("bundle") || ""; // e.g. "MTN 2GB"
+  const agentCodeRecover = getField("agent_code") || "";
   const email = (txn.customer as Record<string, string>)?.email ?? "";
   const amountPesewas = Number(txn.amount ?? 0);
 
@@ -268,7 +270,7 @@ async function cmdRecover(chatId: string, reference: string) {
     const createRes = await fetch(`${SITE_URL}/api/orders/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: customerName, email, phone, bundleId, paystackRef: reference }),
+      body: JSON.stringify({ name: customerName, email, phone, bundleId, paystackRef: reference, agentCode: agentCodeRecover || undefined }),
     });
     const result = await createRes.json() as Record<string, unknown>;
 
@@ -645,6 +647,10 @@ async function approveOrder(chatId: string, reference: string) {
     );
   } else {
     await supabase.from("orders").update({ status: "failed" }).eq("reference", reference);
+    sendCustomerSMS(
+      order.phone,
+      orderFailedSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", reference)
+    ).catch(() => {});
     const errMsg = String((errorBody.error as string) ?? (errorBody.message as string) ?? JSON.stringify(errorBody)).slice(0, 200);
     await reply(chatId,
       `❌ <b>Delivery failed after approval</b>\n\n` +

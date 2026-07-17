@@ -34,7 +34,7 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .filter(o => {
       if (statusFilter === "PENDING_APPROVAL" && o.status !== "pending_approval") return false;
-      if (statusFilter !== "ALL" && statusFilter !== "PENDING_APPROVAL" && o.status.toUpperCase() !== statusFilter) return false;
+      if (statusFilter !== "ALL" && statusFilter !== "PENDING_APPROVAL" && o.status.toUpperCase() !== statusFilter.toUpperCase()) return false;
       if (networkFilter !== "ALL" && (o.network ?? "").toLowerCase() !== networkFilter.toLowerCase()) return false;
       if (!q) return true;
       return (
@@ -57,9 +57,11 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
     FAILED:           orders.filter(o => o.status.toUpperCase() === "FAILED").length,
     PENDING:          orders.filter(o => o.status.toUpperCase() === "PENDING").length,
     NOT_ON_LIST:      orders.filter(o => o.status.toUpperCase() === "NOT_ON_LIST").length,
+    FRAUD:            orders.filter(o => o.status.toUpperCase() === "FRAUD").length,
+    REJECTED:         orders.filter(o => o.status.toUpperCase() === "REJECTED").length,
   };
 
-  // Tab order: Awaiting → All → Completed → Processing → Failed → Pending
+  // Tab order: Awaiting → All → Completed → Processing → Failed → Pending → Not On List → Fraud
   const tabDefs: { key: OrderStatus; color: string; label: string }[] = [
     { key: "PENDING_APPROVAL", color: "#f59e0b", label: "Awaiting Approval" },
     { key: "ALL",              color: "#3b82f6", label: "All Orders" },
@@ -67,6 +69,8 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
     { key: "PROCESSING",       color: "#3b82f6", label: "Processing" },
     { key: "FAILED",           color: "#f87171", label: "Failed" },
     { key: "PENDING",          color: "#94a3b8", label: "Pending" },
+    { key: "NOT_ON_LIST",      color: "#f97316", label: "Not on List" },
+    { key: "FRAUD",            color: "#dc2626", label: "🕵️ Fraud" },
   ];
 
   const statusStyle: Record<string, { bg: string; color: string }> = {
@@ -77,6 +81,7 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
     FAILED:           { bg: "rgba(248,113,113,0.1)", color: "#f87171" },
     NOT_ON_LIST:      { bg: "rgba(249,115,22,0.15)", color: "#f97316" },
     REJECTED:         { bg: "rgba(239,68,68,0.08)",  color: "#ef4444" },
+    FRAUD:            { bg: "rgba(220,38,38,0.12)",  color: "#dc2626" },
   };
 
   function flashMsg(ref: string, ok: boolean, text: string, ms = 5000) {

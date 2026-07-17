@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
 import { sendAgentNotification, sendAdminAlert } from "@/lib/telegram";
 import { inventorPurchase, inventorVoucher } from "@/lib/inventor";
+import { sendCustomerSMS, orderFailedSMS } from "@/lib/sms";
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -145,7 +146,10 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
     return { ok: true, message: "Approved & sent" };
   } else {
     await supabase.from("orders").update({ status: "failed" }).eq("reference", reference);
-    // Extract human-readable error from Inventor response
+    sendCustomerSMS(
+      order.phone,
+      orderFailedSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", reference)
+    ).catch(() => {});
     const errMsg = String(
       (errorBody.error as string) ?? (errorBody.message as string) ?? JSON.stringify(errorBody)
     ).slice(0, 160);

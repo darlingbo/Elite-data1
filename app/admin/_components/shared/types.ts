@@ -6,7 +6,7 @@ export type Tab =
   | "customers" | "mashup-bundles" | "network-providers" | "coupons" | "referrals" | "withdrawals" | "agent-ranks" | "analytics" | "developer-api" | "paystack-split" | "notifications"
   | "refund-numbers";
 
-export type OrderStatus = "ALL" | "COMPLETED" | "PROCESSING" | "PENDING" | "FAILED" | "NOT_ON_LIST" | "PENDING_APPROVAL";
+export type OrderStatus = "ALL" | "COMPLETED" | "PROCESSING" | "PENDING" | "FAILED" | "NOT_ON_LIST" | "PENDING_APPROVAL" | "FRAUD" | "REJECTED";
 
 export interface Order {
   reference: string; status: string; amount: number; admin_commission: number;
