@@ -11,6 +11,9 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
   const [networkFilter, setNetworkFilter] = useState<string>("ALL");
   const [page, setPage] = useState(1);
 
+  // Optimistically hide orders that have just been approved/rejected (before stats refresh lands)
+  const [handledRefs, setHandledRefs] = useState<Set<string>>(new Set());
+
   // Per-row action state
   const [selectedRefs, setSelectedRefs] = useState<Set<string>>(new Set());
   const [approving, setApproving] = useState<Set<string>>(new Set());
@@ -33,6 +36,7 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
     .slice()
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .filter(o => {
+      if (handledRefs.has(o.reference)) return false; // optimistically removed after approve/reject
       if (statusFilter === "PENDING_APPROVAL" && o.status !== "pending_approval") return false;
       if (statusFilter !== "ALL" && statusFilter !== "PENDING_APPROVAL" && o.status.toUpperCase() !== statusFilter.toUpperCase()) return false;
       if (networkFilter !== "ALL" && (o.network ?? "").toLowerCase() !== networkFilter.toLowerCase()) return false;
@@ -106,6 +110,9 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
         msgs[r.reference] = { ok: r.ok, text: r.ok ? (action === "approve" ? "✓ Approved!" : "✓ Rejected") : `✗ ${r.message}` };
       }
       setApproveMsg(prev => ({ ...prev, ...msgs }));
+      // Optimistically hide successfully handled orders immediately
+      const succeeded = d.results?.filter((r: { ok: boolean }) => r.ok).map((r: { reference: string }) => r.reference) ?? [];
+      if (succeeded.length > 0) setHandledRefs(prev => new Set([...prev, ...succeeded]));
       onRefresh();
       setTimeout(() => setApproveMsg(prev => { const n = { ...prev }; for (const ref of refSet) delete n[ref]; return n; }), 6000);
     } catch {

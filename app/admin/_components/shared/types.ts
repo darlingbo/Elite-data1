@@ -24,7 +24,7 @@ export interface Agent {
 }
 
 export interface StatsData {
-  orders: { all: Order[]; total: number; completed: number; processing: number; pending: number; failed: number; pendingApproval: number };
+  orders: { all: Order[]; pendingOrders: Order[]; total: number; completed: number; processing: number; pending: number; failed: number; pendingApproval: number };
   revenue: { total: number; cost: number };
   profit: { admin: number; agentCommissions: number; gross: number };
   agents: { all: Agent[]; total: number; pending: number; approved: number; rejected: number };

@@ -190,7 +190,7 @@ export default function AdminDashboard() {
           ) : stats ? (
             <>
               {tab === "overview"          && <Dashboard stats={stats} animated={animated} onNavigate={setTab} />}
-              {isOrderTab(tab)             && <OrdersView key={tab} orders={stats.orders.all} onRefresh={fetchStats} defaultFilter={tabToOrderFilter[tab]} />}
+              {isOrderTab(tab)             && <OrdersView key={tab} orders={tab === "approval-queue" ? stats.orders.pendingOrders : stats.orders.all} onRefresh={fetchStats} defaultFilter={tabToOrderFilter[tab]} />}
               {tab === "data-bundles"      && <PricesView />}
               {tab === "bundle-prices"     && <AgentPricesAdmin allAgents={stats.agents.all} />}
               {isAgentTab(tab)             && <AgentsView key={tab === "agent-applications" ? "pending" : "approved"} stats={stats} onRefresh={fetchStats} defaultTab={tab === "agent-applications" ? "pending" : "approved"} />}
