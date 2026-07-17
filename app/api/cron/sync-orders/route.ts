@@ -45,37 +45,6 @@ async function creditAgent(agentId: string, commission: number, revenue: number)
   }).eq("id", agentId);
 }
 
-async function retryDelivery(order: {
-  reference: string;
-  phone: string;
-  network: string;
-  bundle_size_gb: number;
-  bundle_size: string;
-}): Promise<"sent" | "already_processing" | "failed"> {
-  try {
-    const retryRef = `${order.reference}-rs`;
-    const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-      body: JSON.stringify({
-        network: networkApiMap[order.network] ?? order.network.toUpperCase(),
-        Phone: order.phone,
-        Datasize: order.bundle_size_gb,
-        reference: retryRef,
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-
-    // 409 = Inventor already has this order in-flight — don't retry, just mark processing
-    if (res.status === 409) return "already_processing";
-
-    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-    const ok = res.ok || body.success === true || body.status === "success" || body.status === "00";
-    return ok ? "sent" : "failed";
-  } catch {
-    return "failed";
-  }
-}
 
 export async function GET(request: NextRequest) {
   // Allow Vercel cron (x-vercel-cron header) OR matching Bearer token OR no auth (external cron-job.org)
@@ -163,33 +132,21 @@ export async function GET(request: NextRequest) {
 
       const isStuck = order.created_at < stuckCutoff;
       if (isStuck && order.phone && order.network && sizeGb) {
-        if (isWalletOrder) {
-          // Wallet orders: auto-retry without asking admin
-          const retryResult = await retryDelivery({ ...order, bundle_size_gb: sizeGb });
-          if (retryResult === "sent" || retryResult === "already_processing") {
-            await supabase.from("orders").update({ status: "processing" }).eq("reference", order.reference);
-          } else {
-            await supabase.from("orders").update({ status: "failed" }).eq("reference", order.reference);
+        // All orders — alert admin to deliver manually. Never auto-retry.
+        await sendAdminAlert(
+          `⚠️ <b>STUCK ORDER</b>${isWalletOrder ? " (Agent Wallet)" : ""}\n\n` +
+          `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
+          `📎 Ref: <code>${order.reference}</code>\n\n` +
+          `This order has been processing for 15+ min. Please deliver manually or retry.`,
+          {
+            inline_keyboard: [[
+              { text: "🔄 Retry Now", callback_data: `retry:${order.reference}` },
+              { text: "✅ Mark Done", callback_data: `skip_retry:${order.reference}` },
+            ]],
           }
-          retried++;
-        } else {
-          // Normal orders already approved — do NOT auto-retry. Alert admin to handle manually.
-          // Order stays in `processing` so it never reappears in the approval queue.
-          await sendAdminAlert(
-            `⚠️ <b>STUCK ORDER</b>\n\n` +
-            `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
-            `📎 Ref: <code>${order.reference}</code>\n\n` +
-            `This order has been processing for 15+ min. Please deliver manually or retry.`,
-            {
-              inline_keyboard: [[
-                { text: "🔄 Retry Now", callback_data: `retry:${order.reference}` },
-                { text: "✅ Mark Done", callback_data: `skip_retry:${order.reference}` },
-              ]],
-            }
-          );
-          retried++;
-          retriedOrders.push(`⚠️ ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (stuck, alerted)`);
-        }
+        );
+        retried++;
+        retriedOrders.push(`⚠️ ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (stuck, alerted)`);
       }
     }));
   }
