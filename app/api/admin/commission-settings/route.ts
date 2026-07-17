@@ -17,10 +17,17 @@ export async function GET() {
     supabase.from("agents").select("id, name, referral_code, agent_type").eq("status", "approved").order("name"),
   ]);
 
+  // Auto-initialize the global row if it doesn't exist yet
+  if (!globalRes.data && !globalRes.error) {
+    await supabase.from("commission_settings")
+      .upsert({ id: "global", agent_pct: 80, updated_at: new Date().toISOString() }, { onConflict: "id" });
+  }
+
   return Response.json({
     global_agent_pct: globalRes.data?.agent_pct ?? 80,
     overrides: overridesRes.data ?? [],
     agents: agentsRes.data ?? [],
+    table_missing: !!globalRes.error,
   });
 }
 
@@ -43,9 +50,12 @@ export async function POST(request: NextRequest) {
   if (body.type === "global") {
     const { error } = await supabase
       .from("commission_settings")
-      .upsert({ id: "global", agent_pct: pct, updated_at: new Date().toISOString() });
-    if (error) return Response.json({ error: error.message }, { status: 500 });
-    return Response.json({ success: true, global_agent_pct: pct });
+      .upsert({ id: "global", agent_pct: pct, updated_at: new Date().toISOString() }, { onConflict: "id" });
+    if (error) return Response.json({ error: `Could not save split: ${error.message}. Run the setup SQL in Supabase first.` }, { status: 500 });
+
+    // Read back to confirm the value was actually stored
+    const { data: confirmed } = await supabase.from("commission_settings").select("agent_pct").eq("id", "global").maybeSingle();
+    return Response.json({ success: true, global_agent_pct: confirmed?.agent_pct ?? pct });
   }
 
   if (body.type === "agent") {

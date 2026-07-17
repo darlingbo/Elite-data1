@@ -515,7 +515,10 @@ export async function POST(request: NextRequest) {
   );
 
   // Resolve commission split — global default then per-agent override
-  const globalAgentPct = (commissionGlobalResult.data?.agent_pct ?? 80) / 100;
+  // If commission_settings table is missing or the global row is absent, fall back to 80%
+  // (silent fallback keeps orders flowing; admin should check the Commissions tab)
+  const storedPct = commissionGlobalResult.data?.agent_pct;
+  const globalAgentPct = storedPct != null ? Number(storedPct) / 100 : 0.8;
   let agentSplitRate = globalAgentPct;
   if (agentId) {
     const { data: overrideData } = await supabase

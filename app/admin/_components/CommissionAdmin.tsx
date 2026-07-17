@@ -18,6 +18,7 @@ interface CommissionData {
   global_agent_pct: number;
   overrides: AgentOverride[];
   agents: Agent[];
+  table_missing?: boolean;
 }
 
 export default function CommissionAdmin() {
@@ -173,10 +174,11 @@ export default function CommissionAdmin() {
         </div>
       )}
 
-      {/* SQL notice */}
-      <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl p-4 text-sm">
-        <p className="text-amber-300 font-bold mb-1">⚠️ First-time setup — run this SQL in Supabase:</p>
-        <pre className="text-amber-200 text-xs bg-black/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">{`CREATE TABLE IF NOT EXISTS commission_settings (
+      {data.table_missing && (
+        <div className="bg-red-900/30 border border-red-500/40 rounded-xl p-4 text-sm">
+          <p className="text-red-300 font-bold mb-2">⚠️ Commission settings table not found in Supabase</p>
+          <p className="text-red-200 text-xs mb-3">Run this SQL in Supabase Dashboard → SQL Editor, then reload this page:</p>
+          <pre className="text-amber-200 text-xs bg-black/40 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">{`CREATE TABLE IF NOT EXISTS commission_settings (
   id text PRIMARY KEY DEFAULT 'global',
   agent_pct numeric NOT NULL DEFAULT 80,
   updated_at timestamptz DEFAULT now()
@@ -184,12 +186,13 @@ export default function CommissionAdmin() {
 INSERT INTO commission_settings (id, agent_pct) VALUES ('global', 80) ON CONFLICT DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS agent_commission_overrides (
-  agent_id uuid PRIMARY KEY,
+  agent_id uuid PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
   agent_pct numeric NOT NULL,
   note text,
   updated_at timestamptz DEFAULT now()
 );`}</pre>
-      </div>
+        </div>
+      )}
 
       {/* Global split card */}
       <div className="bg-gradient-to-br from-[#0f2450] to-[#0a1a35] border border-[#1e3050] rounded-2xl p-6">
@@ -241,6 +244,12 @@ CREATE TABLE IF NOT EXISTS agent_commission_overrides (
           className="mt-5 w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-bold rounded-xl py-3.5 text-sm transition-colors">
           {saving ? "Saving…" : `Save — Agents ${globalPct}% / Admin ${adminPct}%`}
         </button>
+
+        {data.overrides.length > 0 && (
+          <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-900/15 px-4 py-3 text-xs text-amber-300">
+            ⚠️ <strong>{data.overrides.length} agent{data.overrides.length !== 1 ? "s" : ""}</strong> have a personal override set below — those agents ignore the global rate and use their own %. To apply the global rate to them, click <strong>Reset</strong> on each one.
+          </div>
+        )}
       </div>
 
       {/* Per-agent overrides */}
