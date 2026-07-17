@@ -173,30 +173,22 @@ export async function GET(request: NextRequest) {
           }
           retried++;
         } else {
-          // Normal orders already approved — auto-retry delivery without sending back to pending_approval.
-          // Admin already approved this order; putting it back in the queue would force double-approval.
-          const retryResult = await retryDelivery({ ...order, bundle_size_gb: sizeGb });
-          if (retryResult === "sent" || retryResult === "already_processing") {
-            await supabase.from("orders").update({ status: "processing" }).eq("reference", order.reference);
-            retried++;
-            retriedOrders.push(`🔁 ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (auto-retried)`);
-          } else {
-            // Retry failed — alert admin to handle manually, keep as processing (do NOT move to pending_approval)
-            await sendAdminAlert(
-              `⚠️ <b>STUCK ORDER — Auto-retry failed</b>\n\n` +
-              `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
-              `📎 Ref: <code>${order.reference}</code>\n\n` +
-              `Already approved. Inventor retry failed — please deliver manually or use /retry.`,
-              {
-                inline_keyboard: [[
-                  { text: "🔄 Retry Now", callback_data: `retry:${order.reference}` },
-                  { text: "✅ Mark Done", callback_data: `skip_retry:${order.reference}` },
-                ]],
-              }
-            );
-            retried++;
-            retriedOrders.push(`❌ ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (retry failed, alerted)`);
-          }
+          // Normal orders already approved — do NOT auto-retry. Alert admin to handle manually.
+          // Order stays in `processing` so it never reappears in the approval queue.
+          await sendAdminAlert(
+            `⚠️ <b>STUCK ORDER</b>\n\n` +
+            `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
+            `📎 Ref: <code>${order.reference}</code>\n\n` +
+            `This order has been processing for 15+ min. Please deliver manually or retry.`,
+            {
+              inline_keyboard: [[
+                { text: "🔄 Retry Now", callback_data: `retry:${order.reference}` },
+                { text: "✅ Mark Done", callback_data: `skip_retry:${order.reference}` },
+              ]],
+            }
+          );
+          retried++;
+          retriedOrders.push(`⚠️ ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (stuck, alerted)`);
         }
       }
     }));
@@ -210,7 +202,7 @@ export async function GET(request: NextRequest) {
 
   if (retriedOrders.length > 0) {
     await sendAdminAlert(
-      `🔁 AUTO-RETRY: ${retried} stuck order(s) resent\n\n${retriedOrders.join("\n")}`
+      `⚠️ STUCK ORDERS: ${retriedOrders.length} order(s) need manual delivery\n\n${retriedOrders.join("\n")}`
     ).catch(() => {});
   }
 
