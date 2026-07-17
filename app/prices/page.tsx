@@ -13,9 +13,9 @@ const SUB = "#64748b";
 type BundleItem = { id: string; network: Network; size: string; sizeGB: number; validity: string; price: number; costPrice: number; popular?: boolean };
 
 const NETS: { id: Network; label: string; color: string; textOnColor: string; lightBg: string }[] = [
-  { id: "mtn",        label: "MTN",        color: "#f59e0b", textOnColor: "#78350f", lightBg: "rgba(245,158,11,0.10)" },
-  { id: "telecel",    label: "Telecel",    color: "#ef4444", textOnColor: "#ffffff", lightBg: "rgba(239,68,68,0.10)" },
-  { id: "airteltigo", label: "AirtelTigo", color: "#3b82f6", textOnColor: "#ffffff", lightBg: "rgba(59,130,246,0.10)" },
+  { id: "mtn",        label: "MTN",        color: "#FFC220", textOnColor: "#78350f", lightBg: "rgba(255,194,32,0.10)" },
+  { id: "telecel",    label: "Telecel",    color: "#E8001D", textOnColor: "#ffffff", lightBg: "rgba(232,0,29,0.10)" },
+  { id: "airteltigo", label: "AirtelTigo", color: "#E4002B", textOnColor: "#ffffff", lightBg: "rgba(228,0,43,0.10)" },
 ];
 
 const USAGE = [
@@ -67,14 +67,41 @@ export default function PricesPage() {
   return (
     <div className="min-h-screen" style={{ background: BG }}>
       {/* Header */}
-      <div className="bg-gradient-to-br from-blue-800 via-blue-700 to-blue-500 text-white py-14 px-4 text-center">
-        <div className="max-w-3xl mx-auto">
-          <span className="inline-block bg-white/20 text-white text-xs font-bold px-3 py-1 rounded-full mb-4 uppercase tracking-wider border border-white/30">
+      <div style={{
+        background: `radial-gradient(ellipse 80% 60% at 50% -10%, rgba(59,130,246,0.12) 0%, transparent 65%), ${BG}`,
+        padding: "64px 16px 52px", textAlign: "center",
+        borderBottom: `1px solid ${BORDER}`, position: "relative", overflow: "hidden",
+      }}>
+        <div style={{
+          position: "absolute", inset: 0, pointerEvents: "none",
+          backgroundImage: "radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px)",
+          backgroundSize: "28px 28px",
+        }} />
+        <div style={{ maxWidth: 600, margin: "0 auto", position: "relative" }}>
+          <span style={{
+            display: "inline-block",
+            background: "rgba(251,191,36,0.1)",
+            border: "1px solid rgba(251,191,36,0.28)",
+            color: "#fbbf24",
+            fontSize: 11, fontWeight: 800,
+            padding: "5px 14px", borderRadius: 999,
+            marginBottom: 20,
+            textTransform: "uppercase" as const, letterSpacing: "0.08em",
+          }}>
             Live Prices
           </span>
-          <h1 className="text-4xl md:text-5xl font-black mb-3">Bundle Prices</h1>
-          <p className="text-blue-100 text-lg mb-6">All available data bundles across every network — tap any to buy instantly.</p>
-          <Link href="/buy" className="inline-block bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-8 py-3.5 rounded-xl text-base transition-colors shadow-lg">
+          <h1 style={{ fontSize: "clamp(2rem, 5vw, 3.2rem)", fontWeight: 900, color: TEXT, margin: "0 0 14px" }}>Bundle Prices</h1>
+          <p style={{ color: MUTED, fontSize: 16, margin: "0 auto 28px", maxWidth: 440, lineHeight: 1.6 }}>
+            All available data bundles across every network — tap any to buy instantly.
+          </p>
+          <Link href="/buy" style={{
+            display: "inline-block",
+            background: "#fbbf24", color: "#111",
+            fontWeight: 900, fontSize: 15,
+            padding: "14px 36px", borderRadius: 14,
+            textDecoration: "none",
+            boxShadow: "0 6px 24px rgba(251,191,36,0.25)",
+          }}>
             Buy Data Now ⚡
           </Link>
         </div>

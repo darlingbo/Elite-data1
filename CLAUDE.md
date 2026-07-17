@@ -20,6 +20,12 @@ Next.js 16 rules that override your training data defaults.
 4. Admin routes must verify the `admin_session` cookie
 5. CSP lives in `proxy.ts` only — never add it to `vercel.json` or `next.config.ts`
 
+## UI Work
+Always follow `.claude/skills/elitedata-design/SKILL.md` for any component or page.
+Never introduce new colors, fonts, or spacing values outside the token set —
+if something's missing, ask before adding it.
+Mobile-first: most users are on low-end Android over mobile data.
+
 ## Project
 Elite Data is a data-selling platform for Ghana.
 Customers buy MTN, Telecel, AirtelTigo data bundles and exam vouchers.

@@ -10,7 +10,7 @@ import SocialProofTicker from "@/components/SocialProofTicker";
 const NETS: { id: Network | "mashup"; label: string; color: string; text: string }[] = [
   { id: "mtn",        label: "MTN",        color: "#f59e0b", text: "#78350f" },
   { id: "telecel",    label: "Telecel",    color: "#ef4444", text: "#ffffff" },
-  { id: "airteltigo", label: "AirtelTigo", color: "#3b82f6", text: "#ffffff" },
+  { id: "airteltigo", label: "AirtelTigo", color: "#E4002B", text: "#ffffff" },
   { id: "mashup",     label: "Mashup",     color: "#8b5cf6", text: "#ffffff" },
 ];
 

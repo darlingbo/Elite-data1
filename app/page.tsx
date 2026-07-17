@@ -4,133 +4,206 @@ import PopularBundlesSection from "@/components/PopularBundlesSection";
 import SocialProofTicker from "@/components/SocialProofTicker";
 import MascotBanner from "@/components/MascotBanner";
 
-const BG = "#080f1e";
-const CARD = "#0d1b2e";
+const BG     = "#080f1e";
+const CARD   = "#0d1b2e";
 const BORDER = "#1e3a5f";
-const TEXT = "#f8fafc";
-const MUTED = "#94a3b8";
-const SUB = "#64748b";
+const TEXT   = "#f8fafc";
+const MUTED  = "#94a3b8";
+const SUB    = "#64748b";
+const YELLOW = "#fbbf24";
 
 const networks = [
-  { name: "MTN", border: "border-yellow-400/40", desc: "MTN data bundles from GH₵4", logo: "MTN", logoColor: "bg-yellow-400", textColor: "text-yellow-400", btnColor: "bg-yellow-400" },
-  { name: "Telecel", border: "border-red-500/40", desc: "Telecel data bundles from GH₵3.50", logo: "T", logoColor: "bg-red-500", textColor: "text-red-400", btnColor: "bg-red-500" },
-  { name: "AirtelTigo", border: "border-blue-500/40", desc: "AirtelTigo bundles from GH₵3", logo: "AT", logoColor: "bg-blue-600", textColor: "text-blue-400", btnColor: "bg-blue-600" },
+  { name: "MTN",         color: "#FFC220", glow: "rgba(255,194,32,0.18)", desc: "Fast, reliable data from GH₵4",     logo: "MTN" },
+  { name: "Telecel",     color: "#E8001D", glow: "rgba(232,0,29,0.18)",   desc: "Affordable bundles from GH₵3.50",  logo: "T"   },
+  { name: "AirtelTigo",  color: "#E4002B", glow: "rgba(228,0,43,0.18)",   desc: "Budget-friendly from GH₵3",        logo: "AT"  },
 ];
 
 const features = [
-  { icon: "⚡", title: "Instant Delivery", desc: "Bundle arrives within minutes after payment — automatically." },
-  { icon: "🔒", title: "Secure Payment", desc: "Pay safely with mobile money or card via Paystack." },
-  { icon: "💰", title: "Best Prices", desc: "Lowest data bundle prices across all networks in Ghana." },
-  { icon: "📞", title: "24/7 Support", desc: "Live support on WhatsApp anytime you need help." },
-  { icon: "🤖", title: "Fully Automated", desc: "No manual processing — orders fulfill themselves instantly." },
-  { icon: "🔗", title: "Agent Earnings", desc: "Become an agent and earn on every sale you refer." },
+  { icon: "⚡", title: "Instant Delivery",   desc: "Bundle arrives within minutes after payment — automatically." },
+  { icon: "🔒", title: "Secure Payment",     desc: "Pay safely with mobile money or card via Paystack." },
+  { icon: "💰", title: "Best Prices",        desc: "Lowest data bundle prices across all networks in Ghana." },
+  { icon: "📞", title: "24/7 Support",       desc: "Live support on WhatsApp anytime you need help." },
+  { icon: "🤖", title: "Fully Automated",    desc: "No manual processing — orders fulfill themselves instantly." },
+  { icon: "🔗", title: "Agent Earnings",     desc: "Become an agent and earn on every sale you refer." },
 ];
 
 const stats = [
-  { value: "30,000+", label: "Happy Customers" },
+  { value: "30,000+",  label: "Happy Customers" },
   { value: "100,000+", label: "Orders Delivered" },
-  { value: "3", label: "Networks Supported" },
-  { value: "99.9%", label: "Uptime" },
+  { value: "3",        label: "Networks" },
+  { value: "99.9%",   label: "Uptime" },
 ];
 
 const howItWorks = [
-  { step: "1", title: "Choose Your Bundle", desc: "Pick your network and select the data size you want." },
-  { step: "2", title: "Enter Your Number", desc: "Provide the phone number that will receive the data." },
-  { step: "3", title: "Pay Securely", desc: "Complete payment via mobile money or card through Paystack." },
-  { step: "4", title: "Receive Your Data", desc: "Your bundle is delivered automatically within minutes." },
+  { step: "1", title: "Choose Bundle", desc: "Pick your network and the data size you need." },
+  { step: "2", title: "Enter Number",  desc: "Type the phone number that will receive the data." },
+  { step: "3", title: "Pay Securely",  desc: "Pay via mobile money or card through Paystack." },
+  { step: "4", title: "Get Data",      desc: "Bundle delivered automatically within minutes." },
 ];
 
 const testimonials = [
-  { name: "Kwame Mensah", location: "Accra", stars: 5, text: "Ordered MTN 5GB and it came in under 2 minutes. Cheapest prices I've seen anywhere in Ghana. Will definitely be back!" },
-  { name: "Abena Asante", location: "Kumasi", stars: 5, text: "I was skeptical at first but after my first order I became a regular customer. The automatic delivery is amazing. No waiting!" },
-  { name: "Kofi Agyeman", location: "Takoradi", stars: 5, text: "Even became an agent now. Earning extra income every week just by sharing my link. Elite Data is the real deal." },
-  { name: "Efua Darko", location: "Tema", stars: 5, text: "Customer support on WhatsApp is top notch. Had a small issue and it was resolved within minutes. Very trustworthy." },
+  { name: "Kwame M.",  location: "Accra",    stars: 5, text: "Ordered MTN 5GB and it came in 2 minutes. Cheapest prices I've seen in Ghana!" },
+  { name: "Abena A.",  location: "Kumasi",   stars: 5, text: "After my first order I became a regular. The automatic delivery is amazing." },
+  { name: "Kofi A.",   location: "Takoradi", stars: 5, text: "Even became an agent. Earning extra income weekly just by sharing my link." },
+  { name: "Efua D.",   location: "Tema",     stars: 5, text: "Customer support on WhatsApp is top notch. Very trustworthy platform." },
 ];
 
 const faqs = [
-  { q: "How fast is delivery?", a: "Bundles are delivered automatically within 1–5 minutes after payment is confirmed. No manual steps needed." },
-  { q: "Which payment methods are accepted?", a: "We accept all major mobile money (MTN MoMo, Telecel Cash, AirtelTigo Money) and bank cards via Paystack — Ghana's most trusted payment gateway." },
-  { q: "What if my bundle doesn't arrive?", a: "Contact us immediately on WhatsApp (+233 509 794 503). We resolve all delivery issues within 30 minutes." },
-  { q: "Can I buy for someone else's number?", a: "Yes! Just enter the recipient's phone number in the checkout form. The bundle goes directly to that number." },
-  { q: "How do I become an agent?", a: "Click 'Become Agent' in the navigation, fill the short form, and we'll review your application within 24 hours. You earn on every sale made through your referral link." },
-  { q: "How do I track my order?", a: "After payment, you receive a reference code. Use it on the Track Order page to check your delivery status anytime." },
+  { q: "How fast is delivery?",               a: "Bundles are delivered automatically within 1–5 minutes after payment is confirmed. No manual steps needed." },
+  { q: "Which payment methods are accepted?", a: "All major mobile money (MTN MoMo, Telecel Cash, AirtelTigo Money) and bank cards via Paystack — Ghana's most trusted payment gateway." },
+  { q: "What if my bundle doesn't arrive?",   a: "Contact us immediately on WhatsApp (+233 509 794 503). We resolve all delivery issues within 30 minutes." },
+  { q: "Can I buy for someone else's number?",a: "Yes! Just enter the recipient's phone number in the checkout form. The bundle goes directly to that number." },
+  { q: "How do I become an agent?",           a: "Click 'Become Agent' in the navigation, fill the short form, and we'll review your application within 24 hours." },
+  { q: "How do I track my order?",            a: "After payment, you receive a reference code. Use it on the Track Order page to check your delivery status anytime." },
 ];
 
 export default function Home() {
   return (
     <div style={{ background: BG }}>
-      {/* Monthly promo mascot banner */}
       <MascotBanner />
-
-      {/* Live social proof ticker */}
       <SocialProofTicker />
 
-      {/* Hero */}
-      <section className="bg-gradient-to-br from-blue-800 via-blue-700 to-blue-500 text-white py-20 px-4 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-10 left-10 w-64 h-64 rounded-full bg-white blur-3xl" />
-          <div className="absolute bottom-10 right-10 w-96 h-96 rounded-full bg-yellow-400 blur-3xl" />
-        </div>
-        <div className="max-w-4xl mx-auto text-center relative z-10">
-          <span className="inline-block bg-white/20 backdrop-blur text-white text-xs font-semibold px-3 py-1 rounded-full mb-4 uppercase tracking-wider border border-white/30">
+      {/* ── HERO ──────────────────────────────────────────────────── */}
+      <section style={{
+        background: `radial-gradient(ellipse 80% 50% at 50% -10%, rgba(59,130,246,0.13) 0%, transparent 65%),
+                     radial-gradient(ellipse 40% 30% at 85% 85%, rgba(251,191,36,0.05) 0%, transparent 60%),
+                     ${BG}`,
+        padding: "72px 16px 64px",
+        textAlign: "center",
+        position: "relative",
+        overflow: "hidden",
+      }}>
+        {/* Dot grid */}
+        <div style={{
+          position: "absolute", inset: 0, pointerEvents: "none",
+          backgroundImage: "radial-gradient(rgba(255,255,255,0.035) 1px, transparent 1px)",
+          backgroundSize: "28px 28px",
+        }} />
+
+        <div style={{ maxWidth: 700, margin: "0 auto", position: "relative" }}>
+          <span style={{
+            display: "inline-block",
+            background: "rgba(251,191,36,0.1)",
+            border: "1px solid rgba(251,191,36,0.28)",
+            color: YELLOW,
+            fontSize: 11, fontWeight: 800,
+            padding: "5px 14px", borderRadius: 999,
+            marginBottom: 22,
+            textTransform: "uppercase", letterSpacing: "0.08em",
+          }}>
             Ghana&apos;s #1 Data Bundle Store
           </span>
-          <h1 className="text-4xl md:text-6xl font-black leading-tight mb-4">
+
+          <h1 style={{
+            fontSize: "clamp(2.2rem, 6vw, 3.8rem)",
+            fontWeight: 900, color: TEXT, lineHeight: 1.1,
+            margin: "0 0 18px",
+          }}>
             Buy Cheap Data Bundles<br />
-            <span className="text-yellow-300">Instantly in Ghana</span>
+            <span style={{ color: YELLOW }}>Instantly in Ghana</span>
           </h1>
-          <p className="text-blue-100 text-lg md:text-xl mb-8 max-w-xl mx-auto">
+
+          <p style={{
+            color: MUTED,
+            fontSize: "clamp(0.95rem, 2.5vw, 1.1rem)",
+            margin: "0 auto 36px",
+            maxWidth: 460, lineHeight: 1.65,
+          }}>
             MTN, Telecel &amp; AirtelTigo bundles at the lowest prices. Delivered in minutes. No account needed.
           </p>
-          <div className="flex flex-col items-center gap-3 mb-8">
-            <Link href="/buy" className="bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-8 py-4 rounded-xl text-lg transition-all shadow-lg hover:shadow-yellow-400/30 hover:-translate-y-0.5 w-full sm:w-auto text-center">
+
+          <div className="flex flex-col items-center gap-3 mb-10">
+            <Link href="/buy"
+              className="w-full sm:w-auto"
+              style={{
+                display: "inline-block",
+                background: YELLOW, color: "#111",
+                fontWeight: 900, fontSize: 17,
+                padding: "16px 44px", borderRadius: 14,
+                textDecoration: "none",
+                boxShadow: "0 6px 28px rgba(251,191,36,0.28)",
+                textAlign: "center",
+              }}>
               Buy Data Now ⚡
             </Link>
-            <Link href="/vouchers" className="bg-white/10 hover:bg-white/20 text-white font-black px-6 py-4 rounded-xl transition-colors border border-white/30 backdrop-blur w-full sm:w-auto text-center">
+            <Link href="/vouchers"
+              className="w-full sm:w-auto"
+              style={{
+                display: "inline-block",
+                background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                color: TEXT,
+                fontWeight: 700, fontSize: 15,
+                padding: "14px 36px", borderRadius: 14,
+                textDecoration: "none",
+                textAlign: "center",
+              }}>
               📋 Result Checker Vouchers
             </Link>
           </div>
-          <div className="flex flex-wrap justify-center gap-4 text-sm text-blue-200">
-            <span className="flex items-center gap-1">✅ Paystack Secured</span>
-            <span className="flex items-center gap-1">⚡ Auto-Delivery</span>
-            <span className="flex items-center gap-1">💬 WhatsApp Support</span>
-            <span className="flex items-center gap-1">🔄 100% Refund if Failed</span>
+
+          <div className="flex flex-wrap justify-center gap-x-5 gap-y-2">
+            {["✅ Paystack Secured", "⚡ Auto-Delivery", "💬 WhatsApp Support", "🔄 100% Refund if Failed"].map(b => (
+              <span key={b} style={{ color: MUTED, fontSize: 13 }}>{b}</span>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* Live stats bar */}
-      <section style={{ background: CARD }} className="py-8 px-4">
-        <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-          {stats.map((s) => (
-            <div key={s.label}>
-              <p className="text-3xl font-black text-yellow-400">{s.value}</p>
-              <p className="text-sm mt-1" style={{ color: MUTED }}>{s.label}</p>
+      {/* ── STATS ─────────────────────────────────────────────────── */}
+      <section style={{ background: CARD, borderTop: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}` }}>
+        <div className="grid grid-cols-2 md:grid-cols-4 max-w-3xl mx-auto">
+          {stats.map((s, i) => (
+            <div key={s.label} style={{
+              textAlign: "center", padding: "28px 12px",
+              borderRight: i % 2 === 0 ? `1px solid ${BORDER}` : "none",
+              borderBottom: i < 2 ? `1px solid ${BORDER}` : "none",
+            }}
+              className="md:[border-right:1px_solid_#1e3a5f] md:[border-bottom:none] last:border-r-0">
+              <p style={{ fontSize: 30, fontWeight: 900, color: YELLOW, margin: "0 0 4px" }}>{s.value}</p>
+              <p style={{ fontSize: 12, color: MUTED, margin: 0, textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Networks */}
-      <section className="py-16 px-4" style={{ background: BG }}>
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-black mb-2" style={{ color: TEXT }}>Choose Your Network</h2>
-            <p style={{ color: MUTED }}>We support all major telecom networks in Ghana</p>
+      {/* ── NETWORKS ──────────────────────────────────────────────── */}
+      <section style={{ padding: "72px 16px", background: BG }}>
+        <div style={{ maxWidth: 920, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 44 }}>
+            <h2 style={{ fontSize: "clamp(1.6rem,4vw,2.3rem)", fontWeight: 900, color: TEXT, margin: "0 0 10px" }}>Choose Your Network</h2>
+            <p style={{ color: MUTED, fontSize: 15, margin: 0 }}>We support all major telecom networks in Ghana</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {networks.map((n) => (
-              <Link href="/buy" key={n.name}
-                className={`rounded-2xl border-2 ${n.border} p-6 flex flex-col items-center gap-4 hover:shadow-xl transition-all hover:-translate-y-1 text-center group`}
-                style={{ background: CARD }}>
-                <div className={`w-20 h-20 rounded-full ${n.logoColor} flex items-center justify-center text-white font-black text-xl shadow-lg group-hover:scale-110 transition-transform`}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {networks.map(n => (
+              <Link key={n.name} href="/buy"
+                className="group flex flex-col items-center text-center rounded-2xl transition-all duration-200 hover:-translate-y-1"
+                style={{
+                  background: CARD,
+                  border: `1px solid ${BORDER}`,
+                  padding: "36px 28px",
+                  textDecoration: "none",
+                }}>
+                <div style={{
+                  width: 76, height: 76, borderRadius: "50%",
+                  background: n.color,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "#111", fontWeight: 900, fontSize: 16,
+                  marginBottom: 18,
+                  boxShadow: `0 8px 24px ${n.glow}`,
+                  transition: "transform 0.2s, box-shadow 0.2s",
+                }} className="group-hover:scale-110">
                   {n.logo}
                 </div>
-                <div>
-                  <h3 className={`text-xl font-black ${n.textColor}`}>{n.name}</h3>
-                  <p className="text-sm mt-1" style={{ color: MUTED }}>{n.desc}</p>
-                </div>
-                <span className={`${n.btnColor} text-white text-sm font-semibold px-5 py-2 rounded-lg shadow`}>
+                <h3 style={{ color: TEXT, fontWeight: 900, fontSize: 19, margin: "0 0 8px" }}>{n.name}</h3>
+                <p style={{ color: MUTED, fontSize: 13, margin: "0 0 22px", lineHeight: 1.55 }}>{n.desc}</p>
+                <span style={{
+                  color: n.color,
+                  border: `1px solid ${n.color}`,
+                  borderRadius: 10, padding: "9px 22px",
+                  fontSize: 13, fontWeight: 700,
+                  display: "inline-block",
+                }}>
                   Buy Now →
                 </span>
               </Link>
@@ -139,66 +212,99 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Result Checker Vouchers banner */}
-      <section className="py-10 px-4" style={{ background: BG }}>
-        <div className="max-w-5xl mx-auto">
-          <div className="rounded-2xl bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-700 p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-lg">
-            <div className="flex items-center gap-5">
-              <div className="text-5xl shrink-0">📋</div>
+      {/* ── VOUCHER BANNER ────────────────────────────────────────── */}
+      <section style={{ padding: "0 16px 64px", background: BG }}>
+        <div style={{ maxWidth: 920, margin: "0 auto" }}>
+          <div style={{
+            background: CARD,
+            border: `1px solid ${BORDER}`,
+            borderRadius: 20, padding: "28px 32px",
+            display: "flex", alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap", gap: 20,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+              <div style={{
+                width: 56, height: 56, borderRadius: 16, flexShrink: 0,
+                background: "rgba(139,92,246,0.12)",
+                border: "1px solid rgba(139,92,246,0.3)",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26,
+              }}>📋</div>
               <div>
-                <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-1">Ghana Education Service</p>
-                <h2 className="text-white font-black text-xl md:text-2xl leading-tight">BECE &amp; WASSCE Result Checker Vouchers</h2>
-                <p className="text-blue-200 text-sm mt-1">Buy your result checker PIN instantly · Delivered via SMS · GH₵18 each</p>
+                <p style={{ color: "#a78bfa", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 4px" }}>Ghana Education Service</p>
+                <h2 style={{ color: TEXT, fontWeight: 900, fontSize: 18, margin: "0 0 4px" }}>BECE &amp; WASSCE Result Checker Vouchers</h2>
+                <p style={{ color: MUTED, fontSize: 13, margin: 0 }}>Instant PIN delivery via SMS · GH₵18 each</p>
               </div>
             </div>
-            <Link href="/vouchers" className="shrink-0 bg-white hover:bg-gray-100 text-indigo-700 font-black px-8 py-3.5 rounded-xl transition-colors shadow-lg whitespace-nowrap text-sm">
+            <Link href="/vouchers" style={{
+              background: "rgba(139,92,246,0.12)",
+              border: "1px solid rgba(139,92,246,0.35)",
+              color: "#a78bfa",
+              fontWeight: 700, fontSize: 14,
+              padding: "12px 24px", borderRadius: 12,
+              textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0,
+            }}>
               Buy Voucher →
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Popular Bundles — client component */}
       <PopularBundlesSection />
 
-      {/* How it works */}
-      <section className="py-16 px-4" style={{ background: CARD }}>
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-black mb-2" style={{ color: TEXT }}>How It Works</h2>
-            <p style={{ color: MUTED }}>Buying data is fast, simple, and fully automatic</p>
+      {/* ── HOW IT WORKS ──────────────────────────────────────────── */}
+      <section style={{ padding: "72px 16px", background: CARD, borderTop: `1px solid ${BORDER}` }}>
+        <div style={{ maxWidth: 920, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 52 }}>
+            <h2 style={{ fontSize: "clamp(1.6rem,4vw,2.3rem)", fontWeight: 900, color: TEXT, margin: "0 0 10px" }}>How It Works</h2>
+            <p style={{ color: MUTED, fontSize: 15, margin: 0 }}>Buying data is fast, simple, and fully automatic</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 relative">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
             {howItWorks.map((h, i) => (
-              <div key={h.step} className="text-center p-5 relative">
-                <div className="w-14 h-14 bg-blue-600 text-white rounded-full flex items-center justify-center font-black text-xl mx-auto mb-4 shadow-lg shadow-blue-900/50">
+              <div key={h.step} style={{ textAlign: "center", position: "relative" }}>
+                <div style={{
+                  width: 60, height: 60,
+                  background: "rgba(59,130,246,0.1)",
+                  border: "2px solid rgba(59,130,246,0.25)",
+                  borderRadius: "50%",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 22, fontWeight: 900, color: "#60a5fa",
+                  margin: "0 auto 18px",
+                }}>
                   {h.step}
                 </div>
                 {i < howItWorks.length - 1 && (
-                  <div className="hidden md:block absolute top-7 left-[calc(50%+28px)] right-0 h-0.5" style={{ background: BORDER }} />
+                  <div className="hidden md:block" style={{
+                    position: "absolute", top: 29, left: "calc(50% + 30px)", right: 0,
+                    height: 2,
+                    background: `linear-gradient(90deg, rgba(59,130,246,0.25), transparent)`,
+                  }} />
                 )}
-                <h3 className="font-bold mb-2" style={{ color: TEXT }}>{h.title}</h3>
-                <p className="text-sm" style={{ color: MUTED }}>{h.desc}</p>
+                <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 16, margin: "0 0 8px" }}>{h.title}</h3>
+                <p style={{ color: MUTED, fontSize: 13, lineHeight: 1.65, margin: 0 }}>{h.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Features */}
-      <section className="py-16 px-4" style={{ background: BG }}>
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-black mb-2" style={{ color: TEXT }}>Why Choose Elite Data?</h2>
-            <p style={{ color: MUTED }}>Built for speed, trust, and savings</p>
+      {/* ── FEATURES ──────────────────────────────────────────────── */}
+      <section style={{ padding: "72px 16px", background: BG }}>
+        <div style={{ maxWidth: 920, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 48 }}>
+            <h2 style={{ fontSize: "clamp(1.6rem,4vw,2.3rem)", fontWeight: 900, color: TEXT, margin: "0 0 10px" }}>Why Choose Elite Data?</h2>
+            <p style={{ color: MUTED, fontSize: 15, margin: 0 }}>Built for speed, trust, and savings</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
-            {features.map((f) => (
-              <div key={f.title} className="rounded-2xl p-6 transition-all hover:-translate-y-0.5 flex gap-4" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
-                <div className="text-3xl shrink-0">{f.icon}</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {features.map(f => (
+              <div key={f.title} style={{
+                background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16,
+                padding: "24px", display: "flex", gap: 16, alignItems: "flex-start",
+              }}>
+                <span style={{ fontSize: 28, flexShrink: 0, lineHeight: 1 }}>{f.icon}</span>
                 <div>
-                  <h3 className="font-bold mb-1" style={{ color: TEXT }}>{f.title}</h3>
-                  <p className="text-sm" style={{ color: MUTED }}>{f.desc}</p>
+                  <h3 style={{ color: TEXT, fontWeight: 800, fontSize: 15, margin: "0 0 6px" }}>{f.title}</h3>
+                  <p style={{ color: MUTED, fontSize: 13, margin: 0, lineHeight: 1.65 }}>{f.desc}</p>
                 </div>
               </div>
             ))}
@@ -206,29 +312,37 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section className="py-16 px-4" style={{ background: CARD }}>
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-black mb-2" style={{ color: TEXT }}>What Customers Say</h2>
-            <p style={{ color: MUTED }}>Trusted by thousands of Ghanaians every day</p>
+      {/* ── TESTIMONIALS ──────────────────────────────────────────── */}
+      <section style={{ padding: "72px 16px", background: CARD, borderTop: `1px solid ${BORDER}` }}>
+        <div style={{ maxWidth: 920, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 48 }}>
+            <h2 style={{ fontSize: "clamp(1.6rem,4vw,2.3rem)", fontWeight: 900, color: TEXT, margin: "0 0 10px" }}>What Customers Say</h2>
+            <p style={{ color: MUTED, fontSize: 15, margin: 0 }}>Trusted by thousands of Ghanaians every day</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5">
-            {testimonials.map((t) => (
-              <div key={t.name} className="rounded-2xl p-5" style={{ background: BG, border: `1px solid ${BORDER}` }}>
-                <div className="flex mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            {testimonials.map(t => (
+              <div key={t.name} style={{
+                background: BG, border: `1px solid ${BORDER}`, borderRadius: 16, padding: "20px",
+              }}>
+                <div style={{ display: "flex", gap: 2, marginBottom: 12 }}>
                   {Array.from({ length: t.stars }).map((_, i) => (
-                    <span key={i} className="text-yellow-400 text-sm">★</span>
+                    <span key={i} style={{ color: YELLOW, fontSize: 13 }}>★</span>
                   ))}
                 </div>
-                <p className="text-sm mb-4 italic" style={{ color: MUTED }}>&ldquo;{t.text}&rdquo;</p>
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-black">
+                <p style={{ color: MUTED, fontSize: 13, margin: "0 0 16px", lineHeight: 1.65, fontStyle: "italic" }}>&ldquo;{t.text}&rdquo;</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{
+                    width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
+                    background: "rgba(59,130,246,0.12)",
+                    border: "1px solid rgba(59,130,246,0.25)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: "#60a5fa", fontWeight: 900, fontSize: 14,
+                  }}>
                     {t.name.charAt(0)}
                   </div>
                   <div>
-                    <p className="font-bold text-sm" style={{ color: TEXT }}>{t.name}</p>
-                    <p className="text-xs" style={{ color: SUB }}>{t.location}</p>
+                    <p style={{ color: TEXT, fontWeight: 700, fontSize: 13, margin: "0 0 1px" }}>{t.name}</p>
+                    <p style={{ color: SUB, fontSize: 11, margin: 0 }}>{t.location}</p>
                   </div>
                 </div>
               </div>
@@ -237,54 +351,99 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Agent banner */}
+      {/* ── AGENT BANNER ──────────────────────────────────────────── */}
       <AgentAwareSection>
-        <section className="py-14 px-4 bg-gradient-to-r from-blue-800 to-blue-600 text-white">
-          <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-            <div>
-              <h2 className="text-2xl font-black mb-2">Earn Money as an Elite Data Agent</h2>
-              <p className="text-blue-200">Share your referral link — earn on every bundle sold through it. Free to join.</p>
+        <section style={{ padding: "60px 16px", background: BG, borderTop: `1px solid ${BORDER}` }}>
+          <div style={{ maxWidth: 920, margin: "0 auto" }}>
+            <div style={{
+              background: CARD, border: `1px solid ${BORDER}`,
+              borderRadius: 20, padding: "36px 32px",
+              display: "flex", alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap", gap: 24,
+            }}>
+              <div>
+                <p style={{ color: YELLOW, fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 6px" }}>Agent Program</p>
+                <h2 style={{ color: TEXT, fontWeight: 900, fontSize: 22, margin: "0 0 8px" }}>Earn Money as an Elite Data Agent</h2>
+                <p style={{ color: MUTED, fontSize: 14, margin: 0, maxWidth: 420, lineHeight: 1.6 }}>
+                  Share your referral link — earn on every bundle sold through it. Free to join.
+                </p>
+              </div>
+              <Link href="/agent" style={{
+                background: YELLOW, color: "#111",
+                fontWeight: 900, fontSize: 15,
+                padding: "14px 32px", borderRadius: 14,
+                textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0,
+                boxShadow: "0 6px 24px rgba(251,191,36,0.22)",
+              }}>
+                Become an Agent →
+              </Link>
             </div>
-            <Link href="/agent"
-              className="shrink-0 bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-8 py-3.5 rounded-xl transition-colors shadow-lg whitespace-nowrap">
-              Become an Agent →
-            </Link>
           </div>
         </section>
       </AgentAwareSection>
 
-      {/* FAQ */}
-      <section className="py-16 px-4" style={{ background: BG }}>
-        <div className="max-w-3xl mx-auto">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-black mb-2" style={{ color: TEXT }}>Frequently Asked Questions</h2>
-            <p style={{ color: MUTED }}>Everything you need to know</p>
+      {/* ── FAQ ───────────────────────────────────────────────────── */}
+      <section style={{ padding: "72px 16px", background: CARD, borderTop: `1px solid ${BORDER}` }}>
+        <div style={{ maxWidth: 680, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 40 }}>
+            <h2 style={{ fontSize: "clamp(1.6rem,4vw,2.3rem)", fontWeight: 900, color: TEXT, margin: "0 0 10px" }}>Frequently Asked Questions</h2>
+            <p style={{ color: MUTED, fontSize: 15, margin: 0 }}>Everything you need to know</p>
           </div>
-          <div className="space-y-3">
-            {faqs.map((f) => (
-              <details key={f.q} className="rounded-2xl group" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
-                <summary className="px-5 py-4 font-bold cursor-pointer flex items-center justify-between list-none" style={{ color: TEXT }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {faqs.map(f => (
+              <details key={f.q} style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 14 }}>
+                <summary style={{
+                  padding: "18px 20px", fontWeight: 700, cursor: "pointer",
+                  color: TEXT, display: "flex", alignItems: "center",
+                  justifyContent: "space-between", listStyle: "none",
+                  fontSize: 15,
+                }}>
                   {f.q}
-                  <span className="text-blue-400 text-xl group-open:rotate-45 transition-transform">+</span>
+                  <span style={{ color: "#60a5fa", fontSize: 20, flexShrink: 0, marginLeft: 12 }}>+</span>
                 </summary>
-                <p className="px-5 pb-4 text-sm pt-3" style={{ color: MUTED, borderTop: `1px solid ${BORDER}` }}>{f.a}</p>
+                <p style={{
+                  padding: "14px 20px 20px", margin: 0,
+                  color: MUTED, fontSize: 14, lineHeight: 1.7,
+                  borderTop: `1px solid ${BORDER}`,
+                }}>
+                  {f.a}
+                </p>
               </details>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section className="bg-gradient-to-r from-blue-600 to-blue-700 py-16 px-4 text-white text-center">
-        <div className="max-w-2xl mx-auto">
-          <h2 className="text-3xl font-black mb-3">Ready to Buy Data?</h2>
-          <p className="text-blue-100 mb-7">Join 30,000+ Ghanaians who trust Elite Data for their daily internet needs.</p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link href="/buy" className="bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black px-10 py-4 rounded-xl text-lg transition-colors shadow-lg inline-block">
+      {/* ── FINAL CTA ─────────────────────────────────────────────── */}
+      <section style={{
+        padding: "80px 16px", textAlign: "center",
+        background: `radial-gradient(ellipse 50% 70% at 50% 50%, rgba(251,191,36,0.05) 0%, transparent 70%), ${BG}`,
+        borderTop: `1px solid ${BORDER}`,
+      }}>
+        <div style={{ maxWidth: 500, margin: "0 auto" }}>
+          <h2 style={{ fontSize: "clamp(1.8rem,4vw,2.6rem)", fontWeight: 900, color: TEXT, margin: "0 0 14px" }}>Ready to Buy Data?</h2>
+          <p style={{ color: MUTED, fontSize: 15, margin: "0 0 32px", lineHeight: 1.65 }}>
+            Join 30,000+ Ghanaians who trust Elite Data for their daily internet needs.
+          </p>
+          <div className="flex flex-wrap gap-3 justify-center">
+            <Link href="/buy" style={{
+              background: YELLOW, color: "#111",
+              fontWeight: 900, fontSize: 16,
+              padding: "16px 38px", borderRadius: 14,
+              textDecoration: "none",
+              boxShadow: "0 8px 28px rgba(251,191,36,0.28)",
+            }}>
               Buy Data Now ⚡
             </Link>
-            <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer"
-              className="bg-green-500 hover:bg-green-600 text-white font-bold px-8 py-4 rounded-xl text-lg transition-colors inline-block">
+            <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer" style={{
+              background: "rgba(34,197,94,0.08)",
+              border: "1px solid rgba(34,197,94,0.28)",
+              color: "#4ade80",
+              fontWeight: 700, fontSize: 15,
+              padding: "15px 28px", borderRadius: 14,
+              textDecoration: "none",
+            }}>
               WhatsApp Support
             </a>
           </div>
