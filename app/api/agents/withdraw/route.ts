@@ -65,7 +65,23 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: msg }, { status: 400 });
   }
 
-  // Save as PENDING — admin must approve before money moves
+  // Deduct balance immediately so the dashboard shows the correct available amount.
+  // If admin rejects, the balance is refunded.
+  const fromCommission = Math.min(amt, commissionBal);
+  const fromPaystack   = parseFloat((amt - fromCommission).toFixed(2));
+  const balanceUpdate: Record<string, number> = {
+    commission_balance: parseFloat((commissionBal - fromCommission).toFixed(2)),
+  };
+  if (agentType === "custom_price" && fromPaystack > 0) {
+    balanceUpdate.paystack_wallet_balance = Math.max(0, paystackBal - fromPaystack);
+    balanceUpdate.wallet_balance = Math.max(0, Number(agent.wallet_balance ?? 0) - fromPaystack);
+  }
+  const { error: balErr } = await supabase.from("agents").update(balanceUpdate).eq("id", agentId);
+  if (balErr) {
+    return Response.json({ error: "Failed to reserve balance. Try again." }, { status: 500 });
+  }
+
+  // Save as PENDING — admin must approve before money is sent
   const { data: txn, error: txnError } = await supabase
     .from("agent_wallet_transactions")
     .insert({
@@ -79,6 +95,14 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (txnError || !txn) {
+    // Roll back the balance deduction
+    await supabase.from("agents").update({
+      commission_balance: commissionBal,
+      ...(agentType === "custom_price" && fromPaystack > 0 ? {
+        paystack_wallet_balance: paystackBal,
+        wallet_balance: Number(agent.wallet_balance ?? 0),
+      } : {}),
+    }).eq("id", agentId);
     return Response.json({ error: "Failed to create withdrawal request. Try again." }, { status: 500 });
   }
 

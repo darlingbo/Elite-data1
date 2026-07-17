@@ -58,12 +58,35 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (status === "rejected") {
-    // Just mark rejected — no money moves, no balance deducted
+    const { data: txnToReject } = await supabase
+      .from("agent_wallet_transactions")
+      .select("agent_id, amount, status")
+      .eq("id", id)
+      .single();
+
+    if (!txnToReject) return Response.json({ error: "Transaction not found." }, { status: 404 });
+    if (txnToReject.status !== "pending") return Response.json({ error: "Already processed." }, { status: 400 });
+
+    // Refund the balance that was reserved at request time
+    const refundAmt = Math.abs(Number(txnToReject.amount));
+    const { data: agentToRefund } = await supabase
+      .from("agents")
+      .select("commission_balance, agent_type")
+      .eq("id", txnToReject.agent_id)
+      .maybeSingle();
+    if (agentToRefund) {
+      await supabase.from("agents")
+        .update({ commission_balance: parseFloat((Number(agentToRefund.commission_balance ?? 0) + refundAmt).toFixed(2)) })
+        .eq("id", txnToReject.agent_id);
+    }
+
     const { error } = await supabase
       .from("agent_wallet_transactions")
       .update({ status: "rejected" })
       .eq("id", id);
     if (error) return Response.json({ error: error.message }, { status: 500 });
+
+    sendSwiftAlert(`❌ WITHDRAWAL REJECTED — GH₵${refundAmt.toFixed(2)} refunded to agent balance.`).catch(() => {});
     return Response.json({ success: true });
   }
 
@@ -133,29 +156,10 @@ export async function PATCH(req: NextRequest) {
     return Response.json({ error: `Transfer error: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
   }
 
-  // 3. Deduct balance from agent
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("commission_balance, paystack_wallet_balance, wallet_balance, agent_type")
-    .eq("id", txn.agent_id)
-    .maybeSingle();
+  // Balance was already deducted when the agent submitted the withdrawal request.
+  // No balance change needed here — just mark approved and fire the transfer.
 
-  if (agent) {
-    const commissionBal = Number(agent.commission_balance ?? 0);
-    const paystackBal   = agent.agent_type === "custom_price" ? Number(agent.paystack_wallet_balance ?? 0) : 0;
-    const fromCommission = Math.min(amt, commissionBal);
-    const fromPaystack   = parseFloat((amt - fromCommission).toFixed(2));
-    const updateFields: Record<string, number> = {
-      commission_balance: parseFloat((commissionBal - fromCommission).toFixed(2)),
-    };
-    if (agent.agent_type === "custom_price" && fromPaystack > 0) {
-      updateFields.paystack_wallet_balance = Math.max(0, paystackBal - fromPaystack);
-      updateFields.wallet_balance = Math.max(0, Number(agent.wallet_balance ?? 0) - fromPaystack);
-    }
-    await supabase.from("agents").update(updateFields).eq("id", txn.agent_id);
-  }
-
-  // 4. Mark approved
+  // 3. Mark approved
   await supabase.from("agent_wallet_transactions").update({ status: "approved" }).eq("id", id);
 
   sendSwiftAlert(

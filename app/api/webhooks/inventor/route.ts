@@ -2,23 +2,6 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { sendAdminAlert, sendAgentNotification } from "@/lib/telegram";
 
-async function creditAgent(agentId: string, commission: number, revenue: number) {
-  if (!agentId || !commission) return;
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("commission_balance, total_sales, total_revenue, telegram_chat_id")
-    .eq("id", agentId)
-    .maybeSingle();
-  if (!agent) return;
-  await supabase.from("agents").update({
-    commission_balance: (Number(agent.commission_balance) || 0) + commission,
-    total_sales: (Number(agent.total_sales) || 0) + 1,
-    total_revenue: (Number(agent.total_revenue) || 0) + revenue,
-    updated_at: new Date().toISOString(),
-  }).eq("id", agentId);
-  return agent.telegram_chat_id as string | null;
-}
-
 async function refundWallet(agentId: string, amount: number) {
   const { data: agent } = await supabase
     .from("agents")
@@ -87,22 +70,21 @@ export async function POST(request: NextRequest) {
   if (event === "order.completed") {
     await supabase.from("orders").update({ status: "completed" }).eq("reference", targetRef);
 
-    const commission = Number(target.agent_commission) || 0;
-    const revenue = Number(target.amount) || 0;
-    let tgChatId: string | null = null;
-
-    if (target.agent_id) {
-      tgChatId = await creditAgent(target.agent_id, commission, revenue) ?? null;
-    }
+    // Commission is already credited at admin approval time (approve route / Telegram webhook).
+    // Do NOT credit again here — that would double every agent's earnings.
 
     const isWallet = targetRef.startsWith("AGTWALLET-");
 
-    if (tgChatId && isWallet) {
-      const cost = Number(target.cost_price) || 0;
-      sendAgentNotification(
-        tgChatId,
-        `✅ Data Delivered!\n\n📱 ${(target.network ?? "").toUpperCase()} ${target.bundle_size} → ${target.phone}\n💰 GH₵${cost.toFixed(2)} deducted`
-      ).catch(() => {});
+    if (isWallet && target.agent_id) {
+      const { data: ag } = await supabase
+        .from("agents").select("telegram_chat_id").eq("id", target.agent_id).maybeSingle();
+      if (ag?.telegram_chat_id) {
+        const cost = Number(target.cost_price) || 0;
+        sendAgentNotification(
+          ag.telegram_chat_id,
+          `✅ Data Delivered!\n\n📱 ${(target.network ?? "").toUpperCase()} ${target.bundle_size} → ${target.phone}\n💰 GH₵${cost.toFixed(2)} deducted`
+        ).catch(() => {});
+      }
     }
 
     if (!isWallet) {
