@@ -67,23 +67,31 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
   let balanceAfter: number | null = null;
   let errorBody: Record<string, unknown> = {};
 
-  if (isVoucher) {
-    const voucherTypeMatch = String(order.bundle_size ?? "").match(/^(BECE|WASSCE)/i);
-    const qtyMatch = String(order.bundle_size ?? "").match(/x(\d+)/i);
-    const voucherType = voucherTypeMatch ? voucherTypeMatch[1].toUpperCase() : "BECE";
-    const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
-    const recipient = order.phone.startsWith("0") ? `233${order.phone.slice(1)}` : order.phone;
-    const result = await inventorVoucher(voucherType, recipient, qty);
-    apiOk = result.ok;
-    if (!apiOk) errorBody = result.body;
-  } else {
-    const networkApiMap: Record<string, string> = { mtn: "MTN", telecel: "TELECEL", airteltigo: "AT ISHARE" };
-    const network = networkApiMap[order.network as string] ?? networkApiName[order.network as keyof typeof networkApiName] ?? "MTN";
-    const sizeGB = Number(order.bundle_size_gb ?? 1);
-    const result = await inventorPurchase(network, order.phone, sizeGB, reference);
-    apiOk = result.ok;
-    balanceAfter = result.balance;
-    if (!apiOk) errorBody = result.body;
+  try {
+    if (isVoucher) {
+      const voucherTypeMatch = String(order.bundle_size ?? "").match(/^(BECE|WASSCE)/i);
+      const qtyMatch = String(order.bundle_size ?? "").match(/x(\d+)/i);
+      const voucherType = voucherTypeMatch ? voucherTypeMatch[1].toUpperCase() : "BECE";
+      const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+      const recipient = order.phone.startsWith("0") ? `233${order.phone.slice(1)}` : order.phone;
+      const result = await inventorVoucher(voucherType, recipient, qty);
+      apiOk = result.ok;
+      if (!apiOk) errorBody = result.body;
+    } else {
+      const networkApiMap: Record<string, string> = { mtn: "MTN", telecel: "TELECEL", airteltigo: "AT ISHARE" };
+      const network = networkApiMap[order.network as string] ?? networkApiName[order.network as keyof typeof networkApiName] ?? "MTN";
+      const sizeGB = Number(order.bundle_size_gb ?? 1);
+      const result = await inventorPurchase(network, order.phone, sizeGB, reference);
+      apiOk = result.ok;
+      balanceAfter = result.balance;
+      if (!apiOk) errorBody = result.body;
+    }
+  } catch (err) {
+    // Inventor threw an exception (timeout, network error, etc.) — mark failed so order doesn't stay stuck
+    await supabase.from("orders").update({ status: "failed" }).eq("reference", reference);
+    const msg = err instanceof Error ? err.message : String(err);
+    sendAdminAlert(`❌ Inventor exception on approval of <code>${reference}</code>: ${msg.slice(0, 120)}`).catch(() => {});
+    return { ok: false, message: `Inventor error: ${msg.slice(0, 120)}` };
   }
 
   if (apiOk) {

@@ -91,7 +91,7 @@ export async function DELETE(req: NextRequest) {
     const { data: order } = await supabase.from("orders").select("status, reference").eq("reference", reference).maybeSingle();
     if (!order) return Response.json({ error: "Order not found" }, { status: 404 });
 
-    const allowedStatuses = ["failed", "pending", "processing"];
+    const allowedStatuses = ["failed", "pending", "pending_approval", "processing"];
     if (!allowedStatuses.includes((order.status ?? "").toLowerCase())) {
       return Response.json({ error: `Can only delete orders with status: ${allowedStatuses.join(", ")}` }, { status: 400 });
     }

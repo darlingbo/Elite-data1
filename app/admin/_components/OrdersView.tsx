@@ -19,6 +19,7 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
   const [approving, setApproving] = useState<Set<string>>(new Set());
   const [approveMsg, setApproveMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [movingToProcessing, setMovingToProcessing] = useState<string | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
   const [deletingOne, setDeletingOne] = useState<string | null>(null);
   const [refunding, setRefunding] = useState<string | null>(null);
@@ -131,6 +132,22 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
       else flashMsg(reference, false, "Retry failed");
     } catch { flashMsg(reference, false, "Network error"); }
     finally { setRetrying(null); }
+  }
+
+  async function handleMoveToProcessing(reference: string) {
+    if (!window.confirm("Move this order to Processing? This skips the Inventor API — use when you've manually sent the data.")) return;
+    setMovingToProcessing(reference);
+    try {
+      const res = await fetch("/api/admin/orders/patch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reference, status: "processing" }),
+      });
+      const d = await res.json();
+      if (d.success) { flashMsg(reference, true, "✓ Moved to Processing"); setHandledRefs(prev => new Set([...prev, reference])); onRefresh(); }
+      else flashMsg(reference, false, d.error ?? "Failed");
+    } catch { flashMsg(reference, false, "Network error"); }
+    finally { setMovingToProcessing(null); }
   }
 
   async function handleForceComplete(reference: string) {
@@ -335,8 +352,8 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                 const approveMsgThis = approveMsg[o.reference];
                 const msgThis = actionMsg[o.reference];
                 const statusLower = (o.status ?? "").toLowerCase();
-                const canComplete = ["processing", "pending", "failed", "not_on_list"].includes(statusLower);
-                const canDelete   = ["failed", "pending", "processing"].includes(statusLower);
+                const canComplete = ["processing", "pending", "pending_approval", "failed", "not_on_list"].includes(statusLower);
+                const canDelete   = ["failed", "pending", "pending_approval", "processing"].includes(statusLower);
                 const canRefund   = ["failed", "not_on_list", "rejected"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
                 const refundBlocked = ["processing", "completed"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
 
@@ -423,6 +440,15 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                                 ❌ Reject
                               </button>
                             </>
+                          )}
+
+                          {/* Move to Processing — for stuck pending_approval orders */}
+                          {statusLower === "pending_approval" && o.reference && (
+                            <button onClick={() => handleMoveToProcessing(o.reference)} disabled={movingToProcessing === o.reference}
+                              className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
+                              style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.3)" }}>
+                              {movingToProcessing === o.reference ? "…" : "⏳ Processing"}
+                            </button>
                           )}
 
                           {/* Retry */}
