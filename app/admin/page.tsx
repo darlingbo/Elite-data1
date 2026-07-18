@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import type { Tab, OrderStatus, StatsData } from "./_components/shared/types";
+import type { Tab, OrderStatus, StatsData, Order } from "./_components/shared/types";
 import { BG, BORDER } from "./_components/shared/constants";
 import { Spinner } from "./_components/shared/Spinner";
 import { Ic } from "./_components/shared/Icons";
@@ -66,6 +66,8 @@ export default function AdminDashboard() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showChangePw, setShowChangePw] = useState(false);
 
+  const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
+
   const fetchStats = useCallback(async () => {
     setLoadingStats(true);
     try {
@@ -81,13 +83,33 @@ export default function AdminDashboard() {
     } finally { setLoadingStats(false); }
   }, [router]);
 
+  const fetchPendingApproval = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/orders/pending-approval");
+      if (res.ok) {
+        const data = await res.json() as { orders: Order[] };
+        setPendingOrders(data.orders ?? []);
+        // Keep the sidebar count in sync
+        setStats(prev => prev ? { ...prev, orders: { ...prev.orders, pendingApproval: data.orders?.length ?? 0 } } : prev);
+      }
+    } catch { /* silent — next interval will retry */ }
+  }, []);
+
   useEffect(() => { const t = setTimeout(() => void fetchStats(), 0); return () => clearTimeout(t); }, [fetchStats]);
   useEffect(() => { if (tab === "overview") { setTimeout(() => setAnimated(false), 0); setTimeout(() => setAnimated(true), 60); } }, [tab]);
 
+  // Full stats every 30s; live approval-queue refresh every 8s when on that tab
   useEffect(() => {
     const id = setInterval(() => void fetchStats(), 30_000);
     return () => clearInterval(id);
   }, [fetchStats]);
+
+  useEffect(() => {
+    if (tab !== "approval-queue") return;
+    void fetchPendingApproval();
+    const id = setInterval(() => void fetchPendingApproval(), 8_000);
+    return () => clearInterval(id);
+  }, [tab, fetchPendingApproval]);
 
   useEffect(() => {
     const IDLE_MS = 30 * 60 * 1000;
@@ -190,7 +212,7 @@ export default function AdminDashboard() {
           ) : stats ? (
             <>
               {tab === "overview"          && <Dashboard stats={stats} animated={animated} onNavigate={setTab} />}
-              {isOrderTab(tab)             && <OrdersView key={tab} orders={tab === "approval-queue" ? stats.orders.pendingOrders : stats.orders.all} onRefresh={fetchStats} defaultFilter={tabToOrderFilter[tab]} />}
+              {isOrderTab(tab)             && <OrdersView key={tab} orders={tab === "approval-queue" ? pendingOrders : stats.orders.all} onRefresh={tab === "approval-queue" ? fetchPendingApproval : fetchStats} defaultFilter={tabToOrderFilter[tab]} />}
               {tab === "data-bundles"      && <PricesView />}
               {tab === "bundle-prices"     && <AgentPricesAdmin allAgents={stats.agents.all} />}
               {isAgentTab(tab)             && <AgentsView key={tab === "agent-applications" ? "pending" : "approved"} stats={stats} onRefresh={fetchStats} defaultTab={tab === "agent-applications" ? "pending" : "approved"} />}

@@ -49,7 +49,6 @@ export async function GET() {
   return Response.json({
     orders: {
       all: orders.slice(0, 200), // 200 most recent for all-orders/processing/completed tabs
-      pendingOrders: orders.filter(o => o.status === "pending_approval"), // ALL pending — never capped
       total: orders.length,
       completed: (byStatus["completed"] ?? 0) + (byStatus["COMPLETED"] ?? 0),
       processing: (byStatus["processing"] ?? 0) + (byStatus["PROCESSING"] ?? 0),
