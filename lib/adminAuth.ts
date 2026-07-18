@@ -26,7 +26,11 @@ function sha256(v: string): string {
 async function getConfig(key: string): Promise<string | null> {
   try {
     const { data } = await supabase.from("admin_config").select("value").eq("key", key).maybeSingle();
-    return (data as { value: string } | null)?.value ?? null;
+    const val = (data as { value: string } | null)?.value ?? null;
+    if (val) return val;
+    // Fall back to system_settings for backwards compatibility
+    const { data: ss } = await supabase.from("system_settings").select("value").eq("key", key).maybeSingle();
+    return (ss as { value: string } | null)?.value ?? null;
   } catch {
     return null;
   }
