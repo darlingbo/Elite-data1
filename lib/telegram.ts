@@ -33,9 +33,11 @@ export async function sendAgentNotification(agentChatId: string, message: string
 // so button callbacks are received. Plain text alerts use ASSISTANT_TOKEN.
 export async function sendAdminAlert(message: string, markup?: object): Promise<void> {
   if (markup) {
+    // Must use the same bot the Telegram webhook is registered on so button callbacks arrive
     await tgSend(ADMIN_BOT_TOKEN!, message, markup);
   } else {
-    await tgSend(ASSISTANT_TOKEN!, message);
+    // Use assistant bot for plain alerts; fall back to admin bot if assistant token not set
+    await tgSend((ASSISTANT_TOKEN || ADMIN_BOT_TOKEN)!, message);
   }
 }
 
