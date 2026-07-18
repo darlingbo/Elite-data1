@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { sendCustomerSMS } from "@/lib/sms";
+import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 async function isAdmin() {
   const c = await cookies();
-  return c.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
+  return verifyAdminSessionValue(c.get("admin_session")?.value);
 }
 
 export async function POST(request: NextRequest) {

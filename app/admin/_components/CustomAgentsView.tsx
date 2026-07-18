@@ -71,7 +71,7 @@ export default function CustomAgentsView() {
   if (!agents.length) return (
     <div className="text-center py-20">
       <p className="text-slate-400 text-lg font-semibold">No custom-price agents yet</p>
-      <p className="text-slate-500 text-sm mt-1">Agents who register with "Set My Own Prices" will appear here.</p>
+      <p className="text-slate-500 text-sm mt-1">Agents who register with “Set My Own Prices” will appear here.</p>
     </div>
   );
 

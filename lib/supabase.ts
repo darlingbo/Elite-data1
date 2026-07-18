@@ -5,9 +5,18 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 // New Supabase secret keys start with "sb_secret_".
 // Old legacy JWTs start with "eyJ" and were disabled on 2026-05-27 — skip them.
 const rawServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-const supabaseKey = (rawServiceKey && !rawServiceKey.startsWith("eyJ"))
+const usingServiceKey = Boolean(rawServiceKey && !rawServiceKey.startsWith("eyJ"));
+const supabaseKey = usingServiceKey
   ? rawServiceKey
   : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+if (!usingServiceKey && typeof window === "undefined") {
+  console.error(
+    "[supabase] SUPABASE_SERVICE_ROLE_KEY is missing or is a disabled legacy JWT — " +
+    "falling back to the anon key. Server-side queries will be blocked by RLS. " +
+    "Set a new sb_secret_ key in your environment."
+  );
+}
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 

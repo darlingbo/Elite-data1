@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { rateLimit } from "@/lib/rate-limit";
+import { rateLimitDb } from "@/lib/rate-limit";
 import { bundles, sizeLabel, type Network } from "@/lib/bundles";
 import { sendAdminAlert, fmtOrder, orderApprovalKeyboard } from "@/lib/telegram";
 import { sendCustomerSMS, orderReceivedSMS } from "@/lib/sms";
@@ -244,7 +244,7 @@ async function processLoyalty(
 export async function POST(request: NextRequest) {
   // Rate limit: 10 order attempts per IP per minute
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  if (rateLimit(`orders:${ip}`, 10, 60_000)) {
+  if (await rateLimitDb(`orders:${ip}`, 10, 60_000)) {
     return Response.json({ error: "Too many requests. Please wait a moment." }, { status: 429 });
   }
 

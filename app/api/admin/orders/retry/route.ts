@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { sendAdminAlert } from "@/lib/telegram";
 import { inventorPurchase } from "@/lib/inventor";
+import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 const networkApiName: Record<string, string> = {
   mtn: "MTN",
@@ -12,7 +13,7 @@ const networkApiName: Record<string, string> = {
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
-  return cookieStore.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
+  return verifyAdminSessionValue(cookieStore.get("admin_session")?.value);
 }
 
 export async function POST(request: NextRequest) {

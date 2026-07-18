@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { sendAdminAlert } from "@/lib/telegram";
+import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 const networkApiMap: Record<string, string> = {
   mtn: "MTN",
@@ -10,7 +11,7 @@ const networkApiMap: Record<string, string> = {
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
-  return cookieStore.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
+  return verifyAdminSessionValue(cookieStore.get("admin_session")?.value);
 }
 
 async function checkInventorOrder(reference: string): Promise<"completed" | "processing" | "failed" | null> {

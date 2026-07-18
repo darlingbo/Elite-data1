@@ -9,9 +9,13 @@ export function proxy(request: NextRequest) {
     pathname !== "/admin/login" &&
     !pathname.startsWith("/admin/reset-password")
   ) {
+    // Coarse page gate only: redirect visitors with no admin session cookie to
+    // the login screen. The real authorization happens inside every /api/admin
+    // route (verifyAdminSessionValue), which validates the session against the
+    // server-side hash. We only presence-check here because the proxy runs on the
+    // edge and cannot reach the database to verify the random session token.
     const session = request.cookies.get("admin_session");
-    const validToken = process.env.ADMIN_SESSION_TOKEN;
-    if (!validToken || session?.value !== validToken) {
+    if (!session?.value) {
       return NextResponse.redirect(new URL("/admin/login", request.url));
     }
   }

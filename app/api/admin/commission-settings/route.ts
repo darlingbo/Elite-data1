@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
+import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 async function isAdmin() {
   const c = await cookies();
-  return c.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
+  return verifyAdminSessionValue(c.get("admin_session")?.value);
 }
 
 // GET — returns global split + all agent overrides

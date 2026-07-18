@@ -4,10 +4,11 @@ import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName } from "@/lib/bundles";
 import { sendAdminAlert, sendAgentNotification } from "@/lib/telegram";
 import { inventorPurchase } from "@/lib/inventor";
+import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
-  return cookieStore.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
+  return verifyAdminSessionValue(cookieStore.get("admin_session")?.value);
 }
 
 async function deliverBundle(phone: string, network: string, sizeGB: number, reference: string): Promise<{ ok: boolean; log: string }> {

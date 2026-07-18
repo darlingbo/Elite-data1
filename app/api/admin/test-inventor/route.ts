@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
+import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 async function isAdmin() {
   const c = await cookies();
-  return c.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
+  return verifyAdminSessionValue(c.get("admin_session")?.value);
 }
 
 // Fetches available plans from Inventor so we can see exactly what network names

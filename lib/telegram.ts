@@ -1,4 +1,3 @@
-const BOT_TOKEN       = process.env.TELEGRAM_BOT_TOKEN;
 const ADMIN_BOT_TOKEN = process.env.TELEGRAM_ADMIN_BOT_TOKEN;
 const ASSISTANT_TOKEN = process.env.TELEGRAM_ASSISTANT_BOT_TOKEN;
 const SWIFT_TOKEN     = process.env.TELEGRAM_SWIFT_BOT_TOKEN;

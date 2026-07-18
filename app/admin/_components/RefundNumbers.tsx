@@ -120,7 +120,7 @@ export default function RefundNumbers() {
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 900, color: D.text, margin: 0 }}>MoMo Refund Numbers</h2>
           <p style={{ fontSize: 13, color: D.muted, margin: "4px 0 0" }}>
-            Every customer's MoMo number for instant manual refunds
+            Every customer’s MoMo number for instant manual refunds
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

@@ -63,7 +63,7 @@ export async function getAllAgentBundleCosts(
   // Pro plan agents: tier price if set, otherwise admin selling price (never Inventor cost)
   if (plan === "pro") {
     const { data: tierData } = await supabase.from("custom_tier_prices").select("bundle_id, price");
-    const tierMap = new Map<string, number>((tierData ?? []).map((r: any) => [r.bundle_id, Number(r.price)]));
+    const tierMap = new Map<string, number>((tierData ?? []).map((r: { bundle_id: string; price: number }) => [r.bundle_id, Number(r.price)]));
 
     for (const b of staticBundles) {
       const override = dbMap.get(b.id);

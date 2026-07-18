@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
+import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 async function isAdmin() {
   const s = await cookies();
-  return s.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
+  return verifyAdminSessionValue(s.get("admin_session")?.value);
 }
 
 export async function GET() {

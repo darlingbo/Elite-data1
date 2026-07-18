@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { QRCodeSVG } from "qrcode.react";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -163,6 +162,7 @@ function LoginForm({ onLogin }: { onLogin: (d: AgentData) => void }) {
   const [forgotMsg, setForgotMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [forgotNewPass, setForgotNewPass] = useState<string | null>(null);
   const [passCopied, setPassCopied] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
   async function handleLogin() {
     setError(""); setIsPending(false); setLoading(true);
@@ -266,7 +266,6 @@ function LoginForm({ onLogin }: { onLogin: (d: AgentData) => void }) {
     );
   }
 
-  const [leaving, setLeaving] = useState(false);
   function goRegister() {
     setLeaving(true);
     setTimeout(() => { window.location.href = "/agent"; }, 820);
@@ -503,16 +502,14 @@ function WithdrawModal({ agentId, referralCode, profitBalance, onClose, onSucces
 
 // ─── Dashboard Page ───────────────────────────────────────────────────────────
 function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: AgentData; onAddFunds: () => void; onWithdraw: () => void; onNavigate: (p: Page) => void }) {
+  const [storeLinkCopied, setStoreLinkCopied] = useState(false);
   const isPriceMode = data.agent_type === "custom_price";
   const isPro = data.plan === "pro";
   const ms = useMemo(() => getMonthStats(data.orders), [data.orders]);
   const daily = useMemo(() => getDailySales(data.orders, 30), [data.orders]);
-  const topCustomers = useMemo(() => getTopCustomers(data.orders), [data.orders]);
   const tier = useMemo(() => getAgentTier(data.total_revenue ?? 0), [data.total_revenue]);
   const completed = data.orders.filter(o => o.status.toLowerCase() === "completed");
   const successRate = data.orders.length > 0 ? Math.round((completed.length / data.orders.length) * 100 * 10) / 10 : 0;
-  const uniqueCustomers = new Set(data.orders.map(o => o.phone).filter(Boolean)).size;
-  const totalSpent = data.orders.reduce((s, o) => s + Number(o.cost_price ?? 0), 0);
   const dailyAvg = daily.filter(d => d.count > 0).reduce((s, d) => s + d.revenue, 0) / Math.max(daily.filter(d => d.count > 0).length, 1);
   const bestDay = daily.reduce((best, d) => d.revenue > best.revenue ? d : best, daily[0] ?? { label: "—", revenue: 0 });
 
@@ -585,7 +582,6 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
       {(() => {
         const origin = typeof window !== "undefined" ? window.location.origin : "https://elitedata1.com";
         const link = `${origin}/store/${data.referral_code}`;
-        const [copied, setCopied] = useState(false);
         return (
           <div style={{ background: "linear-gradient(135deg,rgba(245,158,11,0.12),rgba(139,92,246,0.08))", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 18, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(245,158,11,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>🔗</div>
@@ -593,9 +589,9 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
               <p style={{ color: M.text, fontWeight: 800, fontSize: 13, margin: "0 0 2px" }}>Your Store Link</p>
               <p style={{ color: "#f59e0b", fontSize: 12, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "monospace" }}>{link}</p>
             </div>
-            <button onClick={() => { navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-              style={{ background: copied ? "#16a34a" : "#f59e0b", color: copied ? "white" : "#000", border: "none", borderRadius: 10, padding: "9px 16px", fontSize: 13, fontWeight: 800, cursor: "pointer", flexShrink: 0, transition: "background 0.2s" }}>
-              {copied ? "✓ Copied!" : "Copy"}
+            <button onClick={() => { navigator.clipboard.writeText(link); setStoreLinkCopied(true); setTimeout(() => setStoreLinkCopied(false), 2000); }}
+              style={{ background: storeLinkCopied ? "#16a34a" : "#f59e0b", color: storeLinkCopied ? "white" : "#000", border: "none", borderRadius: 10, padding: "9px 16px", fontSize: 13, fontWeight: 800, cursor: "pointer", flexShrink: 0, transition: "background 0.2s" }}>
+              {storeLinkCopied ? "✓ Copied!" : "Copy"}
             </button>
           </div>
         );
@@ -1972,7 +1968,7 @@ function ApiPage({ data }: { data: AgentData }) {
 
           {/* reference note */}
           <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 12, padding: "12px 16px" }}>
-            <p style={{ fontSize: 13, color: "#92400e", margin: 0 }}><strong>reference</strong> must be unique for every order. Use your own order ID or a timestamp e.g. <code>ORD-{Date.now()}</code>. Duplicate references are ignored (idempotent).</p>
+            <p style={{ fontSize: 13, color: "#92400e", margin: 0 }}><strong>reference</strong> must be unique for every order. Use your own order ID or a timestamp e.g. <code>ORD-1712345678901</code>. Duplicate references are ignored (idempotent).</p>
           </div>
         </div>
       </div>
@@ -2270,6 +2266,7 @@ function AffiliatePage({ data, onWithdraw }: { data: AgentData; onWithdraw: () =
 
 // ─── Notifications Page ───────────────────────────────────────────────────────
 function NotificationsPage({ data }: { data: AgentData }) {
+  const [nowTs] = useState(() => Date.now());
   const items = [...data.orders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 30);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -2282,13 +2279,13 @@ function NotificationsPage({ data }: { data: AgentData }) {
           <div style={{ padding: 64, textAlign: "center", color: M.muted }}>
             <p style={{ fontSize: 40, margin: "0 0 12px" }}>🔔</p>
             <p style={{ fontWeight: 700, color: M.text, fontSize: 15 }}>No notifications yet</p>
-            <p style={{ fontSize: 13, color: M.muted }}>When you receive orders, they'll appear here.</p>
+            <p style={{ fontSize: 13, color: M.muted }}>When you receive orders, they’ll appear here.</p>
           </div>
         )}
         {items.map((o, i) => {
           const sb = statusBadge(o.status); const nb = netBadge(o.network);
           const cleanSize = (o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel|vodafone)\s+/i, "").trim();
-          const isNew = (Date.now() - new Date(o.created_at).getTime()) < 24 * 60 * 60 * 1000;
+          const isNew = (nowTs - new Date(o.created_at).getTime()) < 24 * 60 * 60 * 1000;
           return (
             <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 14, padding: "16px 24px", borderBottom: i < items.length - 1 ? `1px solid ${M.border}` : "none", background: isNew ? "#f8faff" : "transparent" }}>
               <div style={{ width: 44, height: 44, borderRadius: "50%", background: sb.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
@@ -2320,7 +2317,7 @@ function SupportPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 620 }}>
       <div>
         <h1 style={{ color: M.text, fontSize: 28, fontWeight: 900, margin: 0 }}>Contact Support</h1>
-        <p style={{ color: M.muted, fontSize: 14, margin: "4px 0 0" }}>We're here to help you, 7 days a week</p>
+        <p style={{ color: M.muted, fontSize: 14, margin: "4px 0 0" }}>We’re here to help you, 7 days a week</p>
       </div>
 
       {/* WhatsApp card */}
@@ -2612,7 +2609,7 @@ function ProPage({ data, onNavigate }: { data: AgentData; onNavigate: (p: Page) 
         <div style={{ background: M.card, borderRadius: 16, border: `1px solid ${M.border}`, overflow: "hidden" }}>
           <div style={{ padding: "18px 22px", borderBottom: `1px solid ${M.border}` }}>
             <p style={{ color: M.text, fontWeight: 800, fontSize: 14, margin: 0 }}>💰 Set Your Sell Prices</p>
-            <p style={{ color: M.muted, fontSize: 12, margin: "4px 0 0" }}>Customers pay these prices. Set any amount ≥ admin's base.</p>
+            <p style={{ color: M.muted, fontSize: 12, margin: "4px 0 0" }}>Customers pay these prices. Set any amount ≥ admin’s base.</p>
             {priceMsg && <p style={{ color: priceMsg.startsWith("✓") ? "#4ade80" : M.red, fontSize: 13, fontWeight: 700, margin: "8px 0 0" }}>{priceMsg}</p>}
           </div>
           {priceBundles.length === 0 ? (
@@ -2817,7 +2814,7 @@ function ProPage({ data, onNavigate }: { data: AgentData; onNavigate: (p: Page) 
             <span style={{ fontSize: 22, flexShrink: 0 }}>💬</span>
             <div style={{ flex: 1 }}>
               <p style={{ color: M.text, fontWeight: 700, fontSize: 13, margin: "0 0 2px" }}>Need help integrating?</p>
-              <p style={{ color: M.muted, fontSize: 12, margin: 0 }}>Contact admin on WhatsApp — share your use case and we'll walk you through it.</p>
+              <p style={{ color: M.muted, fontSize: 12, margin: 0 }}>Contact admin on WhatsApp — share your use case and we’ll walk you through it.</p>
             </div>
             <a href="https://wa.me/233509794503?text=Hi%2C+I%27m+a+Pro+Agent+and+need+help+with+API+integration" target="_blank" rel="noreferrer"
               style={{ background: "#16a34a", color: "white", textDecoration: "none", borderRadius: 10, padding: "9px 16px", fontSize: 12, fontWeight: 800, flexShrink: 0, whiteSpace: "nowrap" }}>

@@ -2,10 +2,11 @@ import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { bundles as defaultBundles, sizeLabel } from "@/lib/bundles";
+import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
-  return cookieStore.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
+  return verifyAdminSessionValue(cookieStore.get("admin_session")?.value);
 }
 
 type DbBundle = {

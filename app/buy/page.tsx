@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Bundle, Network, networkConfig } from "@/lib/bundles";
+import { Bundle, Network } from "@/lib/bundles";
 import CheckoutModal from "@/components/CheckoutModal";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import AgentStorefront from "@/components/AgentStorefront";
@@ -132,7 +132,7 @@ function BuyContent() {
         <a href="/track" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 16, padding: "14px 18px", marginBottom: 20, textDecoration: "none" }}>
           <div>
             <p style={{ fontSize: 13, fontWeight: 800, color: "#f87171", margin: "0 0 2px" }}>💸 Need a Refund?</p>
-            <p style={{ fontSize: 12, color: "#8b949e", margin: 0 }}>Didn't receive your data? We'll refund you within 12 hours.</p>
+            <p style={{ fontSize: 12, color: "#8b949e", margin: 0 }}>Didn’t receive your data? We’ll refund you within 12 hours.</p>
           </div>
           <span style={{ fontSize: 13, fontWeight: 800, color: "#f87171", whiteSpace: "nowrap", flexShrink: 0 }}>Request →</span>
         </a>

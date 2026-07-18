@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { sendSwiftAlert } from "@/lib/telegram";
+import { requireAgentSession } from "@/lib/agentAuth";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -9,6 +10,9 @@ export async function POST(request: NextRequest) {
   if (!agentId || !referralCode || !paystackRef) {
     return Response.json({ error: "agentId, referralCode, and paystackRef are required." }, { status: 400 });
   }
+
+  const auth = requireAgentSession(request, agentId);
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
 
   // Verify ownership
   const { data: agent } = await supabase

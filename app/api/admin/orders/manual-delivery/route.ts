@@ -3,10 +3,11 @@ import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { sendAdminAlert, sendAdminBotMessage, retryKeyboard } from "@/lib/telegram";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
+import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 async function isAdmin(): Promise<boolean> {
   const c = await cookies();
-  return c.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
+  return verifyAdminSessionValue(c.get("admin_session")?.value);
 }
 
 // POST { references: string[] }

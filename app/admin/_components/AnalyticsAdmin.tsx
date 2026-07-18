@@ -82,7 +82,10 @@ function LineChart({ data }: { data: { label: string; revenue: number }[] }) {
 
 function DonutChart({ slices, total }: { slices: { pct: number; color: string }[]; total: number }) {
   const R = 52, r = 36, cx = 70, cy = 70;
-  let angle = -90;
+  const starts = slices.reduce<number[]>((acc, _s, i) => {
+    acc.push(i === 0 ? -90 : acc[i - 1] + (slices[i - 1].pct / 100) * 360);
+    return acc;
+  }, []);
   function arc(start: number, pct: number) {
     if (pct >= 100) pct = 99.99;
     const sweep = (pct / 100) * 360;
@@ -97,11 +100,7 @@ function DonutChart({ slices, total }: { slices: { pct: number; color: string }[
   }
   return (
     <svg viewBox="0 0 140 140" width={130} height={130}>
-      {slices.map((s, i) => {
-        const start = angle;
-        angle += (s.pct / 100) * 360;
-        return <path key={i} d={arc(start, s.pct)} fill={s.color} />;
-      })}
+      {slices.map((s, i) => <path key={i} d={arc(starts[i], s.pct)} fill={s.color} />)}
       {slices.length === 0 && <circle cx={cx} cy={cy} r={R} fill="#1e3a5f" />}
       <text x={cx} y={cy - 4} textAnchor="middle" fontSize={14} fontWeight="800" fill="white">{total.toLocaleString()}</text>
       <text x={cx} y={cy + 12} textAnchor="middle" fontSize={8} fill="#64748b">sold</text>

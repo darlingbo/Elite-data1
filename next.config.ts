@@ -7,7 +7,7 @@ const securityHeaders = [
   { key: "X-XSS-Protection", value: "1; mode=block" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(self)" },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
-  // CSP is intentionally absent here — middleware.ts generates a per-request
+  // CSP is intentionally absent here — proxy.ts generates a per-request
   // nonce and sets the Content-Security-Policy header at runtime. A static
   // CSP here would create a duplicate header that breaks the nonce mechanism.
 ];

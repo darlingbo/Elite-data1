@@ -25,7 +25,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
     .order("price");
 
   // Load agent's custom prices (only for pro agents)
-  let agentPriceMap: Record<string, number> = {};
+  const agentPriceMap: Record<string, number> = {};
   if ((agent as { plan?: string }).plan === "pro") {
     const { data: agentPrices } = await supabase
       .from("agent_bundle_prices")
@@ -47,7 +47,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ cod
 
   return Response.json({
     agent: {
-      id: agent.id,
+      // NOTE: agent.id is intentionally NOT exposed here. It is an internal
+      // identifier; leaking it let anyone with a public store link target the
+      // agent's wallet endpoints. The storefront only needs the referral code.
       name: agent.shop_name ?? agent.business_name ?? agent.name,
       tagline: agent.tagline ?? null,
       color: agent.store_color ?? "#3b82f6",

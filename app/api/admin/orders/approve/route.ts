@@ -4,10 +4,11 @@ import { networkApiName } from "@/lib/bundles";
 import { sendAgentNotification, sendAdminAlert } from "@/lib/telegram";
 import { inventorPurchase, inventorVoucher } from "@/lib/inventor";
 import { sendCustomerSMS, orderFailedSMS } from "@/lib/sms";
+import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
-  return cookieStore.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
+  return verifyAdminSessionValue(cookieStore.get("admin_session")?.value);
 }
 
 async function runApprove(reference: string): Promise<{ ok: boolean; message: string }> {

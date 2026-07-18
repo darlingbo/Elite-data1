@@ -2,18 +2,22 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { sendAgentNotification, sendAdminAlert, orderApprovalKeyboard } from "@/lib/telegram";
 import { getAgentBundleCost } from "@/lib/agent-pricing";
+import { requireAgentSession } from "@/lib/agentAuth";
+import { walletPurchaseSchema, parseBody } from "@/lib/validation";
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { agentId, referralCode, phone, bundleId, network, bundleSize, sizeGB } = body;
-
-  if (!agentId || !referralCode || !phone || !bundleId || !network) {
-    return Response.json({ error: "Missing required fields." }, { status: 400 });
+  const parsed = parseBody(walletPurchaseSchema, await request.json().catch(() => null));
+  if (!parsed.ok) {
+    return Response.json({ error: parsed.error }, { status: 400 });
   }
+  const { agentId, referralCode, phone, bundleId, network, bundleSize, sizeGB } = parsed.data;
+  const cleaned = phone; // already normalized + validated by the schema
 
-  const cleaned = phone.replace(/\s/g, "");
-  if (!/^0[2-5][0-9]{8}$/.test(cleaned)) {
-    return Response.json({ error: "Enter a valid Ghana phone number (e.g. 0241234567)." }, { status: 400 });
+  // Auth: the caller must hold a valid session cookie for THIS agent.
+  // referralCode + agentId are both public, so they are not sufficient on their own.
+  const auth = requireAgentSession(request, agentId, { requireFull: true });
+  if (!auth.ok) {
+    return Response.json({ error: auth.error }, { status: auth.status });
   }
 
   // Load agent
@@ -75,14 +79,29 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Deduct from wallet upfront (reserves balance, prevents double-spend)
-  const { error: deductError } = await supabase
-    .from("agents")
-    .update({ wallet_balance: walletBalance - costPrice })
-    .eq("id", agentId);
-
-  if (deductError) {
+  // Atomically deduct from wallet. The RPC does a single conditional UPDATE
+  // (WHERE wallet_balance >= cost) so two concurrent requests can never both
+  // succeed -> no double-spend. Falls back to a best-effort update only if the
+  // RPC has not been installed yet (see migration.sql: deduct_agent_wallet).
+  const rpc = await supabase.rpc("deduct_agent_wallet", { p_agent_id: agentId, p_amount: costPrice });
+  if (rpc.error && rpc.error.code !== "42883") {
     return Response.json({ error: "Failed to deduct from wallet. Try again." }, { status: 500 });
+  }
+  if (!rpc.error) {
+    // RPC returns the new balance, or null when funds were insufficient.
+    if (rpc.data == null) {
+      return Response.json({ error: "Insufficient wallet balance." }, { status: 400 });
+    }
+  } else {
+    // Fallback path (RPC not installed): non-atomic check-then-update.
+    const { error: deductError } = await supabase
+      .from("agents")
+      .update({ wallet_balance: walletBalance - costPrice })
+      .eq("id", agentId)
+      .gte("wallet_balance", costPrice);
+    if (deductError) {
+      return Response.json({ error: "Failed to deduct from wallet. Try again." }, { status: 500 });
+    }
   }
 
   const reference = `AGTWALLET-${referralCode.toUpperCase()}-${Date.now()}`;
@@ -106,8 +125,11 @@ export async function POST(request: NextRequest) {
   });
 
   if (insertError) {
-    // Refund wallet if order couldn't be saved
-    await supabase.from("agents").update({ wallet_balance: walletBalance }).eq("id", agentId);
+    // Refund wallet if order couldn't be saved (atomic increment, no clobber).
+    const refund = await supabase.rpc("adjust_agent_wallet", { p_agent_id: agentId, p_amount: costPrice });
+    if (refund.error && refund.error.code === "42883") {
+      await supabase.from("agents").update({ wallet_balance: walletBalance }).eq("id", agentId);
+    }
     return Response.json({ error: "Order could not be saved. Your wallet has been refunded." }, { status: 500 });
   }
 

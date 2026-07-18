@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 const MARGIN = 1.82;
 const PRO_FEE = 100; // GH₵
@@ -131,7 +132,7 @@ export default function AgentPage() {
           <a href="/agent/dashboard" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "#2563eb", color: "white", textDecoration: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 800, marginBottom: 10 }}>
             Go to Login →
           </a>
-          <a href="/" style={{ color: "#64748b", fontSize: 13, fontWeight: 600 }}>Back to Home</a>
+          <Link href="/" style={{ color: "#64748b", fontSize: 13, fontWeight: 600 }}>Back to Home</Link>
         </div>
       </div>
     );
@@ -165,7 +166,7 @@ export default function AgentPage() {
             </div>
           </div>
           <a href="/agent/dashboard" className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white font-black px-6 py-4 rounded-2xl text-base transition-colors shadow-lg mb-4">Go to Dashboard →</a>
-          <a href="/" className="text-blue-600 hover:underline text-sm font-semibold">Back to Home</a>
+          <Link href="/" className="text-blue-600 hover:underline text-sm font-semibold">Back to Home</Link>
         </div>
       </div>
     );

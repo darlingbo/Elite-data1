@@ -3,10 +3,11 @@ import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { datacityBalance } from "@/lib/datacity";
 import { datifyBalance } from "@/lib/datify";
+import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 async function isAdmin() {
   const s = await cookies();
-  return s.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
+  return verifyAdminSessionValue(s.get("admin_session")?.value);
 }
 
 async function getSetting(key: string) {

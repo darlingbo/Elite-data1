@@ -3,10 +3,11 @@ import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
 import { sendAdminAlert } from "@/lib/telegram";
+import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 async function isAdmin() {
   const c = await cookies();
-  return c.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
+  return verifyAdminSessionValue(c.get("admin_session")?.value);
 }
 
 // POST — deliver missing data + credit agent commission

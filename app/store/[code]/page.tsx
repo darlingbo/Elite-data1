@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { use } from "react";
+import Link from "next/link";
 import CheckoutModal from "@/components/CheckoutModal";
 import { Bundle } from "@/lib/bundles";
 
@@ -61,7 +62,7 @@ export default function StorePage({ params }: { params: Promise<{ code: string }
       <p style={{ fontSize: 48 }}>🏪</p>
       <p style={{ fontSize: 22, fontWeight: 900 }}>Store Not Found</p>
       <p style={{ color: "#64748b", fontSize: 14 }}>This store link may be invalid or inactive.</p>
-      <a href="/" style={{ marginTop: 12, background: "#3b82f6", color: "white", padding: "10px 22px", borderRadius: 10, textDecoration: "none", fontWeight: 700 }}>Go to EliteData</a>
+      <Link href="/" style={{ marginTop: 12, background: "#3b82f6", color: "white", padding: "10px 22px", borderRadius: 10, textDecoration: "none", fontWeight: 700 }}>Go to EliteData</Link>
     </div>
   );
 
@@ -132,7 +133,7 @@ export default function StorePage({ params }: { params: Promise<{ code: string }
 
         {/* Footer */}
         <p style={{ textAlign: "center", color: "#334155", fontSize: 12, marginTop: 32 }}>
-          Payments secured by Paystack · <a href="/" style={{ color: "#64748b", textDecoration: "none" }}>EliteData</a>
+          Payments secured by Paystack · <Link href="/" style={{ color: "#64748b", textDecoration: "none" }}>EliteData</Link>
         </p>
       </div>
 

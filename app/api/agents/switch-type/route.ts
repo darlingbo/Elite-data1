@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { requireAgentSession } from "@/lib/agentAuth";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -8,6 +9,9 @@ export async function POST(request: NextRequest) {
   if (!agentId || !referralCode || !["commission", "custom_price"].includes(agentType)) {
     return Response.json({ error: "Invalid request." }, { status: 400 });
   }
+
+  const auth = requireAgentSession(request, agentId);
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
 
   // Verify the caller owns this agent account
   const { data: agent } = await supabase

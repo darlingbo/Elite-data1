@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { sendSwiftAlert } from "@/lib/telegram";
+import { requireAgentSession } from "@/lib/agentAuth";
+import { withdrawSchema, parseBody } from "@/lib/validation";
 
 // Ghana is UTC+0 year-round
 function getGhanaTime() {
@@ -11,14 +13,20 @@ function getGhanaTime() {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { agentId, referralCode, name, amount, method, accountNumber, accountName } = body;
+  const parsed = parseBody(withdrawSchema, await request.json().catch(() => null));
+  if (!parsed.ok) {
+    return Response.json({ error: parsed.error }, { status: 400 });
+  }
+  const { agentId, referralCode, name, amount, method, accountNumber, accountName } = parsed.data;
 
-  if (!agentId || !amount || !method || !accountNumber || !accountName) {
-    return Response.json({ error: "All fields are required." }, { status: 400 });
+  // Money leaves the platform here -> require a password-level session bound to
+  // this agent. A public referral-code session is not enough.
+  const auth = requireAgentSession(request, agentId, { requireFull: true });
+  if (!auth.ok) {
+    return Response.json({ error: auth.error }, { status: auth.status });
   }
 
-  const amt = Number(amount);
+  const amt = amount;
 
   const { data: agent } = await supabase
     .from("agents")

@@ -210,7 +210,7 @@ function TrackContent() {
         <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 16, padding: "16px 20px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
           <div>
             <p style={{ fontSize: 14, fontWeight: 800, color: "#f87171", margin: "0 0 2px" }}>💸 Need a Refund?</p>
-            <p style={{ fontSize: 12, color: "#8b949e", margin: 0 }}>Didn't receive your data? Request a refund — processed within 12 hours.</p>
+            <p style={{ fontSize: 12, color: "#8b949e", margin: 0 }}>Didn’t receive your data? Request a refund — processed within 12 hours.</p>
           </div>
           <button
             onClick={() => openRefund()}

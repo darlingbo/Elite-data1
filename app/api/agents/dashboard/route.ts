@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
+import { issueAgentSession } from "@/lib/agentAuth";
 import { supabase } from "@/lib/supabase";
 
 // In-memory rate limiter: max 8 attempts per IP per 15 minutes
@@ -93,12 +94,18 @@ async function handleAgentResponse(
     }
   }
 
-  let { data: orders, error: ordersErr } = await supabase
+  // Issue a signed, httpOnly session cookie. Password login => "full" (can move
+  // money); referral-code login => "code" (view-only, cannot withdraw/spend).
+  await issueAgentSession(agent.id, password !== null ? "full" : "code");
+
+  const ordersRes = await supabase
     .from("orders")
     .select("reference, bundle_size, network, amount, cost_price, agent_commission, status, created_at, phone")
     .eq("agent_id", agent.id)
     .order("created_at", { ascending: false })
     .limit(1000);
+  let orders = ordersRes.data;
+  const ordersErr = ordersRes.error;
 
   // agent_commission or cost_price column may not exist yet — fall back to basic columns
   if (ordersErr) {
