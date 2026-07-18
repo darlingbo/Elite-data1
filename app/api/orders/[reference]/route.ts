@@ -51,7 +51,7 @@ async function getInventorStatus(reference: string): Promise<{
 
 export async function GET(
   _req: NextRequest,
-  ctx: RouteContext<"/api/orders/[reference]">
+  ctx: { params: Promise<{ reference: string }> }
 ) {
   const { reference } = await ctx.params;
 

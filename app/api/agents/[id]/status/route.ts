@@ -16,7 +16,7 @@ async function isAdmin(): Promise<boolean> {
 
 export async function PATCH(
   request: NextRequest,
-  ctx: RouteContext<"/api/agents/[id]/status">
+  ctx: { params: Promise<{ id: string }> }
 ) {
   if (!(await isAdmin())) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
