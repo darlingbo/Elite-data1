@@ -185,26 +185,27 @@ export default function AdminLogin() {
 
   if (stage === "checking") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="admin-login min-h-screen flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="admin-login min-h-screen flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-sm">
 
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg" style={{ background: "linear-gradient(145deg,#2563eb,#0ea5e9)", boxShadow: "0 14px 38px rgba(37,99,235,0.32)" }}>
             <span className="text-white font-black text-xl">E</span>
           </div>
-          <h1 className="text-2xl font-black text-gray-800">Admin Access</h1>
-          <p className="text-gray-500 text-sm mt-1">Elite Data Dashboard</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-400 mb-2">Secure Control Center</p>
+          <h1 className="text-2xl font-black text-white">Admin Access</h1>
+          <p className="text-slate-500 text-sm mt-1">Elite Data Dashboard</p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="admin-login-card rounded-2xl border p-5 sm:p-6">
 
           {/* Register biometric prompt (shown after successful password login) */}
           {registerPrompt ? (
@@ -272,23 +273,23 @@ export default function AdminLogin() {
             /* Password login screen */
             <form onSubmit={handlePassword} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
+                <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm px-3 py-2 rounded-lg">{error}</div>
               )}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Password</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-2">Password</label>
                 <input
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   autoFocus
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border rounded-xl bg-[#080f1c] px-3.5 py-3 text-base text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   placeholder="Enter admin password"
                 />
               </div>
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl transition-colors text-sm"
+                className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-bold py-3.5 rounded-xl transition-colors text-sm shadow-lg shadow-blue-950/40"
               >
                 {loading ? "Signing in…" : "Sign In"}
               </button>
@@ -305,7 +306,7 @@ export default function AdminLogin() {
           )}
         </div>
 
-        <p className="text-center text-xs text-gray-400 mt-4">Session expires after 5 hours</p>
+        <p className="text-center text-xs text-slate-600 mt-5">Protected session · Expires after 5 hours</p>
       </div>
     </div>
   );

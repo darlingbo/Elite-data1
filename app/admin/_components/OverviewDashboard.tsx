@@ -64,7 +64,7 @@ export function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; a
   );
 
   return (
-    <div className="space-y-4">
+    <div className="admin-overview space-y-4">
 
       {/* Today so far */}
       <div className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
@@ -94,7 +94,7 @@ export function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; a
       </div>
 
       {/* 4 stat cards */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           { label: "Total Customers", value: totalCustomers.toLocaleString(),     pct: cmp.agents,   icon: "👥", grad: "linear-gradient(135deg,#1e3a5f,#1e40af)" },
           { label: "Total Orders",    value: stats.orders.total.toLocaleString(), pct: cmp.orders,   icon: "🛒", grad: "linear-gradient(135deg,#2e1065,#4c1d95)" },

@@ -57,6 +57,7 @@ async function getHelplineEnabled(): Promise<boolean> {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const headersList = await headers();
   const pathname = headersList.get("x-pathname") ?? "";
+  const isAdmin = pathname.startsWith("/admin");
   const isStandalone = pathname.startsWith("/admin") || pathname.startsWith("/agent/dashboard") || pathname.startsWith("/agent");
   const helplineEnabled = isStandalone ? false : await getHelplineEnabled();
 
@@ -74,7 +75,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {!isStandalone && helplineEnabled && <WhatsAppButton />}
         {!isStandalone && <WelcomePopup />}
         {/* On standalone pages (admin/agent) the nav is absent so we float the toggle */}
-        {isStandalone && (
+        {isStandalone && !isAdmin && (
           <div style={{ position: "fixed", top: 14, right: 16, zIndex: 99999 }}>
             <ThemeToggle />
           </div>

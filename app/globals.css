@@ -28,6 +28,154 @@ body {
 :root[data-theme="light"] .bg-gray-800  { background: #334155 !important; }
 :root[data-theme="light"] .border-gray-800 { border-color: #e2e8f0 !important; }
 
+/* Elite Data admin control-room design system. */
+.admin-shell {
+  --admin-bg: #070b14;
+  --admin-surface: #0d1422;
+  --admin-surface-raised: #111a2a;
+  --admin-border: #202b3d;
+  --admin-muted: #738099;
+  --admin-blue: #3b82f6;
+  color: #e5edf9;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at 82% -10%, rgba(37, 99, 235, 0.15), transparent 31rem),
+    radial-gradient(circle at 25% 110%, rgba(14, 165, 233, 0.07), transparent 28rem),
+    var(--admin-bg) !important;
+}
+
+.admin-login {
+  color: #e5edf9;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at 50% 0, rgba(37, 99, 235, 0.2), transparent 25rem),
+    radial-gradient(circle at 0 100%, rgba(14, 165, 233, 0.08), transparent 24rem),
+    #070b14;
+}
+
+.admin-login-card {
+  border-color: #202b3d;
+  background: linear-gradient(145deg, rgba(17, 26, 42, 0.98), rgba(10, 17, 29, 0.98));
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.38);
+}
+
+.admin-login-card h2 {
+  color: #f8fafc !important;
+}
+
+.admin-login-card p {
+  color: #94a3b8;
+}
+
+.admin-login-card input {
+  border-color: #2a3850;
+}
+
+.admin-topbar {
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.18);
+}
+
+.admin-page-heading {
+  background:
+    linear-gradient(90deg, rgba(37, 99, 235, 0.07), transparent 42%),
+    rgba(7, 11, 20, 0.35);
+}
+
+.admin-shell .rounded-2xl.border,
+.admin-shell .rounded-xl.border {
+  border-color: var(--admin-border) !important;
+}
+
+.admin-shell input,
+.admin-shell select,
+.admin-shell textarea {
+  border-color: var(--admin-border) !important;
+  background-color: rgba(8, 15, 28, 0.9) !important;
+}
+
+.admin-shell input:focus,
+.admin-shell select:focus,
+.admin-shell textarea:focus {
+  border-color: rgba(96, 165, 250, 0.75) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.admin-shell table thead {
+  background: rgba(5, 9, 17, 0.72);
+}
+
+.admin-shell table tbody tr {
+  transition: background-color 160ms ease;
+}
+
+.admin-shell table tbody tr:hover {
+  background: rgba(59, 130, 246, 0.035);
+}
+
+.admin-shell button {
+  transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+.admin-shell button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.admin-overview > .rounded-2xl {
+  background: linear-gradient(145deg, rgba(16, 25, 41, 0.98), rgba(10, 17, 29, 0.98)) !important;
+  border-color: var(--admin-border) !important;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.16);
+}
+
+.admin-overview > .rounded-2xl:nth-child(1) {
+  background:
+    linear-gradient(120deg, rgba(37, 99, 235, 0.16), transparent 42%),
+    linear-gradient(145deg, #101929, #0a111d) !important;
+}
+
+.admin-overview > .rounded-2xl:nth-child(3) {
+  background:
+    radial-gradient(circle at 100% 0, rgba(16, 185, 129, 0.15), transparent 55%),
+    linear-gradient(145deg, #101929, #0a111d) !important;
+}
+
+.admin-overview table {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 1024px) {
+  .admin-overview {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .admin-overview > * {
+    margin-top: 0 !important;
+  }
+
+  .admin-overview > :nth-child(1),
+  .admin-overview > :nth-child(2),
+  .admin-overview > :nth-child(5),
+  .admin-overview > :nth-child(10) {
+    grid-column: span 12;
+  }
+
+  .admin-overview > :nth-child(3) {
+    grid-column: span 4;
+  }
+
+  .admin-overview > :nth-child(4) {
+    grid-column: span 8;
+  }
+
+  .admin-overview > :nth-child(6),
+  .admin-overview > :nth-child(7),
+  .admin-overview > :nth-child(8),
+  .admin-overview > :nth-child(9) {
+    grid-column: span 6;
+  }
+}
+
 /* Admin mobile layout: keep every control reachable without widening the page. */
 @media (max-width: 767px) {
   .admin-shell {
@@ -68,5 +216,19 @@ body {
 
   .admin-shell [class*="fixed inset-0"] {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .admin-page-heading {
+    background: linear-gradient(115deg, rgba(37, 99, 235, 0.09), transparent 70%);
+  }
+
+  .admin-mobile-nav {
+    bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
+  }
+
+  .admin-mobile-nav > div {
+    max-width: calc(100vw - 1rem);
+    overflow-x: auto;
+    border: 1px solid rgba(148, 163, 184, 0.12);
   }
 }

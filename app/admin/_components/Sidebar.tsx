@@ -74,8 +74,8 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
       <button onClick={() => { setTab(item.id); onMobileClose(); }}
         className="w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all text-left"
         style={active
-          ? { background: "rgba(59,130,246,0.18)", color: "#60a5fa", borderLeft: "3px solid #3b82f6", paddingLeft: 9 }
-          : { color: "#64748b", borderLeft: "3px solid transparent", paddingLeft: 9 }}
+          ? { background: "linear-gradient(90deg,rgba(37,99,235,0.24),rgba(37,99,235,0.08))", color: "#bfdbfe", boxShadow: "inset 0 0 0 1px rgba(96,165,250,0.16)" }
+          : { color: "#738099" }}
         onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; (e.currentTarget as HTMLElement).style.color = "#94a3b8"; } }}
         onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = ""; (e.currentTarget as HTMLElement).style.color = "#64748b"; } }}>
         <span className="flex items-center gap-2.5">{item.icon}{item.label}</span>
@@ -86,19 +86,19 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
 
   return (
     <aside className={`fixed inset-y-0 left-0 z-50 w-[88vw] max-w-72 md:w-60 flex flex-col border-r transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
-      style={{ background: "#080f1e", borderColor: "#1e3a5f" }}>
+      style={{ background: "rgba(7,11,20,0.98)", borderColor: "#202b3d", boxShadow: "18px 0 60px rgba(0,0,0,0.24)" }}>
       <button onClick={onMobileClose} className="md:hidden absolute top-4 right-4 z-10 w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10">
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
       </button>
 
-      <div className="px-4 pt-5 pb-4 border-b" style={{ borderColor: "#1e3a5f" }}>
+      <div className="px-4 pt-5 pb-4 border-b" style={{ borderColor: "#202b3d" }}>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl flex items-center justify-center font-black text-white text-base shadow-lg" style={{ background: "linear-gradient(135deg,#3b82f6,#7c3aed)" }}>E</div>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-white text-base shadow-lg" style={{ background: "linear-gradient(145deg,#2563eb,#0ea5e9)", boxShadow: "0 8px 24px rgba(37,99,235,0.35)" }}>E</div>
           <div>
             <p className="font-black text-white text-sm leading-none">Elite Data</p>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              <p className="text-[10px] uppercase tracking-widest" style={{ color: "#3b82f6" }}>Admin · Live</p>
+              <p className="text-[10px] uppercase tracking-[0.16em]" style={{ color: "#60a5fa" }}>Control Center</p>
             </div>
           </div>
         </div>
@@ -108,8 +108,8 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
         <button onClick={() => { setTab("overview"); onMobileClose(); }}
           className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all"
           style={tab === "overview"
-            ? { background: "rgba(59,130,246,0.18)", color: "#60a5fa", borderLeft: "3px solid #3b82f6", paddingLeft: 9 }
-            : { color: "#64748b", borderLeft: "3px solid transparent", paddingLeft: 9 }}
+            ? { background: "linear-gradient(90deg,rgba(37,99,235,0.24),rgba(37,99,235,0.08))", color: "#bfdbfe", boxShadow: "inset 0 0 0 1px rgba(96,165,250,0.16)" }
+            : { color: "#738099" }}
           onMouseEnter={e => { if (tab !== "overview") { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; } }}
           onMouseLeave={e => { if (tab !== "overview") { (e.currentTarget as HTMLElement).style.background = ""; } }}>
           <Ic.home /> Dashboard
@@ -120,9 +120,9 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
         {sections.map(sec => (
           <div key={sec.label}>
             <div className="flex items-center gap-2 px-3 mb-1.5">
-              <div className="h-px flex-1" style={{ background: "#1e3a5f" }} />
-              <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">{sec.label}</p>
-              <div className="h-px flex-1" style={{ background: "#1e3a5f" }} />
+              <div className="h-px flex-1" style={{ background: "#202b3d" }} />
+              <p className="text-[9px] font-black text-slate-600 uppercase tracking-[0.18em]">{sec.label}</p>
+              <div className="h-px flex-1" style={{ background: "#202b3d" }} />
             </div>
             <div className="space-y-0.5">
               {sec.items.map(item => <NavItem key={item.id} item={item} />)}
@@ -131,7 +131,7 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
         ))}
       </nav>
 
-      <div className="border-t" style={{ borderColor: "#1e3a5f" }}>
+      <div className="border-t" style={{ borderColor: "#202b3d" }}>
         <div className="mx-3 my-3 px-3 py-2.5 rounded-xl flex items-center gap-2.5" style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)" }}>
           <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-white text-xs shrink-0" style={{ background: "linear-gradient(135deg,#3b82f6,#7c3aed)" }}>A</div>
           <div className="min-w-0">

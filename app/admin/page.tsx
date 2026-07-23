@@ -58,6 +58,17 @@ const pageTitle: Record<Tab, string> = {
   "operations": "Operations & Audit",
 };
 
+const pageSubtitle: Partial<Record<Tab, string>> = {
+  overview: "Your business, orders, and cash flow at a glance",
+  "approval-queue": "Review every paid order before delivery",
+  "all-orders": "Search, verify, and manage order fulfilment",
+  operations: "Reconcile warnings and review admin activity",
+  transactions: "Track revenue, cost, commission, and profit",
+  commissions: "Manage private commission rules safely",
+  withdrawals: "Review and approve agent payout requests",
+  "agent-wallets": "Adjust balances with a complete transaction record",
+};
+
 export default function AdminDashboard() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("overview");
@@ -150,11 +161,12 @@ export default function AdminDashboard() {
       {mobileSidebarOpen && <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={() => setMobileSidebarOpen(false)} />}
 
       <div className="md:ml-60 flex min-w-0 flex-col min-h-screen">
-        <header className="px-4 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-30 border-b backdrop-blur-sm" style={{ background: "rgba(8,15,30,0.92)", borderColor: BORDER }}>
+        <header className="admin-topbar px-3 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-30 border-b backdrop-blur-xl" style={{ background: "rgba(7,11,20,0.82)", borderColor: BORDER }}>
           <div className="flex items-center gap-3">
-            <button onClick={() => setMobileSidebarOpen(true)} className="md:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
+            <button aria-label="Open admin menu" onClick={() => setMobileSidebarOpen(true)} className="md:hidden p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
               <Ic.menu />
             </button>
+            <span className="text-sm font-black text-white sm:hidden">{pageTitle[tab] ?? "Dashboard"}</span>
             <div className="hidden sm:flex items-center gap-2">
               <span className="text-xs text-slate-600 font-semibold">Elite Data</span>
               <span className="text-slate-700">/</span>
@@ -163,11 +175,11 @@ export default function AdminDashboard() {
           </div>
           <div className="flex items-center gap-2">
             <div className="relative">
-              <button aria-label="Open operations alerts" onClick={() => setTab("operations")} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors"><Ic.bell /></button>
-              {(stats?.agents.pending ?? 0) > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-red-900" />}
+              <button aria-label="Open operations alerts" onClick={() => setTab("operations")} className="p-2.5 rounded-xl border text-slate-400 hover:text-white hover:bg-white/10 transition-colors" style={{ borderColor: BORDER }}><Ic.bell /></button>
+              {((stats?.agents.pending ?? 0) + (stats?.orders.pendingApproval ?? 0)) > 0 && <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 flex items-center justify-center bg-amber-400 text-[9px] font-black text-slate-950 rounded-full ring-2 ring-[#070b14]">{(stats?.agents.pending ?? 0) + (stats?.orders.pendingApproval ?? 0)}</span>}
             </div>
-            <div className="flex items-center gap-2.5 border rounded-xl px-3 py-1.5" style={{ background: "rgba(30,58,95,0.4)", borderColor: BORDER }}>
-              <div className="w-7 h-7 rounded-full flex items-center justify-center font-black text-white text-xs" style={{ background: "linear-gradient(135deg,#3b82f6,#7c3aed)" }}>A</div>
+            <div className="hidden sm:flex items-center gap-2.5 border rounded-xl px-3 py-1.5" style={{ background: "rgba(15,23,42,0.7)", borderColor: BORDER }}>
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center font-black text-white text-xs" style={{ background: "linear-gradient(145deg,#2563eb,#0ea5e9)" }}>A</div>
               <div className="hidden sm:block text-right">
                 <p className="text-xs font-bold text-white leading-none">Admin</p>
                 <p className="text-[10px] text-slate-500">Super Admin</p>
@@ -176,15 +188,16 @@ export default function AdminDashboard() {
           </div>
         </header>
 
-        <div className="px-4 sm:px-6 py-4 border-b flex items-center justify-between gap-4" style={{ borderColor: BORDER }}>
+        <div className="admin-page-heading px-4 sm:px-6 py-5 sm:py-6 border-b flex items-center justify-between gap-4" style={{ borderColor: BORDER }}>
           <div>
-            <h1 className="text-lg font-black text-white leading-none">{pageTitle[tab] ?? "Dashboard"}</h1>
-            {tab === "overview" && <p className="text-sm mt-1" style={{ color: "#64748b" }}>Welcome back, Admin 👋</p>}
+            <p className="mb-1 text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Elite Data Admin</p>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white leading-none">{pageTitle[tab] ?? "Dashboard"}</h1>
+            <p className="text-xs sm:text-sm mt-2" style={{ color: "#738099" }}>{pageSubtitle[tab] ?? "Manage your Elite Data business"}</p>
           </div>
           {tab === "overview" && (
-            <div className="hidden sm:flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-xl" style={{ background: "rgba(16,185,129,0.1)", color: "#34d399", border: "1px solid rgba(16,185,129,0.2)" }}>
-              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              System Live
+            <div className="hidden sm:flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-xl" style={{ background: "rgba(16,185,129,0.08)", color: "#6ee7b7", border: "1px solid rgba(16,185,129,0.18)" }}>
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              Manual approval on
             </div>
           )}
         </div>
@@ -243,7 +256,7 @@ export default function AdminDashboard() {
         </main>
       </div>
 
-      <nav className="md:hidden" style={{ position: "fixed", bottom: 14, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 50, pointerEvents: "none" }}>
+      <nav className="admin-mobile-nav md:hidden" style={{ position: "fixed", bottom: 14, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 50, pointerEvents: "none" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 10px", borderRadius: 999, background: "rgba(6,12,28,0.97)", boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.07)", backdropFilter: "blur(24px)", pointerEvents: "all" }}>
           {([
             { id: "overview" as Tab,     label: "Home",    badge: 0,                          svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> },
