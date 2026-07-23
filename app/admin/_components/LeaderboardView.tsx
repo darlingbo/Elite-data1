@@ -25,7 +25,7 @@ export function LeaderboardView({ stats }: { stats: StatsData }) {
       </div>
 
       {topThree.length === 3 && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {topThree.map((a, i) => {
             const rank = i === 0 ? 2 : i === 1 ? 1 : 3;
             const isFirst = rank === 1;

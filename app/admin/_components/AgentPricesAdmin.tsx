@@ -203,7 +203,7 @@ export default function AgentPricesAdmin({ allAgents }: { allAgents: CustomAgent
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="rounded-xl p-4 border border-[#1e3050]" style={{ background: "#162032" }}>
           <p className="text-xs text-slate-500 mb-1">Free Agents</p>
           <p className="text-2xl font-black text-blue-400">{freeAgents.length}</p>

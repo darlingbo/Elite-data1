@@ -149,7 +149,7 @@ export default function AgentWalletsAdmin() {
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
         {[
           { label: "Total Wallet Deposits", value: agents.reduce((s, a) => s + (a.wallet_balance ?? 0), 0), color: "#3b82f6" },
           { label: "Total Commissions Owed", value: agents.reduce((s, a) => s + (a.commission_balance ?? 0), 0), color: "#a78bfa" },
@@ -164,12 +164,12 @@ export default function AgentWalletsAdmin() {
 
       {/* Agent list */}
       <div className="bg-[#0b1829] border border-[#1e3050] rounded-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-[#1e3050] flex items-center justify-between gap-3">
+        <div className="px-4 sm:px-5 py-4 border-b border-[#1e3050] flex flex-col items-stretch sm:flex-row sm:items-center sm:justify-between gap-3">
           <h3 className="text-white font-bold text-base">Agent Wallets</h3>
           <input
             value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search agents…"
-            className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500 w-48"
+            className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2.5 text-white text-base sm:w-48 sm:py-2 sm:text-sm outline-none focus:border-blue-500 w-full"
           />
         </div>
 
@@ -178,7 +178,7 @@ export default function AgentWalletsAdmin() {
             const withdrawable = (agent.wallet_balance ?? 0) + (agent.commission_balance ?? 0);
             return (
               <div key={agent.id}>
-                <div className="flex items-center gap-4 px-5 py-4">
+                <div className="grid grid-cols-[auto_1fr] items-center gap-3 px-4 py-4 sm:flex sm:gap-4 sm:px-5">
                   <div className="w-9 h-9 rounded-full bg-blue-900/40 border border-blue-500/30 flex items-center justify-center font-bold text-blue-300 text-sm flex-shrink-0">
                     {agent.name.charAt(0).toUpperCase()}
                   </div>
@@ -187,7 +187,7 @@ export default function AgentWalletsAdmin() {
                     <p className="text-slate-500 text-xs">{agent.referral_code} · {agent.total_sales} sales</p>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4 text-right flex-shrink-0 mr-4">
+                  <div className="col-span-2 grid w-full grid-cols-3 gap-2 rounded-xl bg-black/15 p-3 text-center sm:ml-auto sm:mr-4 sm:w-auto sm:gap-4 sm:bg-transparent sm:p-0 sm:text-right">
                     <div>
                       <p className="text-blue-400 font-bold text-sm">{fmt(agent.wallet_balance ?? 0)}</p>
                       <p className="text-slate-600 text-xs">Deposit</p>
@@ -202,7 +202,7 @@ export default function AgentWalletsAdmin() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2 flex-shrink-0">
+                  <div className="col-span-2 grid grid-cols-3 gap-2 sm:flex sm:flex-shrink-0">
                     <button onClick={() => { setSelectedAgent(selectedAgent === agent.id ? null : agent.id); }}
                       className="px-3 py-1.5 bg-slate-700/50 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-semibold rounded-lg">
                       {selectedAgent === agent.id ? "Hide" : "History"}

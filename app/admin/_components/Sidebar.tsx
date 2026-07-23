@@ -85,7 +85,7 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
   }
 
   return (
-    <aside className={`fixed inset-y-0 left-0 z-50 w-60 flex flex-col border-r transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
+    <aside className={`fixed inset-y-0 left-0 z-50 w-[88vw] max-w-72 md:w-60 flex flex-col border-r transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
       style={{ background: "#080f1e", borderColor: "#1e3a5f" }}>
       <button onClick={onMobileClose} className="md:hidden absolute top-4 right-4 z-10 w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10">
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>

@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS agent_commission_overrides (
         <p className="text-slate-400 text-xs uppercase tracking-wider font-semibold mb-4">Global Commission Split</p>
         <p className="text-slate-300 text-sm mb-5">This applies to ALL commission-type agents unless you set a personal override below.</p>
 
-        <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2">
           <div className="bg-green-900/20 border border-green-500/25 rounded-xl p-4 text-center">
             <p className="text-4xl font-black text-green-400">{globalPct}%</p>
             <p className="text-green-300 text-sm font-semibold mt-1">Agent Gets</p>

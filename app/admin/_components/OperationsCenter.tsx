@@ -27,16 +27,16 @@ export default function OperationsCenter() {
   if (!data && !error) return <p className="text-slate-400 p-6">Checking financial operations…</p>;
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h2 className="text-xl font-black text-white">Operations & reconciliation</h2>
           <p className="text-sm text-slate-400">Investigate warnings before retrying or paying anyone.</p>
         </div>
-        <button onClick={() => void load()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white">Refresh</button>
+        <button onClick={() => void load()} className="min-h-11 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white">Refresh</button>
       </div>
       {error && <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-red-300">{error}</div>}
       {data && <>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 min-[390px]:grid-cols-2 lg:grid-cols-5">
           {Object.entries(data.counts).map(([key, value]) => (
             <div key={key} className={`rounded-xl border p-4 ${value ? "border-amber-500/40 bg-amber-500/10" : "border-emerald-500/30 bg-emerald-500/10"}`}>
               <p className="text-2xl font-black text-white">{value}</p>

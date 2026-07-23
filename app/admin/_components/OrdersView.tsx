@@ -250,15 +250,15 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
           <h1 className="text-xl font-black text-white">Orders</h1>
           <p className="text-sm text-slate-500">{orders.length.toLocaleString()} total · {filtered.length.toLocaleString()} shown</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:flex-wrap">
+          <div className="relative col-span-2 sm:col-span-1">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"><Ic.search /></span>
             <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search name, phone, ref…"
-              className="pl-9 pr-4 py-2 text-sm rounded-xl border focus:outline-none focus:border-blue-500 w-52 text-white placeholder-slate-600"
+              className="w-full pl-9 pr-4 py-2.5 text-base sm:w-52 sm:py-2 sm:text-sm rounded-xl border focus:outline-none focus:border-blue-500 text-white placeholder-slate-600"
               style={{ background: CARD, borderColor: BORDER }} />
           </div>
           <select value={networkFilter} onChange={e => { setNetworkFilter(e.target.value); setPage(1); }}
-            className="px-3 py-2 text-sm rounded-xl border focus:outline-none text-white"
+            className="min-w-0 px-3 py-2.5 text-base sm:py-2 sm:text-sm rounded-xl border focus:outline-none text-white"
             style={{ background: networkFilter !== "ALL" ? "rgba(251,191,36,0.1)" : CARD, borderColor: networkFilter !== "ALL" ? "rgba(251,191,36,0.5)" : BORDER }}>
             <option value="ALL">All Networks</option>
             <option value="mtn">MTN</option>
@@ -303,7 +303,7 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
             </span>
           </label>
           {selectedRefs.size > 0 ? (
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="grid w-full grid-cols-2 gap-2 sm:ml-auto sm:flex sm:w-auto sm:items-center">
               <button onClick={() => handleApproveOrReject([...selectedRefs], "approve")} disabled={approving.size > 0}
                 className="text-sm font-bold px-4 py-2 rounded-xl disabled:opacity-50"
                 style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid rgba(16,185,129,0.4)" }}>

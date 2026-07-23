@@ -135,7 +135,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: BG }}>
+    <div className="admin-shell min-w-0 overflow-x-hidden" style={{ minHeight: "100vh", background: BG }}>
       <Sidebar
         tab={tab} setTab={setTab}
         pendingOrders={stats?.orders.pending ?? 0}
@@ -149,7 +149,7 @@ export default function AdminDashboard() {
       {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}
       {mobileSidebarOpen && <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={() => setMobileSidebarOpen(false)} />}
 
-      <div className="md:ml-60 flex flex-col min-h-screen">
+      <div className="md:ml-60 flex min-w-0 flex-col min-h-screen">
         <header className="px-4 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-30 border-b backdrop-blur-sm" style={{ background: "rgba(8,15,30,0.92)", borderColor: BORDER }}>
           <div className="flex items-center gap-3">
             <button onClick={() => setMobileSidebarOpen(true)} className="md:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
@@ -199,7 +199,7 @@ export default function AdminDashboard() {
           </button>
         )}
 
-        <main className="flex-1 px-3 sm:px-6 py-5 pb-24 md:pb-5">
+        <main className="min-w-0 flex-1 px-3 sm:px-6 py-4 sm:py-5 pb-28 md:pb-5">
           {statsError && (
             <div style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 12, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
               <span style={{ color: "#f87171", fontSize: 13, fontWeight: 700, flex: 1 }}>Dashboard error: {statsError}</span>
