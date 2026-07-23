@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { requireAgentSession } from "@/lib/agentAuth";
+import { rateLimitDb } from "@/lib/rate-limit";
 
 // POST — verify Paystack topup and credit agent wallet
 export async function POST(request: NextRequest) {
@@ -10,6 +11,9 @@ export async function POST(request: NextRequest) {
   if (!agentId || !paystackRef) return Response.json({ error: "agentId and paystackRef required" }, { status: 400 });
   const auth = requireAgentSession(request, agentId, { requireFull: true });
   if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
+  if (await rateLimitDb(`agent-wallet-topup:${agentId}`, 10, 15 * 60 * 1000)) {
+    return Response.json({ error: "Too many wallet requests. Try again later." }, { status: 429 });
+  }
 
   // Verify with Paystack
   let psData: Record<string, unknown> = {};

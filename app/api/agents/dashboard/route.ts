@@ -2,19 +2,7 @@ import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { issueAgentSession } from "@/lib/agentAuth";
 import { supabase } from "@/lib/supabase";
-
-// In-memory rate limiter: max 8 attempts per IP per 15 minutes
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = loginAttempts.get(ip);
-  if (!entry || entry.resetAt < now) {
-    loginAttempts.set(ip, { count: 1, resetAt: now + 15 * 60 * 1000 });
-    return false;
-  }
-  entry.count++;
-  return entry.count > 8;
-}
+import { rateLimitDb } from "@/lib/rate-limit";
 
 type AgentRow = {
   id: string; name: string; email: string; phone?: string | null; referral_code: string | null;
@@ -52,7 +40,7 @@ export async function GET() {
 // POST: email + password login (credentials sent securely in request body)
 export async function POST(request: NextRequest) {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  if (checkRateLimit(ip)) {
+  if (await rateLimitDb(`agent-login:${ip}`, 8, 15 * 60 * 1000)) {
     return Response.json({ error: "Too many login attempts. Try again in 15 minutes." }, { status: 429 });
   }
 

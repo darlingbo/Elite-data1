@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { sendSwiftAlert } from "@/lib/telegram";
 import { requireAgentSession } from "@/lib/agentAuth";
 import { withdrawSchema, parseBody } from "@/lib/validation";
+import { rateLimitDb } from "@/lib/rate-limit";
 
 // Ghana is UTC+0 year-round
 function getGhanaTime() {
@@ -24,6 +25,9 @@ export async function POST(request: NextRequest) {
   const auth = requireAgentSession(request, agentId, { requireFull: true });
   if (!auth.ok) {
     return Response.json({ error: auth.error }, { status: auth.status });
+  }
+  if (await rateLimitDb(`agent-withdrawal:${agentId}`, 3, 60 * 60 * 1000)) {
+    return Response.json({ error: "Too many withdrawal requests. Try again later." }, { status: 429 });
   }
 
   const amt = amount;

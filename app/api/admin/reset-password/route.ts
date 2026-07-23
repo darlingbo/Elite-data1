@@ -1,11 +1,16 @@
 import { NextRequest } from "next/server";
 import { verifyResetToken, setAdminPassword } from "@/lib/adminAuth";
+import { rateLimitDb } from "@/lib/rate-limit";
 
 // POST /api/admin/reset-password — reset the admin password using the reset token
 // (which must equal ADMIN_SESSION_TOKEN). Writes the SAME bcrypt hash that the
 // login route reads, so a reset actually takes effect (previously it wrote to a
 // different table than login read from).
 export async function POST(request: NextRequest) {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  if (await rateLimitDb(`admin-password-reset:${ip}`, 3, 60 * 60 * 1000)) {
+    return Response.json({ error: "Too many reset attempts. Try again later." }, { status: 429 });
+  }
   const { resetToken, newPassword } = (await request.json().catch(() => ({}))) as Record<string, string>;
 
   if (!resetToken || !newPassword) {

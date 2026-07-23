@@ -6,6 +6,8 @@ import WhatsAppButton from "@/components/WhatsAppButton";
 import WelcomePopup from "@/components/WelcomePopup";
 import ThemeToggle from "@/components/ThemeToggle";
 import { supabase } from "@/lib/supabase";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -77,6 +79,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <ThemeToggle />
           </div>
         )}
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
