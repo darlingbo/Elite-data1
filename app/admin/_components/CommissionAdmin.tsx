@@ -117,7 +117,7 @@ export default function CommissionAdmin() {
   const adminPct = 100 - globalPct;
 
   return (
-    <div className="space-y-6">
+    <div className="admin-section space-y-6">
       {toast && (
         <div className="fixed top-4 right-4 z-50 bg-slate-800 text-white px-5 py-3 rounded-xl shadow-xl text-sm font-semibold animate-fade-in">
           {toast}

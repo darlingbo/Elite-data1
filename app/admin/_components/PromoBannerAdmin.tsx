@@ -45,7 +45,7 @@ export default function PromoBannerAdmin() {
   if (loading) return <div style={{ color: D.muted, padding: 40, textAlign: "center" }}>Loading…</div>;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 680 }}>
+    <div className="admin-section" style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 760 }}>
       {/* Header */}
       <div>
         <h2 style={{ fontSize: 20, fontWeight: 900, color: D.text, margin: 0 }}>Monthly Promo Banner</h2>

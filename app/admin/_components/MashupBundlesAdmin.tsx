@@ -70,7 +70,7 @@ export default function MashupBundlesAdmin() {
   if (loading) return <div className="flex items-center justify-center py-32"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
-    <div className="space-y-5">
+    <div className="admin-section space-y-5">
       <div className="flex items-center justify-between">
         <div><h1 className="text-xl font-black text-white">Mashup Bundles</h1><p className="text-sm text-slate-500 mt-0.5">MTN combo packs — data + voice minutes</p></div>
         <button onClick={() => setShowSql(!showSql)} className="text-xs border px-3 py-1.5 rounded-lg text-slate-400 hover:text-white" style={{ borderColor: BORDER }}>+ Add Bundle</button>

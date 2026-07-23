@@ -229,7 +229,7 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
   ];
 
   return (
-    <div className="space-y-5">
+    <div className="admin-section space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-black text-white">SMS Broadcast</h1>

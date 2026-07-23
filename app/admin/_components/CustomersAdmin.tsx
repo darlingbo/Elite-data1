@@ -28,7 +28,7 @@ export default function CustomersAdmin() {
   if (loading) return <div className="flex items-center justify-center py-32"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
-    <div className="space-y-5">
+    <div className="admin-section space-y-5">
       <div><h1 className="text-xl font-black text-white">Customers</h1></div>
 
       {/* Stats */}

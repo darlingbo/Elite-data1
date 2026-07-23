@@ -111,7 +111,7 @@ function DonutChart({ slices, total }: { slices: { pct: number; color: string }[
 function HBarChart({ data }: { data: { label: string; value: number; color: string }[] }) {
   const max = Math.max(...data.map(d => d.value), 1);
   return (
-    <div className="space-y-2">
+    <div className="admin-section space-y-2">
       {data.map((d, i) => (
         <div key={i} className="flex items-center gap-2">
           <span className="text-[10px] font-semibold text-slate-400 w-14 shrink-0 text-right">{d.label}</span>

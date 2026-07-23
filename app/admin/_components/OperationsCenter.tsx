@@ -26,7 +26,7 @@ export default function OperationsCenter() {
 
   if (!data && !error) return <p className="text-slate-400 p-6">Checking financial operations…</p>;
   return (
-    <div className="space-y-6">
+    <div className="admin-section space-y-6">
       <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h2 className="text-xl font-black text-white">Operations & reconciliation</h2>

@@ -432,7 +432,7 @@ export function SettingsView({ onChangePassword }: { onChangePassword: () => voi
   const SQL = `-- Run this ONCE in Supabase SQL Editor:\nCREATE TABLE IF NOT EXISTS system_settings (\n  key text PRIMARY KEY,\n  value text NOT NULL,\n  updated_at timestamptz DEFAULT now()\n);\n\nCREATE TABLE IF NOT EXISTS admin_config (\n  key text PRIMARY KEY,\n  value text NOT NULL,\n  updated_at timestamptz DEFAULT now()\n);`;
 
   return (
-    <div className="max-w-xl space-y-5">
+    <div className="admin-section max-w-3xl space-y-5">
       <div><h1 className="text-xl font-black text-white">Settings</h1><p className="text-sm text-slate-500">Store availability, hours, and account settings</p></div>
 
       {netError && (

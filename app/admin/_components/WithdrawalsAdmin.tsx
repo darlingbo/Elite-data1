@@ -66,7 +66,7 @@ export default function WithdrawalsAdmin() {
   if (loading) return <div className="flex items-center justify-center py-32"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
-    <div className="space-y-5">
+    <div className="admin-section space-y-5">
       {toast && (
         <div style={{ background: toast.startsWith("✅") ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${toast.startsWith("✅") ? "rgba(74,222,128,0.3)" : "rgba(248,113,113,0.3)"}`, borderRadius: 12, padding: "12px 18px", fontSize: 14, fontWeight: 700, color: toast.startsWith("✅") ? "#4ade80" : "#f87171" }}>
           {toast}

@@ -71,7 +71,7 @@ export function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats
   const shown = stats.agents.all.filter(a => a.status === agentTab);
 
   return (
-    <div className="space-y-4">
+    <div className="admin-section space-y-4">
       <div>
         <h1 className="text-xl font-black text-white">Agents</h1>
         <p className="text-sm text-slate-500">{stats.agents.approved} active · {stats.agents.pending} awaiting approval</p>

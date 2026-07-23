@@ -114,7 +114,7 @@ export default function ManualOrdersAdmin() {
   const pendingCount = orders.filter(o => o.status === "pending").length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="admin-section" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div>

@@ -168,7 +168,7 @@ export default function PnLView({ orders, agents = [] }: { orders: Order[]; agen
   const epIcons:  Record<string, string> = { day: "☀️", week: "📅", month: "🗓️", year: "🏆" };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="admin-section" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
       {/* ══════════ EARNINGS BY PERIOD ══════════ */}
       <div style={{ ...card, overflow: "hidden" }}>

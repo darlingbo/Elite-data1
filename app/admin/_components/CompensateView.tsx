@@ -19,7 +19,7 @@ export function CompensateView() {
   }
   const inp = "w-full rounded-xl px-3 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500";
   return (
-    <div className="max-w-lg">
+    <div className="admin-section max-w-2xl">
       <div className="rounded-2xl border p-4 sm:p-6" style={{ background: CARD, borderColor: BORDER }}>
         <h2 className="text-lg font-black text-white mb-1">Compensate Delivery</h2>
         <p className="text-xs text-slate-500 mb-5">Deliver missing data to a customer and credit the agent commission.</p>

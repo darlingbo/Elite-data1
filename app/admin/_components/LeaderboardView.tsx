@@ -18,7 +18,7 @@ export function LeaderboardView({ stats }: { stats: StatsData }) {
   const topThree = agents.length >= 3 ? [agents[1], agents[0], agents[2]] : [];
 
   return (
-    <div className="space-y-5">
+    <div className="admin-section space-y-5">
       <div>
         <h1 className="text-xl font-black text-white">Agent Leaderboard</h1>
         <p className="text-sm text-slate-500">{agents.length} approved agents · GH₵{totalRevenue.toFixed(2)} total revenue generated</p>

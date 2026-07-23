@@ -106,7 +106,7 @@ export default function PricesView() {
   const totals = { active: bundles.filter((b) => b.active).length, inactive: bundles.filter((b) => !b.active).length };
 
   return (
-    <div className="space-y-4">
+    <div className="admin-section space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-black text-white">Bundle Management</h1>

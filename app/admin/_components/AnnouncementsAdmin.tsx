@@ -245,7 +245,7 @@ export default function AnnouncementsAdmin() {
   const inactive = announcements.filter((a) => !a.active);
 
   return (
-    <div className="space-y-6">
+    <div className="admin-section space-y-6">
       <div>
         <h2 style={{ color: "#f1f5f9", fontWeight: 900, fontSize: 22, margin: 0 }}>Notifications</h2>
         <p style={{ color: "#64748b", fontSize: 14, marginTop: 4 }}>

@@ -97,7 +97,7 @@ export default function AgentWalletsAdmin() {
   if (loading) return <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
-    <div className="space-y-6">
+    <div className="admin-section space-y-6">
       {toast && (
         <div className="fixed top-4 right-4 z-50 bg-slate-800 text-white px-5 py-3 rounded-xl shadow-xl text-sm font-semibold">
           {toast}

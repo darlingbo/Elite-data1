@@ -142,6 +142,121 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.admin-section {
+  animation: admin-section-enter 240ms ease-out both;
+}
+
+.admin-section > div:first-child h1 {
+  display: none;
+}
+
+.admin-section > div:first-child p {
+  color: var(--admin-muted);
+}
+
+.admin-section :is(div, section)[class*="rounded-2xl"][class*="border"]:not([class*="border-red"]):not([class*="border-amber"]):not([class*="border-green"]) {
+  border-color: var(--admin-border) !important;
+  background: linear-gradient(145deg, rgba(16, 25, 41, 0.97), rgba(10, 17, 29, 0.97)) !important;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.13);
+}
+
+.admin-section :is(div, section)[class*="rounded-xl"][class*="border"]:not([class*="border-red"]):not([class*="border-amber"]):not([class*="border-green"]) {
+  border-color: var(--admin-border) !important;
+  background-color: rgba(13, 20, 34, 0.82) !important;
+}
+
+.admin-section [class*="bg-[#0b1829]"],
+.admin-section [class*="bg-[#0f1f3d]"],
+.admin-section [class*="bg-[#060f1e]"] {
+  background: var(--admin-surface) !important;
+}
+
+.admin-section [class*="border-[#1e3050]"] {
+  border-color: var(--admin-border) !important;
+}
+
+.admin-section table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-section table th {
+  color: #718096 !important;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+}
+
+.admin-section table td {
+  border-color: rgba(32, 43, 61, 0.72) !important;
+}
+
+.admin-section > div:first-child button,
+.admin-section > div:first-child a {
+  min-height: 2.5rem;
+}
+
+.admin-section button[class*="rounded-xl"],
+.admin-section button[class*="rounded-lg"] {
+  font-weight: 700;
+}
+
+.admin-section input[type="search"],
+.admin-section input[placeholder*="Search"],
+.admin-section input[placeholder*="search"] {
+  min-height: 2.75rem;
+}
+
+.admin-shell [class*="fixed inset-0"][class*="bg-black"] {
+  background-color: rgba(2, 6, 15, 0.78) !important;
+  backdrop-filter: blur(10px);
+}
+
+.admin-shell [class*="fixed inset-0"][class*="bg-black"] > div {
+  border-color: var(--admin-border) !important;
+  background: linear-gradient(145deg, #111a2a, #0a111d) !important;
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.55);
+}
+
+.admin-shell ::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.admin-shell ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-shell ::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #2a3850;
+}
+
+.admin-shell ::-webkit-scrollbar-thumb:hover {
+  background: #3b4d6b;
+}
+
+@keyframes admin-section-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-section {
+    animation: none;
+  }
+
+  .admin-shell * {
+    scroll-behavior: auto !important;
+  }
+}
+
 @media (min-width: 1024px) {
   .admin-overview {
     display: grid;

@@ -139,7 +139,7 @@ export default function NetworkProvidersAdmin() {
   const activeLabel = inv ? "Inventor" : dc ? "DataCity" : dt ? "Datify" : "None";
 
   return (
-    <div className="space-y-5">
+    <div className="admin-section space-y-5">
       <div>
         <h1 className="text-xl font-black text-white">Network Providers</h1>
         {data?.checkedAt && <p className="mt-1 text-xs text-slate-500">Health checked {new Date(data.checkedAt).toLocaleTimeString()}</p>}

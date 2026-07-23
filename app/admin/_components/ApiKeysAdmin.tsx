@@ -171,7 +171,7 @@ console.log(order);
 const status = await fetch(\`\${BASE}/api/v1/orders/\${order.reference}\`, { headers: HEADS }).then(r => r.json());`;
 
   return (
-    <div className="space-y-6">
+    <div className="admin-section space-y-6">
       {topupKey && <TopupModal apiKey={topupKey} onClose={() => setTopupKey(null)} onDone={load} />}
 
       <div>
