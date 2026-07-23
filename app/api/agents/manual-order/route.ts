@@ -2,10 +2,13 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles } from "@/lib/bundles";
 import { sendAdminBotMessage } from "@/lib/telegram";
+import { requireAgentSession } from "@/lib/agentAuth";
 
 export async function GET(req: NextRequest) {
   const agentId = req.nextUrl.searchParams.get("agentId");
   if (!agentId) return Response.json({ error: "agentId required" }, { status: 400 });
+  const auth = requireAgentSession(req, agentId, { requireFull: true });
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
 
   const { data, error } = await supabase
     .from("manual_orders")
@@ -24,6 +27,8 @@ export async function POST(req: NextRequest) {
   if (!agentId || !customerPhone || !network || !bundleId || !bundleSize) {
     return Response.json({ error: "All fields are required." }, { status: 400 });
   }
+  const auth = requireAgentSession(req, agentId, { requireFull: true });
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
 
   const cleaned = customerPhone.replace(/\s/g, "");
   if (!/^0[2-5][0-9]{8}$/.test(cleaned)) {

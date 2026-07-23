@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { requireAgentSession } from "@/lib/agentAuth";
 
 // ── Reward tiers ──────────────────────────────────────────────────────────────
 export const REWARDS = {
@@ -94,6 +95,8 @@ async function getAgentIsPro(agentId: string): Promise<boolean> {
 export async function GET(request: NextRequest) {
   const agentId = request.nextUrl.searchParams.get("agentId");
   if (!agentId) return Response.json({ error: "agentId required" }, { status: 400 });
+  const auth = requireAgentSession(request, agentId, { requireFull: true });
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
 
   const [todaySales, weekSales, totalSales, isPro] = await Promise.all([
     countTodaySales(agentId),
@@ -140,6 +143,8 @@ export async function POST(request: NextRequest) {
   if (!agentId || !rewardType || !phone || !network) {
     return Response.json({ error: "agentId, rewardType, phone and network are required." }, { status: 400 });
   }
+  const auth = requireAgentSession(request, agentId, { requireFull: true });
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
 
   const cleaned = phone.replace(/\s/g, "");
   if (!/^0[2-5][0-9]{8}$/.test(cleaned)) {
@@ -177,9 +182,17 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Unknown reward type." }, { status: 400 });
   }
 
-  // Check not already claimed
-  if (await hasClaimed(agentId, rewardType, period)) {
+  // Reserve the unique claim before delivery so simultaneous requests cannot
+  // both send a reward.
+  const { data: claim, error: claimErr } = await supabase.from("reward_claims").insert({
+    agent_id: agentId, reward_type: rewardType, period,
+    phone: cleaned, network, data_gb: dataGB, status: "processing",
+  }).select("id").single();
+  if (claimErr?.code === "23505") {
     return Response.json({ error: "Already claimed this reward. Check back later!" }, { status: 409 });
+  }
+  if (claimErr || !claim) {
+    return Response.json({ error: "Could not reserve this reward. Please try again." }, { status: 500 });
   }
 
   // Send via Inventor API
@@ -187,22 +200,11 @@ export async function POST(request: NextRequest) {
   const result = await sendDataBundle(network, cleaned, dataGB, reference);
 
   if (!result.ok && result.status !== 409) {
+    await supabase.from("reward_claims").delete().eq("id", claim.id).eq("status", "processing");
     return Response.json({ error: "Failed to send data. Please try again." }, { status: 502 });
   }
 
-  // Record the claim
-  const { error: claimErr } = await supabase.from("reward_claims").insert({
-    agent_id: agentId, reward_type: rewardType, period,
-    phone: cleaned, network, data_gb: dataGB,
-  });
-
-  if (claimErr?.code === "42P01") {
-    return Response.json({
-      sqlNeeded: true,
-      sql: `CREATE TABLE IF NOT EXISTS reward_claims (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  agent_id text NOT NULL,\n  reward_type text NOT NULL,\n  period text NOT NULL,\n  phone text,\n  network text,\n  data_gb numeric DEFAULT 1,\n  created_at timestamptz DEFAULT now(),\n  UNIQUE (agent_id, reward_type, period)\n);`,
-      error: "Run the SQL below in Supabase first, then try again.",
-    }, { status: 500 });
-  }
+  await supabase.from("reward_claims").update({ status: "completed" }).eq("id", claim.id);
 
   return Response.json({ success: true, dataGB, phone: cleaned, network, tierLabel });
 }

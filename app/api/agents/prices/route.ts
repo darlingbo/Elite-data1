@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { requireAgentSession } from "@/lib/agentAuth";
 
 export async function GET(request: NextRequest) {
   const agentId = request.nextUrl.searchParams.get("agentId");
@@ -19,6 +20,8 @@ export async function POST(request: NextRequest) {
   if (!agentId || !bundleId || customPrice === undefined || !referralCode) {
     return Response.json({ error: "Missing fields." }, { status: 400 });
   }
+  const auth = requireAgentSession(request, agentId, { requireFull: true });
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
   if (Number(customPrice) < 0.5) {
     return Response.json({ error: "Price must be at least GH₵0.50." }, { status: 400 });
   }

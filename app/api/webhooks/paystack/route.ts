@@ -9,9 +9,13 @@ export async function POST(request: NextRequest) {
   const rawBody = await request.text();
 
   // Verify Paystack signature
+  const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
+  if (!paystackSecret) {
+    return Response.json({ error: "Webhook is not configured" }, { status: 503 });
+  }
   const sig = request.headers.get("x-paystack-signature");
   const expected = crypto
-    .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY ?? "")
+    .createHmac("sha512", paystackSecret)
     .update(rawBody)
     .digest("hex");
   if (!sig || sig !== expected) {
@@ -62,12 +66,22 @@ export async function POST(request: NextRequest) {
 
   const network = (dbBundle?.network ?? staticBundle?.network) as Network | undefined;
   const costPrice = dbBundle?.cost_price ?? staticBundle?.costPrice ?? 0;
+  const sellingPrice = Number(dbBundle?.price ?? staticBundle?.price ?? 0);
   const bundleSize = dbBundle?.size_label ?? staticBundle?.size ?? bundleId;
   const sizeGB = dbBundle?.size_gb ?? staticBundle?.sizeGB ?? 1;
 
   if (!network) {
     await sendAdminAlert(
       `⚠️ <b>Webhook: Unknown bundle</b>\nRef: <code>${reference}</code>\nBundle ID: ${bundleId}\nPhone: ${phone}\nAmount: GH₵${chargedAmount}\n\nDeliver manually.`
+    ).catch(() => {});
+    return Response.json({ ok: true });
+  }
+
+  // Never trust the amount or bundle embedded in webhook metadata. The current
+  // server-side catalog remains the source of truth.
+  if (sellingPrice <= 0 || chargedAmount + 0.01 < sellingPrice * 0.8) {
+    await sendAdminAlert(
+      `⚠️ <b>Webhook blocked: underpaid order</b>\nRef: <code>${reference}</code>\nPaid: GH₵${chargedAmount.toFixed(2)}\nExpected: GH₵${sellingPrice.toFixed(2)}\n\nNo order was created.`
     ).catch(() => {});
     return Response.json({ ok: true });
   }
@@ -80,7 +94,7 @@ export async function POST(request: NextRequest) {
 
   if (agentCode) {
     const { data: agent } = await supabase
-      .from("agents").select("id, name, agent_type, commission_balance, wallet_balance, paystack_wallet_balance")
+      .from("agents").select("id, name, agent_type")
       .eq("referral_code", agentCode.toUpperCase()).eq("status", "approved").maybeSingle();
     if (agent) {
       agentId = agent.id;
@@ -91,11 +105,7 @@ export async function POST(request: NextRequest) {
         const adminTierPrice = tierRow?.price ? Number(tierRow.price) : costPrice;
         agentCommission = parseFloat(Math.max(0, chargedAmount - adminTierPrice).toFixed(2));
         adminCommission = parseFloat(Math.max(0, adminTierPrice - costPrice).toFixed(2));
-        // Deduct wallet using admin tier price
-        await supabase.from("agents").update({
-          wallet_balance: Math.max(0, Number(agent.wallet_balance ?? 0) - adminTierPrice),
-          paystack_wallet_balance: Math.max(0, Number(agent.paystack_wallet_balance ?? 0) - adminTierPrice),
-        }).eq("id", agent.id);
+        // Wallet accounting happens once, after admin approval.
       } else {
         const profit = Math.max(0, chargedAmount - costPrice);
         agentCommission = parseFloat((profit * 0.8).toFixed(2));

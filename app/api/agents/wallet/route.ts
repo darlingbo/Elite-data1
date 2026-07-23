@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { requireAgentSession } from "@/lib/agentAuth";
 
 // POST — verify Paystack topup and credit agent wallet
 export async function POST(request: NextRequest) {
@@ -7,14 +8,8 @@ export async function POST(request: NextRequest) {
   const { agentId, paystackRef } = body;
 
   if (!agentId || !paystackRef) return Response.json({ error: "agentId and paystackRef required" }, { status: 400 });
-
-  // Check for duplicate topup
-  const { data: existing } = await supabase
-    .from("agent_wallet_transactions")
-    .select("id")
-    .eq("paystack_reference", paystackRef)
-    .maybeSingle();
-  if (existing) return Response.json({ error: "This payment has already been applied." }, { status: 409 });
+  const auth = requireAgentSession(request, agentId, { requireFull: true });
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
 
   // Verify with Paystack
   let psData: Record<string, unknown> = {};
@@ -32,28 +27,25 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Payment not confirmed by Paystack." }, { status: 400 });
   }
 
-  const amountKobo = Number((psData.data as Record<string, unknown>)?.amount ?? 0);
+  const transaction = psData.data as Record<string, unknown>;
+  const metadata = (transaction?.metadata ?? {}) as Record<string, unknown>;
+  if (metadata.purpose !== "agent_wallet_topup" || metadata.agent_id !== agentId) {
+    return Response.json({ error: "Payment does not belong to this agent wallet." }, { status: 403 });
+  }
+
+  const amountKobo = Number(transaction?.amount ?? 0);
   const amountGhc = parseFloat((amountKobo / 100).toFixed(2));
   if (amountGhc <= 0) return Response.json({ error: "Invalid payment amount." }, { status: 400 });
 
-  // Credit wallet (both total and Paystack-tracked portion)
-  const { data: existing2 } = await supabase.from("agents").select("wallet_balance, paystack_wallet_balance").eq("id", agentId).maybeSingle();
-  const current = Number((existing2 as { wallet_balance?: number } | null)?.wallet_balance ?? 0);
-  const currentPaystack = Number((existing2 as { paystack_wallet_balance?: number } | null)?.paystack_wallet_balance ?? 0);
-  const { error: updateErr } = await supabase.from("agents").update({
-    wallet_balance: current + amountGhc,
-    paystack_wallet_balance: currentPaystack + amountGhc,
-  }).eq("id", agentId);
-  if (updateErr) return Response.json({ error: updateErr.message }, { status: 500 });
-
-  // Log transaction
-  await supabase.from("agent_wallet_transactions").insert({
-    agent_id: agentId,
-    type: "paystack_topup",
-    amount: amountGhc,
-    description: `Paystack top-up`,
-    paystack_reference: paystackRef,
+  const { error } = await supabase.rpc("credit_agent_wallet_topup", {
+    p_agent_id: agentId,
+    p_reference: paystackRef,
+    p_amount: amountGhc,
   });
+  if (error?.code === "23505") {
+    return Response.json({ error: "This payment has already been applied." }, { status: 409 });
+  }
+  if (error) return Response.json({ error: "Could not credit the wallet." }, { status: 500 });
 
   return Response.json({ success: true, amount: amountGhc });
 }

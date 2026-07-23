@@ -1,10 +1,13 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { requireAgentSession } from "@/lib/agentAuth";
 
 export async function GET(request: NextRequest) {
   const agentId      = request.nextUrl.searchParams.get("agentId");
   const referralCode = request.nextUrl.searchParams.get("referralCode");
   if (!agentId || !referralCode) return Response.json({ error: "agentId and referralCode required" }, { status: 400 });
+  const auth = requireAgentSession(request, agentId, { requireFull: true });
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
 
   // Verify ownership before returning financial data
   const { data: agent } = await supabase

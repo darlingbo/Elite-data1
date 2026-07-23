@@ -12,15 +12,20 @@ async function isAdmin(): Promise<boolean> {
 }
 
 async function runApprove(reference: string): Promise<{ ok: boolean; message: string }> {
+  // Claim the order in the database before calling the delivery provider. Only
+  // one admin surface can move pending_approval -> processing.
   const { data: order } = await supabase
     .from("orders")
-    .select("*")
+    .update({ status: "processing" })
     .eq("reference", reference)
+    .eq("status", "pending_approval")
+    .select("*")
     .maybeSingle();
 
-  if (!order) return { ok: false, message: "Order not found" };
-  if (order.status !== "pending_approval") {
-    return { ok: false, message: `Already ${order.status}` };
+  if (!order) {
+    const { data: existing } = await supabase
+      .from("orders").select("status").eq("reference", reference).maybeSingle();
+    return { ok: false, message: existing ? `Already ${existing.status}` : "Order not found" };
   }
 
   const isVoucher = order.network === "voucher";
@@ -38,29 +43,7 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
   });
 
   if (isMashupOrder) {
-    await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
-    if (order.agent_id && Number(order.agent_commission ?? 0) > 0) {
-      const { data: ag } = await supabase.from("agents")
-        .select("agent_type, plan, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue")
-        .eq("id", order.agent_id).maybeSingle();
-      if (ag) {
-        if (ag.agent_type === "custom_price" && ag.plan === "free") {
-          const adminTierPrice = Number(order.cost_price ?? 0) + Number(order.admin_commission ?? 0);
-          await supabase.from("agents").update({
-            wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - adminTierPrice),
-            paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - adminTierPrice),
-            commission_balance: Number(ag.commission_balance ?? 0) + Number(order.agent_commission),
-            total_sales: Number(ag.total_sales ?? 0) + 1,
-          }).eq("id", order.agent_id);
-        } else {
-          await supabase.from("agents").update({
-            commission_balance: Number(ag.commission_balance ?? 0) + Number(order.agent_commission),
-            total_sales: Number(ag.total_sales ?? 0) + 1,
-            total_revenue: Number(ag.total_revenue ?? 0) + Number(order.amount ?? 0),
-          }).eq("id", order.agent_id);
-        }
-      }
-    }
+    await supabase.rpc("apply_agent_order_accounting", { p_reference: reference });
     return { ok: true, message: `Mashup approved — deliver ${order.bundle_size} to ${order.phone} manually, then force-complete` };
   }
 
@@ -98,31 +81,7 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
   if (apiOk) {
     await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
 
-    // Credit agent commission now that delivery is confirmed
-    if (order.agent_id && Number(order.agent_commission ?? 0) > 0) {
-      const { data: ag } = await supabase
-        .from("agents")
-        .select("agent_type, plan, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue")
-        .eq("id", order.agent_id)
-        .maybeSingle();
-      if (ag) {
-        if (ag.agent_type === "custom_price" && ag.plan === "free") {
-          const adminTierPrice = Number(order.cost_price ?? 0) + Number(order.admin_commission ?? 0);
-          await supabase.from("agents").update({
-            wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - adminTierPrice),
-            paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - adminTierPrice),
-            commission_balance: Number(ag.commission_balance ?? 0) + Number(order.agent_commission),
-            total_sales: Number(ag.total_sales ?? 0) + 1,
-          }).eq("id", order.agent_id);
-        } else {
-          await supabase.from("agents").update({
-            commission_balance: Number(ag.commission_balance ?? 0) + Number(order.agent_commission),
-            total_sales: Number(ag.total_sales ?? 0) + 1,
-            total_revenue: Number(ag.total_revenue ?? 0) + Number(order.amount ?? 0),
-          }).eq("id", order.agent_id);
-        }
-      }
-    }
+    await supabase.rpc("apply_agent_order_accounting", { p_reference: reference });
 
     // Check balance from purchase response; alert if low (fire-and-forget)
     ;(async () => {

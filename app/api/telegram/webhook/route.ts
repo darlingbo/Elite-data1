@@ -527,16 +527,18 @@ async function cmdLookup(chatId: string, phone: string) {
 async function approveOrder(chatId: string, reference: string) {
   const { data: order } = await supabase
     .from("orders")
-    .select("*")
+    .update({ status: "processing" })
     .eq("reference", reference)
+    .eq("status", "pending_approval")
+    .select("*")
     .maybeSingle();
 
   if (!order) {
-    await reply(chatId, `❌ Order <code>${reference}</code> not found.`);
-    return;
-  }
-  if (order.status !== "pending_approval") {
-    await reply(chatId, `ℹ️ Order <code>${reference}</code> is already <b>${String(order.status).toUpperCase()}</b> — nothing to do.`);
+    const { data: existing } = await supabase.from("orders")
+      .select("status").eq("reference", reference).maybeSingle();
+    await reply(chatId, existing
+      ? `ℹ️ Order <code>${reference}</code> is already <b>${String(existing.status).toUpperCase()}</b> — nothing to do.`
+      : `❌ Order <code>${reference}</code> not found.`);
     return;
   }
 
@@ -553,29 +555,7 @@ async function approveOrder(chatId: string, reference: string) {
   });
 
   if (isMashupOrder) {
-    await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
-    if (order.agent_id && Number(order.agent_commission ?? 0) > 0) {
-      const { data: ag } = await supabase.from("agents")
-        .select("agent_type, plan, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue")
-        .eq("id", order.agent_id).maybeSingle();
-      if (ag) {
-        if (ag.agent_type === "custom_price" && ag.plan === "free") {
-          const adminTierPrice = Number(order.cost_price ?? 0) + Number(order.admin_commission ?? 0);
-          await supabase.from("agents").update({
-            wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - adminTierPrice),
-            paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - adminTierPrice),
-            commission_balance: Number(ag.commission_balance ?? 0) + Number(order.agent_commission),
-            total_sales: Number(ag.total_sales ?? 0) + 1,
-          }).eq("id", order.agent_id);
-        } else {
-          await supabase.from("agents").update({
-            commission_balance: Number(ag.commission_balance ?? 0) + Number(order.agent_commission),
-            total_sales: Number(ag.total_sales ?? 0) + 1,
-            total_revenue: Number(ag.total_revenue ?? 0) + Number(order.amount ?? 0),
-          }).eq("id", order.agent_id);
-        }
-      }
-    }
+    await supabase.rpc("apply_agent_order_accounting", { p_reference: reference });
     await reply(chatId,
       `✅ <b>Mashup Order Approved!</b>\n\n` +
       `📱 ${String(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
@@ -613,29 +593,7 @@ async function approveOrder(chatId: string, reference: string) {
   if (ok) {
     await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
 
-    // Credit agent commission now that delivery is confirmed
-    if (order.agent_id && Number(order.agent_commission ?? 0) > 0) {
-      const { data: ag } = await supabase.from("agents")
-        .select("agent_type, plan, commission_balance, wallet_balance, paystack_wallet_balance, total_sales, total_revenue")
-        .eq("id", order.agent_id).maybeSingle();
-      if (ag) {
-        if (ag.agent_type === "custom_price" && ag.plan === "free") {
-          const adminTierPrice = Number(order.cost_price ?? 0) + Number(order.admin_commission ?? 0);
-          await supabase.from("agents").update({
-            wallet_balance: Math.max(0, Number(ag.wallet_balance ?? 0) - adminTierPrice),
-            paystack_wallet_balance: Math.max(0, Number(ag.paystack_wallet_balance ?? 0) - adminTierPrice),
-            commission_balance: Number(ag.commission_balance ?? 0) + Number(order.agent_commission),
-            total_sales: Number(ag.total_sales ?? 0) + 1,
-          }).eq("id", order.agent_id);
-        } else {
-          await supabase.from("agents").update({
-            commission_balance: Number(ag.commission_balance ?? 0) + Number(order.agent_commission),
-            total_sales: Number(ag.total_sales ?? 0) + 1,
-            total_revenue: Number(ag.total_revenue ?? 0) + Number(order.amount ?? 0),
-          }).eq("id", order.agent_id);
-        }
-      }
-    }
+    await supabase.rpc("apply_agent_order_accounting", { p_reference: reference });
 
 
     await reply(chatId,

@@ -395,9 +395,10 @@ function AddFundsModal({ agentId, agentEmail, onClose, onSuccess }: { agentId: s
       const handler = ps.setup({
         key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
         email: agentEmail,
-        amount: Math.round(amt * 100),
-        currency: "GHS",
-        callback: (response: { reference: string }) => {
+         amount: Math.round(amt * 100),
+         currency: "GHS",
+         metadata: { purpose: "agent_wallet_topup", agent_id: agentId },
+         callback: (response: { reference: string }) => {
           fetch("/api/agents/wallet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId, paystackRef: response.reference }) })
             .then(r => r.json())
             .then(d => { if (d.success) { onSuccess(); onClose(); } else { setError(d.error ?? "Top-up failed."); setLoading(false); } })

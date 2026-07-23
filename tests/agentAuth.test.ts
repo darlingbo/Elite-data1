@@ -52,4 +52,13 @@ describe("agent session tokens", () => {
     expect(verifyAgentToken(token)).toBeNull();
     process.env.AGENT_SESSION_SECRET = "test-secret-for-agent-sessions"; // restore
   });
+
+  it("fails closed when no session secret is configured", () => {
+    const token = buildAgentToken("agent-123", "full");
+    delete process.env.AGENT_SESSION_SECRET;
+    delete process.env.ADMIN_SESSION_TOKEN;
+    expect(verifyAgentToken(token)).toBeNull();
+    expect(() => buildAgentToken("agent-123", "full")).toThrow("AGENT_SESSION_SECRET");
+    process.env.AGENT_SESSION_SECRET = "test-secret-for-agent-sessions";
+  });
 });

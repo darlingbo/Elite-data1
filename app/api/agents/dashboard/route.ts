@@ -41,15 +41,12 @@ async function lookupAgent(code: string | null, email: string | null): Promise<{
   return { agent: row ?? null, hash: row?.password_hash ?? null };
 }
 
-// GET: referral-code-only login (no password required — public dashboard)
-export async function GET(request: NextRequest) {
-  const code = request.nextUrl.searchParams.get("code");
-  if (!code) {
-    return Response.json({ error: "Referral code required." }, { status: 400 });
-  }
-  const { agent, hash } = await lookupAgent(code, null);
-  if (!agent) return Response.json({ error: "Agent not found. Check your referral code." }, { status: 404 });
-  return handleAgentResponse(agent, hash, null);
+// Referral codes are public storefront identifiers, not login credentials.
+export async function GET() {
+  return Response.json(
+    { error: "Sign in with your email and password to access the dashboard." },
+    { status: 401 }
+  );
 }
 
 // POST: email + password login (credentials sent securely in request body)
@@ -96,7 +93,7 @@ async function handleAgentResponse(
 
   // Issue a signed, httpOnly session cookie. Password login => "full" (can move
   // money); referral-code login => "code" (view-only, cannot withdraw/spend).
-  await issueAgentSession(agent.id, password !== null ? "full" : "code");
+  await issueAgentSession(agent.id, "full");
 
   const ordersRes = await supabase
     .from("orders")

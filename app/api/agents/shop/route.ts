@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { requireAgentSession } from "@/lib/agentAuth";
 
 export async function GET(request: NextRequest) {
   const agentId = request.nextUrl.searchParams.get("agentId");
@@ -21,6 +22,8 @@ export async function PATCH(request: NextRequest) {
   if (!agentId || !shopName?.trim() || !referralCode) {
     return Response.json({ error: "agentId, shopName, and referralCode required" }, { status: 400 });
   }
+  const auth = requireAgentSession(request, agentId, { requireFull: true });
+  if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
 
   const trimmed = shopName.trim();
   if (trimmed.length < 3 || trimmed.length > 50) {

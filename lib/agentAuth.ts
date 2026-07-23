@@ -18,15 +18,15 @@ export type AgentAuthLevel = "full" | "code";
 const MAX_AGE_SECONDS = 60 * 60 * 12; // 12 hours
 
 function secret(): string {
-  return (
-    process.env.AGENT_SESSION_SECRET ||
-    process.env.ADMIN_SESSION_TOKEN ||
-    "elite-agent-session-fallback-secret-change-me"
-  );
+  return process.env.AGENT_SESSION_SECRET || process.env.ADMIN_SESSION_TOKEN || "";
 }
 
 function sign(payload: string): string {
-  return createHmac("sha256", secret()).update(payload).digest("base64url");
+  const signingSecret = secret();
+  if (!signingSecret) {
+    throw new Error("AGENT_SESSION_SECRET is not configured.");
+  }
+  return createHmac("sha256", signingSecret).update(payload).digest("base64url");
 }
 
 export function buildAgentToken(agentId: string, level: AgentAuthLevel): string {
@@ -61,6 +61,7 @@ export interface AgentSession {
 /** Pure verification of a raw token string. Exported for unit tests. */
 export function verifyAgentToken(token: string | undefined | null): AgentSession | null {
   if (!token) return null;
+  if (!secret()) return null;
   const parts = token.split(".");
   if (parts.length !== 4) return null;
   const [agentId, level, expStr, sig] = parts;

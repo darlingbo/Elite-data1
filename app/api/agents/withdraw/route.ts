@@ -75,42 +75,13 @@ export async function POST(request: NextRequest) {
 
   // Deduct balance immediately so the dashboard shows the correct available amount.
   // If admin rejects, the balance is refunded.
-  const fromCommission = Math.min(amt, commissionBal);
-  const fromPaystack   = parseFloat((amt - fromCommission).toFixed(2));
-  const balanceUpdate: Record<string, number> = {
-    commission_balance: parseFloat((commissionBal - fromCommission).toFixed(2)),
-  };
-  if (agentType === "custom_price" && fromPaystack > 0) {
-    balanceUpdate.paystack_wallet_balance = Math.max(0, paystackBal - fromPaystack);
-    balanceUpdate.wallet_balance = Math.max(0, Number(agent.wallet_balance ?? 0) - fromPaystack);
-  }
-  const { error: balErr } = await supabase.from("agents").update(balanceUpdate).eq("id", agentId);
-  if (balErr) {
-    return Response.json({ error: "Failed to reserve balance. Try again." }, { status: 500 });
-  }
+  const { data: transactionId, error: txnError } = await supabase.rpc("reserve_agent_withdrawal", {
+    p_agent_id: agentId,
+    p_amount: amt,
+    p_description: `Withdrawal via ${method} to ${accountNumber} (${accountName})`,
+  });
 
-  // Save as PENDING — admin must approve before money is sent
-  const { data: txn, error: txnError } = await supabase
-    .from("agent_wallet_transactions")
-    .insert({
-      agent_id: agentId,
-      type: "withdrawal",
-      amount: -amt,
-      description: `Withdrawal via ${method} to ${accountNumber} (${accountName})`,
-      status: "pending",
-    })
-    .select("id")
-    .single();
-
-  if (txnError || !txn) {
-    // Roll back the balance deduction
-    await supabase.from("agents").update({
-      commission_balance: commissionBal,
-      ...(agentType === "custom_price" && fromPaystack > 0 ? {
-        paystack_wallet_balance: paystackBal,
-        wallet_balance: Number(agent.wallet_balance ?? 0),
-      } : {}),
-    }).eq("id", agentId);
+  if (txnError || !transactionId) {
     return Response.json({ error: "Failed to create withdrawal request. Try again." }, { status: 500 });
   }
 

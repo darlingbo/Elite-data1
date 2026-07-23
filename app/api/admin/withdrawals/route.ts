@@ -49,44 +49,18 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (status === "rejected") {
-    const { data: transaction } = await supabase
-      .from("agent_wallet_transactions")
-      .select("agent_id, amount, status")
-      .eq("id", id)
-      .single();
-
-    if (!transaction) {
-      return Response.json({ error: "Transaction not found." }, { status: 404 });
-    }
-    if (transaction.status !== "pending") {
-      return Response.json({ error: "Already processed." }, { status: 400 });
-    }
-
-    const refundAmount = Math.abs(Number(transaction.amount));
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("commission_balance")
-      .eq("id", transaction.agent_id)
-      .maybeSingle();
-
-    if (agent) {
-      const newBalance = Number(agent.commission_balance ?? 0) + refundAmount;
-      await supabase
-        .from("agents")
-        .update({ commission_balance: Number(newBalance.toFixed(2)) })
-        .eq("id", transaction.agent_id);
-    }
-
-    const { error } = await supabase
-      .from("agent_wallet_transactions")
-      .update({ status: "rejected" })
-      .eq("id", id);
+    const { data: rejected, error } = await supabase.rpc("reject_agent_withdrawal", {
+      p_transaction_id: id,
+    });
     if (error) {
       return Response.json({ error: error.message }, { status: 500 });
     }
+    if (!rejected) {
+      return Response.json({ error: "Already processed." }, { status: 400 });
+    }
 
     sendSwiftAlert(
-      `❌ WITHDRAWAL REJECTED — GH₵${refundAmount.toFixed(2)} refunded to agent balance.`
+      `❌ WITHDRAWAL REJECTED — reserved funds returned to the agent's original balances.`
     ).catch(() => {});
     return Response.json({ success: true });
   }
