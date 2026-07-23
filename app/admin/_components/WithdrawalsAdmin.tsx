@@ -30,6 +30,15 @@ export default function WithdrawalsAdmin() {
   useEffect(() => { load(); }, [load]);
 
   async function act(id: string, status: "approved" | "rejected") {
+    if (
+      status === "approved" &&
+      !window.confirm(
+        "Have you already sent this withdrawal manually?\n\nThis only marks it as paid. No Paystack transfer will be made."
+      )
+    ) {
+      return;
+    }
+
     setActing(id);
     try {
       const res = await fetch("/api/admin/withdrawals", {
@@ -39,7 +48,7 @@ export default function WithdrawalsAdmin() {
       });
       const d = await res.json();
       if (d.success) {
-        setToast(status === "approved" ? "✅ Approved — Paystack transfer sent!" : "❌ Rejected.");
+        setToast(status === "approved" ? "✅ Marked as paid manually." : "❌ Rejected.");
         await load();
       } else {
         setToast(`Error: ${d.error ?? "Failed"}`);
@@ -67,7 +76,7 @@ export default function WithdrawalsAdmin() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-black text-white">Withdrawal Requests</h1>
-          <p className="text-sm text-slate-500">Paystack transfer fires only when you tap Approve — money never moves until you say so.</p>
+          <p className="text-sm text-slate-500">Send the money yourself, then mark the request as paid. No automatic Paystack transfer will be made.</p>
         </div>
         <button onClick={load} className="text-xs border px-3 py-1.5 rounded-lg text-slate-400 hover:text-white flex items-center gap-1.5" style={{ borderColor: BORDER }}>↺ Refresh</button>
       </div>
@@ -145,7 +154,7 @@ export default function WithdrawalsAdmin() {
                               onClick={() => act(w.id, "approved")}
                               disabled={isBusy}
                               style={{ background: "rgba(74,222,128,0.15)", border: "1px solid rgba(74,222,128,0.4)", color: "#4ade80", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer", opacity: isBusy ? 0.5 : 1 }}>
-                              {isBusy ? "…" : "✅ Approve"}
+                              {isBusy ? "…" : "✅ Mark as Paid"}
                             </button>
                             <button
                               onClick={() => act(w.id, "rejected")}
