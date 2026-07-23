@@ -5,6 +5,7 @@ import { sendAgentNotification, sendAdminAlert } from "@/lib/telegram";
 import { inventorPurchase, inventorVoucher } from "@/lib/inventor";
 import { sendCustomerSMS, orderFailedSMS } from "@/lib/sms";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
+import { auditLog } from "@/lib/audit";
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -14,9 +15,15 @@ async function isAdmin(): Promise<boolean> {
 async function runApprove(reference: string): Promise<{ ok: boolean; message: string }> {
   // Claim the order in the database before calling the delivery provider. Only
   // one admin surface can move pending_approval -> processing.
+  const approvalTime = new Date().toISOString();
   const { data: order } = await supabase
     .from("orders")
-    .update({ status: "processing" })
+    .update({
+      status: "processing",
+      approved_at: approvalTime,
+      approved_via: "admin_dashboard",
+      fulfillment_started_at: approvalTime,
+    })
     .eq("reference", reference)
     .eq("status", "pending_approval")
     .select("*")
@@ -44,6 +51,7 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
 
   if (isMashupOrder) {
     await supabase.rpc("apply_agent_order_accounting", { p_reference: reference });
+    await auditLog("order_approved_manual_fulfillment", { reference, bundle: order.bundle_size });
     return { ok: true, message: `Mashup approved — deliver ${order.bundle_size} to ${order.phone} manually, then force-complete` };
   }
 
@@ -72,14 +80,14 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
     }
   } catch (err) {
     // Inventor threw an exception (timeout, network error, etc.) — mark failed so order doesn't stay stuck
-    await supabase.from("orders").update({ status: "failed" }).eq("reference", reference);
+    await supabase.from("orders").update({ status: "failed", provider_used: "inventor" }).eq("reference", reference);
     const msg = err instanceof Error ? err.message : String(err);
     sendAdminAlert(`❌ Inventor exception on approval of <code>${reference}</code>: ${msg.slice(0, 120)}`).catch(() => {});
     return { ok: false, message: `Inventor error: ${msg.slice(0, 120)}` };
   }
 
   if (apiOk) {
-    await supabase.from("orders").update({ status: "processing" }).eq("reference", reference);
+    await supabase.from("orders").update({ status: "processing", provider_used: "inventor" }).eq("reference", reference);
 
     await supabase.rpc("apply_agent_order_accounting", { p_reference: reference });
 
@@ -111,9 +119,10 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
       }
     }
 
+    await auditLog("order_approved", { reference, provider: "inventor", channel: "admin_dashboard" });
     return { ok: true, message: "Approved & sent" };
   } else {
-    await supabase.from("orders").update({ status: "failed" }).eq("reference", reference);
+    await supabase.from("orders").update({ status: "failed", provider_used: "inventor" }).eq("reference", reference);
     sendCustomerSMS(
       order.phone,
       orderFailedSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", reference)
@@ -121,6 +130,7 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
     const errMsg = String(
       (errorBody.error as string) ?? (errorBody.message as string) ?? JSON.stringify(errorBody)
     ).slice(0, 160);
+    await auditLog("order_approval_failed", { reference, provider: "inventor", error: errMsg });
     return { ok: false, message: errMsg };
   }
 }
@@ -138,6 +148,7 @@ async function runReject(reference: string): Promise<{ ok: boolean; message: str
   }
 
   await supabase.from("orders").update({ status: "rejected" }).eq("reference", reference);
+  await auditLog("order_rejected", { reference, channel: "admin_dashboard" });
 
   // Wallet orders: refund the deducted amount and notify agent
   if (reference.startsWith("AGTWALLET-") && order.agent_id) {

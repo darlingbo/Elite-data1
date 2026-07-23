@@ -19,6 +19,7 @@ interface ProviderData {
   inventorEnabled:  boolean;
   datacityEnabled:  boolean;
   datifyEnabled:    boolean;
+  checkedAt:        string;
 }
 
 const PROVIDERS = [
@@ -141,6 +142,7 @@ export default function NetworkProvidersAdmin() {
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-black text-white">Network Providers</h1>
+        {data?.checkedAt && <p className="mt-1 text-xs text-slate-500">Health checked {new Date(data.checkedAt).toLocaleTimeString()}</p>}
         <p className="text-sm mt-1" style={{ color: "#64748b" }}>
           Orders are delivered sequentially — if a provider fails, the next one tries automatically.
         </p>

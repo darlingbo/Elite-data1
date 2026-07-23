@@ -52,6 +52,7 @@ export async function GET() {
     inventorEnabled:  (invEnabled ?? "1") === "1",
     datacityEnabled:  (dcEnabled  ?? "1") === "1",
     datifyEnabled:    (dtEnabled  ?? "1") === "1",
+    checkedAt: new Date().toISOString(),
   });
 }
 

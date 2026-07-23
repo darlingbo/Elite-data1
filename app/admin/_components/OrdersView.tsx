@@ -375,6 +375,15 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
 
                     <td className="px-4 py-3.5">
                       <p className="font-semibold text-white whitespace-nowrap">{o.customer_name || o.phone || "—"}</p>
+                      {o.risk_flags && o.risk_flags.length > 0 && (
+                        <div className="mt-1 flex max-w-[220px] flex-wrap gap-1">
+                          {o.risk_flags.map(flag => (
+                            <span key={flag} className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-300">
+                              {flag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       <a href={`/track?ref=${encodeURIComponent(o.reference ?? "")}`} target="_blank" rel="noreferrer"
                         className="text-[11px] text-blue-400 hover:text-blue-300 font-mono mt-0.5 block">{o.reference ? o.reference.slice(0, 16) + "…" : "—"}</a>
                     </td>

@@ -15,6 +15,10 @@ export interface Order {
   agent_name?: string | null; agent_code?: string | null;
   refund_phone?: string | null;
   refunded?: boolean; refunded_at?: string | null; refund_amount?: number | null;
+  risk_flags?: string[];
+  approved_at?: string | null;
+  approved_via?: string | null;
+  provider_used?: string | null;
 }
 
 export interface Agent {

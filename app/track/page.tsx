@@ -365,6 +365,23 @@ function TrackContent() {
               ))}
             </div>
 
+            <div style={{ padding: "0 20px 20px", display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {statusKey === "completed" && (
+                <button
+                  onClick={() => window.print()}
+                  style={{ flex: 1, minWidth: 140, background: D.bg, color: D.text, border: `1px solid ${D.border}`, borderRadius: 10, padding: "11px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                  Print Receipt
+                </button>
+              )}
+              {order.phone && order.network && order.bundle_size && (
+                <a
+                  href={`/buy?phone=${encodeURIComponent(order.phone)}&network=${encodeURIComponent(order.network)}&bundle=${encodeURIComponent(order.bundle_size)}`}
+                  style={{ flex: 1, minWidth: 140, background: D.blue, color: "white", borderRadius: 10, padding: "11px 14px", fontSize: 13, fontWeight: 800, textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>
+                  Buy Again
+                </a>
+              )}
+            </div>
+
             {/* Failed — in-app refund */}
             {isFailed && (
               <div style={{ margin: "0 20px 20px", background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 14, padding: "16px 18px" }}>

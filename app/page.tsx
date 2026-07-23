@@ -19,7 +19,7 @@ const networks = [
 ];
 
 const features = [
-  { icon: "⚡", title: "Instant Delivery",   desc: "Bundle arrives within minutes after payment — automatically." },
+  { icon: "✅", title: "Verified Delivery",  desc: "Every paid order is reviewed before it is sent for delivery." },
   { icon: "🔒", title: "Secure Payment",     desc: "Pay safely with mobile money or card via Paystack." },
   { icon: "💰", title: "Best Prices",        desc: "Lowest data bundle prices across all networks in Ghana." },
   { icon: "📞", title: "24/7 Support",       desc: "Live support on WhatsApp anytime you need help." },
@@ -38,7 +38,7 @@ const howItWorks = [
   { step: "1", title: "Choose Bundle", desc: "Pick your network and the data size you need." },
   { step: "2", title: "Enter Number",  desc: "Type the phone number that will receive the data." },
   { step: "3", title: "Pay Securely",  desc: "Pay via mobile money or card through Paystack." },
-  { step: "4", title: "Get Data",      desc: "Bundle delivered automatically within minutes." },
+  { step: "4", title: "Get Data",      desc: "After approval, your bundle is sent and can be tracked online." },
 ];
 
 const testimonials = [
@@ -49,7 +49,7 @@ const testimonials = [
 ];
 
 const faqs = [
-  { q: "How fast is delivery?",               a: "Bundles are delivered automatically within 1–5 minutes after payment is confirmed. No manual steps needed." },
+  { q: "How fast is delivery?",               a: "Paid orders enter an approval queue. Once approved, delivery normally begins within minutes, and you can track progress online." },
   { q: "Which payment methods are accepted?", a: "All major mobile money (MTN MoMo, Telecel Cash, AirtelTigo Money) and bank cards via Paystack — Ghana's most trusted payment gateway." },
   { q: "What if my bundle doesn't arrive?",   a: "Contact us immediately on WhatsApp (+233 509 794 503). We resolve all delivery issues within 30 minutes." },
   { q: "Can I buy for someone else's number?",a: "Yes! Just enter the recipient's phone number in the checkout form. The bundle goes directly to that number." },
@@ -143,7 +143,7 @@ export default function Home() {
           </div>
 
           <div className="flex flex-wrap justify-center gap-x-5 gap-y-2">
-            {["✅ Paystack Secured", "⚡ Auto-Delivery", "💬 WhatsApp Support", "🔄 100% Refund if Failed"].map(b => (
+            {["✅ Paystack Secured", "🛡️ Admin-Verified", "💬 WhatsApp Support", "🔄 100% Refund if Failed"].map(b => (
               <span key={b} style={{ color: MUTED, fontSize: 13 }}>{b}</span>
             ))}
           </div>
@@ -257,7 +257,7 @@ export default function Home() {
         <div style={{ maxWidth: 920, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 52 }}>
             <h2 style={{ fontSize: "clamp(1.6rem,4vw,2.3rem)", fontWeight: 900, color: TEXT, margin: "0 0 10px" }}>How It Works</h2>
-            <p style={{ color: MUTED, fontSize: 15, margin: 0 }}>Buying data is fast, simple, and fully automatic</p>
+            <p style={{ color: MUTED, fontSize: 15, margin: 0 }}>Buying data is fast, simple, and checked before delivery</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
             {howItWorks.map((h, i) => (
