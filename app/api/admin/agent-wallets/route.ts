@@ -51,27 +51,18 @@ export async function POST(request: NextRequest) {
 
   const delta = type === "admin_credit" ? amt : -amt;
 
-  const { error: updateErr } = await supabase.rpc("adjust_agent_wallet", {
-    p_agent_id: agentId,
-    p_delta: delta,
-  });
-
-  // Fallback: direct update if RPC doesn't exist yet
-  if (updateErr) {
-    const { data: existing } = await supabase.from("agents").select("wallet_balance").eq("id", agentId).maybeSingle();
-    const current = Number((existing as { wallet_balance?: number } | null)?.wallet_balance ?? 0);
-    const newBal = Math.max(0, current + delta);
-    const { error: directErr } = await supabase.from("agents").update({ wallet_balance: newBal }).eq("id", agentId);
-    if (directErr) return Response.json({ error: directErr.message }, { status: 500 });
+  const idempotencyKey = request.headers.get("idempotency-key");
+  if (!idempotencyKey) {
+    return Response.json({ error: "Idempotency-Key header required" }, { status: 400 });
   }
 
-  // Log the transaction
-  await supabase.from("agent_wallet_transactions").insert({
-    agent_id: agentId,
-    type,
-    amount: amt,
-    description: description || (type === "admin_credit" ? "Admin credit" : "Admin debit"),
+  const { data: newBalance, error: updateErr } = await supabase.rpc("admin_adjust_agent_wallet", {
+    p_agent_id: agentId,
+    p_delta: delta,
+    p_idempotency_key: idempotencyKey,
+    p_description: description || (type === "admin_credit" ? "Admin credit" : "Admin debit"),
   });
+  if (updateErr) return Response.json({ error: updateErr.message }, { status: 409 });
 
-  return Response.json({ success: true });
+  return Response.json({ success: true, balance: newBalance });
 }

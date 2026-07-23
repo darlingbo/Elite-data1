@@ -24,25 +24,10 @@ export async function POST(request: NextRequest) {
   if (!order) return Response.json({ error: "Order not found" }, { status: 404 });
   if (order.status === "completed") return Response.json({ error: "Order is already completed." }, { status: 409 });
 
-  await supabase.from("orders").update({ status: "completed" }).eq("reference", reference);
-
-  // Only credit commission if order was NOT previously in `processing`.
-  // `processing` means it already went through the approve route, which credits commission then.
-  // Orders coming from `failed`, `pending`, or `not_on_list` were never credited.
-  const commissonAlreadyCredited = order.status === "processing";
-  if (!commissonAlreadyCredited && order.agent_id && (order.agent_commission || order.amount)) {
-    const commission = Number(order.agent_commission) || 0;
-    const revenue = Number(order.amount) || 0;
-    const { data: ag } = await supabase.from("agents").select("commission_balance, total_sales, total_revenue").eq("id", order.agent_id).maybeSingle();
-    if (ag) {
-      await supabase.from("agents").update({
-        commission_balance: (Number(ag.commission_balance) || 0) + commission,
-        total_sales: (Number(ag.total_sales) || 0) + 1,
-        total_revenue: (Number(ag.total_revenue) || 0) + revenue,
-        updated_at: new Date().toISOString(),
-      }).eq("id", order.agent_id);
-    }
-  }
+  const { error: completeError } = await supabase.rpc("admin_complete_order", {
+    p_reference: reference,
+  });
+  if (completeError) return Response.json({ error: completeError.message }, { status: 409 });
 
   try {
     await supabase.from("order_logs").insert({

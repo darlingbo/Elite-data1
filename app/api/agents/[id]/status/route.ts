@@ -2,6 +2,8 @@ import type { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { sendAdminAlert, fmtAgentApproved } from "@/lib/telegram";
+import { verifyAdminSessionValue } from "@/lib/adminAuth";
+import { auditLog } from "@/lib/audit";
 
 function generateReferralCode(name: string): string {
   const prefix = name.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, "X");
@@ -11,7 +13,7 @@ function generateReferralCode(name: string): string {
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
-  return cookieStore.get("admin_session")?.value === process.env.ADMIN_SESSION_TOKEN;
+  return verifyAdminSessionValue(cookieStore.get("admin_session")?.value);
 }
 
 export async function PATCH(
@@ -54,17 +56,27 @@ export async function PATCH(
       attempts++;
     }
 
-    await supabase
+    const { error: updateError } = await supabase
       .from("agents")
       .update({ status: "approved", referral_code, updated_at: new Date().toISOString() })
       .eq("id", id);
+    if (updateError) return Response.json({ error: updateError.message }, { status: 500 });
 
     await sendAdminAlert(fmtAgentApproved(agent.name, referral_code));
+    await auditLog("agent_approved", { agent_id: id, referral_code });
 
     return Response.json({ success: true, referral_code });
   } else {
-    // Delete entirely so the applicant can re-apply from scratch
-    await supabase.from("agents").delete().eq("id", id);
+    const { error: updateError } = await supabase
+      .from("agents")
+      .update({
+        status: "rejected",
+        rejection_reason: rejection_reason ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+    if (updateError) return Response.json({ error: updateError.message }, { status: 500 });
+    await auditLog("agent_rejected", { agent_id: id, reason: rejection_reason ?? null });
     return Response.json({ success: true });
   }
 }

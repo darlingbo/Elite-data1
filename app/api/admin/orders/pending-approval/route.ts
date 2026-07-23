@@ -14,6 +14,7 @@ export async function GET() {
     .from("orders")
     .select("status, amount, cost_price, admin_commission, agent_commission, customer_name, phone, network, bundle_size, created_at, agent_id, reference, refund_phone, paystack_reference, approved_at, approved_via, provider_used")
     .eq("status", "pending_approval")
+    .is("archived_at", null)
     .order("created_at", { ascending: false });
 
   if (error) return Response.json({ error: error.message }, { status: 500 });

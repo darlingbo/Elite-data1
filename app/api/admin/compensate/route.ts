@@ -28,7 +28,9 @@ export async function POST(req: NextRequest) {
   const { phone, network, sizeGB, agentCode, commission, note, originalRef } = body;
   if (!phone || !network || !sizeGB) return Response.json({ error: "phone, network, sizeGB required" }, { status: 400 });
 
-  const ref = `compensate-${originalRef ?? phone}-${Date.now()}`;
+  const ref = originalRef
+    ? `compensate-${originalRef}`
+    : `compensate-${phone}-${Date.now()}`;
 
   // Deliver via Inventor
   const ctrl = new AbortController();
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest) {
   // Credit agent commission if provided
   let agentCredited = false;
   let agentId: string | null = null;
-  if (agentCode && commission && commission > 0) {
+  if (deliveryOk && agentCode && commission && commission > 0) {
     const { data: agent } = await supabase
       .from("agents")
       .select("id, name")
@@ -68,20 +70,13 @@ export async function POST(req: NextRequest) {
 
     if (agent) {
       agentId = agent.id;
-      // Credit commission_balance
-      const { data: cur } = await supabase.from("agents").select("commission_balance").eq("id", agentId).maybeSingle();
-      const currentBal = Number((cur as { commission_balance?: number } | null)?.commission_balance ?? 0);
-      await supabase.from("agents").update({ commission_balance: currentBal + commission }).eq("id", agentId);
-
-      // Log to wallet transactions
-      await supabase.from("agent_wallet_transactions").insert({
-        agent_id: agentId,
-        type: "order_profit",
-        amount: commission,
-        description: note ?? `Compensation for ${originalRef ?? ref}`,
+      const { error: creditError } = await supabase.rpc("admin_credit_agent_commission", {
+        p_agent_id: agentId,
+        p_amount: commission,
+        p_idempotency_key: `compensation:${originalRef ?? ref}:${agentId}`,
+        p_description: note ?? `Compensation for ${originalRef ?? ref}`,
       });
-
-      agentCredited = true;
+      agentCredited = !creditError;
     }
   }
 
@@ -92,7 +87,7 @@ export async function POST(req: NextRequest) {
     network,
     bundle_size: `${sizeGB}GB (compensation)`,
     amount: 0,
-    status: deliveryOk ? "completed" : "failed",
+    status: deliveryOk ? "completed" : "delivery_unknown",
     agent_id: agentId,
     agent_commission: commission ?? 0,
     admin_commission: 0,

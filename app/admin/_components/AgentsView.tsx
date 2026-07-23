@@ -47,8 +47,25 @@ export function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats
   async function handleAction() {
     if (!agentAction) return;
     setActionLoading(true);
-    await fetch(`/api/agents/${agentAction.id}/status`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: agentAction.action }) });
-    setAgentAction(null); setActionLoading(false); onRefresh();
+    try {
+      const res = await fetch(`/api/agents/${agentAction.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: agentAction.action }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSwitchMsg({ text: data.error ?? "Agent action failed", ok: false });
+        return;
+      }
+      setAgentAction(null);
+      onRefresh();
+    } catch {
+      setSwitchMsg({ text: "Network error", ok: false });
+    } finally {
+      setActionLoading(false);
+      setTimeout(() => setSwitchMsg(null), 5000);
+    }
   }
 
   const shown = stats.agents.all.filter(a => a.status === agentTab);

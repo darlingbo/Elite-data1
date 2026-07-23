@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface AgentWallet {
   id: string;
@@ -45,6 +45,7 @@ export default function AgentWalletsAdmin() {
   const [modalNote, setModalNote] = useState("");
   const [search, setSearch] = useState("");
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const mutationKey = useRef<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -63,15 +64,20 @@ export default function AgentWalletsAdmin() {
     if (!modal) return;
     const amt = parseFloat(modalAmount);
     if (isNaN(amt) || amt <= 0) return showToast("❌ Enter a valid amount");
+    mutationKey.current ??= crypto.randomUUID();
     setSaving(true);
     const res = await fetch("/api/admin/agent-wallets", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": mutationKey.current,
+      },
       body: JSON.stringify({ agentId: modal.id, type: modalType, amount: amt, description: modalNote || undefined }),
     });
     setSaving(false);
     const j = await res.json();
     if (res.ok) {
+      mutationKey.current = null;
       showToast(`✅ ${modalType === "admin_credit" ? "Credited" : "Debited"} GH₵${amt.toFixed(2)} ${modalType === "admin_credit" ? "to" : "from"} ${modal.name}`);
       setModal(null);
       setModalAmount("");

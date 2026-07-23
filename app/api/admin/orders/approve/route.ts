@@ -186,15 +186,22 @@ export async function POST(request: Request) {
   if (!Array.isArray(references) || references.length === 0) {
     return Response.json({ error: "No references provided" }, { status: 400 });
   }
+  if (references.length > 25) {
+    return Response.json({ error: "Process at most 25 orders at a time" }, { status: 400 });
+  }
   if (action !== "approve" && action !== "reject") {
     return Response.json({ error: "Invalid action" }, { status: 400 });
   }
 
-  const results = await Promise.all(
-    references.map(ref =>
-      (action === "approve" ? runApprove(ref) : runReject(ref)).then(r => ({ reference: ref, ...r }))
-    )
-  );
+  // Process deliberately in sequence. Provider bursts can create ambiguous
+  // timeouts and accidental duplicate deliveries.
+  const results: Array<{ reference: string; ok: boolean; message: string }> = [];
+  for (const reference of [...new Set(references)]) {
+    const result = action === "approve"
+      ? await runApprove(reference)
+      : await runReject(reference);
+    results.push({ reference, ...result });
+  }
 
   const succeeded = results.filter(r => r.ok).length;
   return Response.json({ results, succeeded, total: references.length });

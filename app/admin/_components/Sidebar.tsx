@@ -8,6 +8,12 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
 }) {
   const sections = [
     {
+      label: "OPERATIONS",
+      items: [
+        { id: "operations" as Tab, icon: <Ic.sync />, label: "Health & Audit" },
+      ],
+    },
+    {
       label: "MANAGE",
       items: [
         { id: "customers" as Tab,         icon: <Ic.agents />,  label: "Customers" },

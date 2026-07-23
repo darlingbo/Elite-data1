@@ -30,28 +30,12 @@ export async function POST(request: NextRequest) {
     if (!order) { results.push({ ref, ok: false, note: "not found" }); continue; }
     if (order.status === "completed") { results.push({ ref, ok: true, note: "already completed" }); continue; }
 
-    await supabase.from("orders").update({ status: "completed" }).eq("reference", ref);
-
-    // Credit agent commission
-    if (order.agent_id) {
-      const commission = Number(order.agent_commission) || 0;
-      const revenue = Number(order.amount) || 0;
-      const { data: agent } = await supabase
-        .from("agents")
-        .select("commission_balance, total_sales, total_revenue")
-        .eq("id", order.agent_id)
-        .maybeSingle();
-      if (agent) {
-        await supabase.from("agents").update({
-          commission_balance: (Number(agent.commission_balance) || 0) + commission,
-          total_sales: (Number(agent.total_sales) || 0) + 1,
-          total_revenue: (Number(agent.total_revenue) || 0) + revenue,
-          updated_at: new Date().toISOString(),
-        }).eq("id", order.agent_id);
-      }
-    }
-
-    results.push({ ref, ok: true, note: "marked completed" });
+    const { error: completeError } = await supabase.rpc("admin_complete_order", {
+      p_reference: ref,
+    });
+    results.push(completeError
+      ? { ref, ok: false, note: completeError.message }
+      : { ref, ok: true, note: "marked completed" });
   }
 
   const done = results.filter(r => r.ok).length;

@@ -185,18 +185,10 @@ If no reference is found and the action requires one, use action "unknown".`;
   let result = "";
   if (action === "unknown" || !reference) {
     result = String(aiResponse.reply ?? "I didn't understand. Try something like: 'retry order TRX-1234' or 'mark REF-5678 as completed'.");
-  } else if (action === "retry") {
-    result = await doRetry(reference);
-  } else if (action === "force_complete") {
-    result = await doForceComplete(reference);
-  } else if (action === "change_status") {
-    result = await doChangeStatus(reference, String(params.status ?? ""));
-  } else if (action === "patch") {
-    result = await doPatchOrder(reference, params);
   } else if (action === "lookup") {
     result = await doLookup(reference);
   } else {
-    result = `Unknown action: ${action}`;
+    result = "For money safety, the AI assistant is read-only. Use the reviewed dashboard controls to make this change.";
   }
 
   return Response.json({ reply: result, action, reference });

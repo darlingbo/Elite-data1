@@ -26,6 +26,11 @@ export async function POST(req: NextRequest) {
 
   const { reference, agentId, costPrice, agentCommission, adminCommission, bundleSize, status, creditAgent } = body;
   if (!reference) return Response.json({ error: "reference required" }, { status: 400 });
+  if (creditAgent) {
+    return Response.json({
+      error: "Direct commission credit is disabled. Complete the order through the approval controls.",
+    }, { status: 400 });
+  }
 
   const patch: Record<string, unknown> = {};
   if (agentId !== undefined)          patch.agent_id = agentId;
@@ -54,29 +59,6 @@ export async function POST(req: NextRequest) {
     });
   } catch { /* non-critical */ }
 
-  // Credit agent if requested
-  if (creditAgent && agentId && agentCommission) {
-    const { data: orderAmt } = await supabase.from("orders").select("amount").eq("reference", reference).maybeSingle();
-    const revenue = (orderAmt as { amount?: number } | null)?.amount ?? 0;
-    const { data: ag } = await supabase.from("agents").select("commission_balance, total_sales, total_revenue").eq("id", agentId).maybeSingle();
-    if (ag) {
-      await supabase.from("agents").update({
-        commission_balance: (Number(ag.commission_balance) || 0) + agentCommission,
-        total_sales: (Number(ag.total_sales) || 0) + 1,
-        total_revenue: (Number(ag.total_revenue) || 0) + revenue,
-        updated_at: new Date().toISOString(),
-      }).eq("id", agentId);
-    }
-
-    // Log to wallet transactions
-    await supabase.from("agent_wallet_transactions").insert({
-      agent_id: agentId,
-      type: "order_profit",
-      amount: agentCommission,
-      description: `Commission for ${reference}`,
-    });
-  }
-
   return Response.json({ success: true, patched: Object.keys(patch) });
 }
 
@@ -97,10 +79,14 @@ export async function DELETE(req: NextRequest) {
       return Response.json({ error: `Can only delete orders with status: ${allowedStatuses.join(", ")}` }, { status: 400 });
     }
 
-    const { error } = await supabase.from("orders").delete().eq("reference", reference);
+    const { error } = await supabase.from("orders").update({
+      archived_at: new Date().toISOString(),
+      archived_reason: "Archived from admin dashboard",
+      archived_by: "admin",
+    }).eq("reference", reference);
     if (error) return Response.json({ error: error.message }, { status: 500 });
 
-    return Response.json({ success: true, deleted: 1 });
+    return Response.json({ success: true, archived: 1 });
   }
 
   // Bulk deletion by status
@@ -116,8 +102,12 @@ export async function DELETE(req: NextRequest) {
   const count = toDelete?.length ?? 0;
   if (count === 0) return Response.json({ success: true, deleted: 0 });
 
-  const { error } = await supabase.from("orders").delete().eq("status", status);
+  const { error } = await supabase.from("orders").update({
+    archived_at: new Date().toISOString(),
+    archived_reason: `Bulk archive: ${status}`,
+    archived_by: "admin",
+  }).eq("status", status).is("archived_at", null);
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
-  return Response.json({ success: true, deleted: count });
+  return Response.json({ success: true, archived: count });
 }

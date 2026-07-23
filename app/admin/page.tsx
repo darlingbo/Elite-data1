@@ -33,6 +33,7 @@ const WithdrawalsAdmin   = dynamic(() => import("./_components/WithdrawalsAdmin"
 const AnalyticsAdmin     = dynamic(() => import("./_components/AnalyticsAdmin"),      { loading: () => <Spinner /> });
 const PaystackSplitAdmin = dynamic(() => import("./_components/PaystackSplitAdmin"),  { loading: () => <Spinner /> });
 const RefundNumbers      = dynamic(() => import("./_components/RefundNumbers"),       { loading: () => <Spinner /> });
+const OperationsCenter   = dynamic(() => import("./_components/OperationsCenter"),   { loading: () => <Spinner /> });
 
 const tabToOrderFilter: Record<string, OrderStatus> = {
   "all-orders": "ALL", "pending-orders": "PENDING", "processing": "PROCESSING",
@@ -54,6 +55,7 @@ const pageTitle: Record<Tab, string> = {
   "customers": "Customers", "mashup-bundles": "Mashup Bundles", "network-providers": "Network Providers",
   "coupons": "Coupons", "withdrawals": "Withdrawal Requests", "agent-ranks": "Agent Ranks",
   "analytics": "Analytics", "developer-api": "Developer API", "paystack-split": "Paystack Split Payments",
+  "operations": "Operations & Audit",
 };
 
 export default function AdminDashboard() {
@@ -161,7 +163,7 @@ export default function AdminDashboard() {
           </div>
           <div className="flex items-center gap-2">
             <div className="relative">
-              <button className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors"><Ic.bell /></button>
+              <button aria-label="Open operations alerts" onClick={() => setTab("operations")} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors"><Ic.bell /></button>
               {(stats?.agents.pending ?? 0) > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-red-900" />}
             </div>
             <div className="flex items-center gap-2.5 border rounded-xl px-3 py-1.5" style={{ background: "rgba(30,58,95,0.4)", borderColor: BORDER }}>
@@ -235,6 +237,7 @@ export default function AdminDashboard() {
               {tab === "withdrawals"       && <WithdrawalsAdmin />}
               {tab === "analytics"         && <AnalyticsAdmin orders={stats.orders.all as never} />}
               {tab === "paystack-split"    && <PaystackSplitAdmin />}
+              {tab === "operations"        && <OperationsCenter />}
             </>
           ) : null}
         </main>
