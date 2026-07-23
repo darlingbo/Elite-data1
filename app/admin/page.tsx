@@ -34,6 +34,7 @@ const AnalyticsAdmin     = dynamic(() => import("./_components/AnalyticsAdmin"),
 const PaystackSplitAdmin = dynamic(() => import("./_components/PaystackSplitAdmin"),  { loading: () => <Spinner /> });
 const RefundNumbers      = dynamic(() => import("./_components/RefundNumbers"),       { loading: () => <Spinner /> });
 const OperationsCenter   = dynamic(() => import("./_components/OperationsCenter"),   { loading: () => <Spinner /> });
+const FinancialReconciliation = dynamic(() => import("./_components/FinancialReconciliation"), { loading: () => <Spinner /> });
 
 const tabToOrderFilter: Record<string, OrderStatus> = {
   "all-orders": "ALL", "pending-orders": "PENDING", "processing": "PROCESSING",
@@ -56,6 +57,7 @@ const pageTitle: Record<Tab, string> = {
   "coupons": "Coupons", "withdrawals": "Withdrawal Requests", "agent-ranks": "Agent Ranks",
   "analytics": "Analytics", "developer-api": "Developer API", "paystack-split": "Paystack Split Payments",
   "operations": "Operations & Audit",
+  "reconciliation": "Financial Reconciliation",
 };
 
 const pageSubtitle: Partial<Record<Tab, string>> = {
@@ -63,6 +65,7 @@ const pageSubtitle: Partial<Record<Tab, string>> = {
   "approval-queue": "Review every paid order before delivery",
   "all-orders": "Search, verify, and manage order fulfilment",
   operations: "Reconcile warnings and review admin activity",
+  reconciliation: "Compare payments, delivery, refunds, commission, cost, and profit",
   transactions: "Track revenue, cost, commission, and profit",
   commissions: "Manage private commission rules safely",
   withdrawals: "Review and approve agent payout requests",
@@ -251,6 +254,7 @@ export default function AdminDashboard() {
               {tab === "analytics"         && <AnalyticsAdmin orders={stats.orders.all as never} />}
               {tab === "paystack-split"    && <PaystackSplitAdmin />}
               {tab === "operations"        && <OperationsCenter />}
+              {tab === "reconciliation"    && <FinancialReconciliation />}
             </>
           ) : null}
         </main>

@@ -10,6 +10,7 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
     {
       label: "OPERATIONS",
       items: [
+        { id: "reconciliation" as Tab, icon: <Ic.cash />, label: "Reconciliation" },
         { id: "operations" as Tab, icon: <Ic.sync />, label: "Health & Audit" },
       ],
     },

@@ -6,12 +6,6 @@ import { sendAdminAlert } from "@/lib/telegram";
 const PLATFORM_FEE_RATE = 0.02;
 const MAX_PHONES = 50;
 
-const networkApiMap: Record<string, string> = {
-  mtn: "MTN",
-  telecel: "TELECEL",
-  airteltigo: "AT ISHARE",
-};
-
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { phones, bundleId, paystackRef, companyName, contactPhone } = body;
@@ -44,13 +38,24 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Bundle not found." }, { status: 400 });
   }
 
-  // Idempotency — don't double-process same Paystack ref
-  const { data: existing } = await supabase
-    .from("orders")
-    .select("reference")
-    .eq("reference", paystackRef)
-    .maybeSingle();
-  if (existing) {
+  // Fast idempotency check for both new and legacy bulk orders. The payment
+  // claim inserted after Paystack verification is the final concurrency guard.
+  const [existingClaimResult, existingOrderResult, legacyOrdersResult] = await Promise.all([
+    supabase.from("payments").select("id").eq("reference", paystackRef).limit(1).maybeSingle(),
+    supabase.from("orders").select("reference").eq("paystack_reference", paystackRef).limit(1).maybeSingle(),
+    supabase.from("orders").select("reference").like("reference", `${paystackRef}-%`).limit(MAX_PHONES),
+  ]);
+  const lookupError =
+    existingClaimResult.error ?? existingOrderResult.error ?? legacyOrdersResult.error;
+  if (lookupError) {
+    return Response.json({ error: "Could not safely check this payment. Please try again." }, { status: 500 });
+  }
+  const legacyPrefix = `${paystackRef}-`;
+  const legacyOrderExists = (legacyOrdersResult.data ?? []).some((row) =>
+    row.reference.startsWith(legacyPrefix) &&
+    /^\d{2}$/.test(row.reference.slice(legacyPrefix.length))
+  );
+  if (existingClaimResult.data || existingOrderResult.data || legacyOrderExists) {
     return Response.json({ error: "This payment has already been processed." }, { status: 400 });
   }
 
@@ -80,15 +85,40 @@ export async function POST(request: NextRequest) {
 
   const unitCharged = parseFloat((price * (1 + PLATFORM_FEE_RATE)).toFixed(2));
   const adminCommission = parseFloat(Math.max(0, price - costPrice).toFixed(2));
+  const totalCharged = parseFloat((unitCharged * phoneList.length).toFixed(2));
 
-  // Deliver all numbers in parallel
-  const results = await Promise.allSettled(
+  // Atomically claim the Paystack transaction. The unique reference index means
+  // two retries can never both proceed to provider delivery.
+  const { error: claimError } = await supabase.from("payments").insert({
+    amount: txnAmount / 100,
+    method: "paystack_bulk",
+    reference: paystackRef,
+    status: "processing",
+  });
+  if (claimError) {
+    if (claimError.code === "23505") {
+      return Response.json({ error: "This payment has already been processed." }, { status: 409 });
+    }
+    await sendAdminAlert(
+      `BULK PAYMENT CLAIM FAILED\nRef: ${paystackRef}\nPaid: GHS ${(txnAmount / 100).toFixed(2)}\nNo delivery was attempted.\nError: ${claimError.message}`
+    ).catch(() => {});
+    return Response.json(
+      { error: "Payment was received but the order could not be safely recorded. Contact support." },
+      { status: 500 },
+    );
+  }
+
+  // Save every paid number into the admin approval queue. Nothing is sent to
+  // the delivery provider from this public route.
+  const outcomes = await Promise.all(
     phoneList.map(async (phone, i) => {
       const ref = `${paystackRef}-${String(i + 1).padStart(2, "0")}`;
 
       try {
-        await supabase.from("orders").insert({
+        const { error: orderSaveError } = await supabase.from("orders").insert({
           reference: ref,
+          paystack_reference: paystackRef,
+          payment_method: "paystack_bulk",
           customer_name: companyName || "Business Order",
           phone,
           network,
@@ -98,55 +128,41 @@ export async function POST(request: NextRequest) {
           cost_price: costPrice,
           admin_commission: adminCommission,
           agent_commission: 0,
-          status: "pending",
+          status: "pending_approval",
         });
-      } catch { /* non-fatal */ }
-
-      try {
-        const invRes = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-          body: JSON.stringify({
-            network: networkApiMap[network] ?? network.toUpperCase(),
-            Phone: phone,
-            Datasize: sizeGB,
-            reference: ref,
-          }),
-        });
-        const invBody = await invRes.json().catch(() => ({}));
-        const ok =
-          invRes.ok ||
-          invBody.success === true ||
-          invBody.status === "success" ||
-          invBody.status === "00";
-
-        if (ok) {
-          await supabase.from("orders").update({ status: "completed" }).eq("reference", ref);
-          return { phone, ref, status: "delivered" as const };
-        } else {
-          await supabase.from("orders").update({ status: "failed" }).eq("reference", ref);
-          return { phone, ref, status: "failed" as const };
-        }
-      } catch {
-        await supabase.from("orders").update({ status: "failed" }).eq("reference", ref);
+        if (orderSaveError) throw new Error(`Order save failed: ${orderSaveError.message}`);
+        return { phone, ref, status: "pending_approval" as const };
+      } catch (error) {
+        await sendAdminAlert(
+          `BULK ORDER SAVE FAILED\nRef: ${ref}\nPhone: ${phone}\nNo delivery was attempted.\nError: ${error instanceof Error ? error.message : String(error)}`
+        ).catch(() => {});
         return { phone, ref, status: "failed" as const };
       }
     })
   );
 
-  const outcomes = results.map((r, i) =>
-    r.status === "fulfilled"
-      ? r.value
-      : { phone: phoneList[i], ref: `${paystackRef}-${String(i + 1).padStart(2, "0")}`, status: "failed" as const }
-  );
-
-  const delivered = outcomes.filter((o) => o.status === "delivered").length;
+  const pendingApproval = outcomes.filter((outcome) => outcome.status === "pending_approval").length;
   const failed = outcomes.filter((o) => o.status === "failed").length;
-  const totalCharged = parseFloat((unitCharged * phoneList.length).toFixed(2));
+  const claimStatus = failed === 0 ? "paid" : pendingApproval === 0 ? "failed" : "partial";
+  const { error: claimUpdateError } = await supabase
+    .from("payments")
+    .update({ status: claimStatus })
+    .eq("reference", paystackRef);
+  if (claimUpdateError) {
+    await sendAdminAlert(
+      `BULK PAYMENT STATUS UPDATE FAILED\nRef: ${paystackRef}\nQueued: ${pendingApproval}/${phoneList.length}\nError: ${claimUpdateError.message}`
+    ).catch(() => {});
+  }
 
   await sendAdminAlert(
-    `🏢 BULK ORDER\nRef: ${paystackRef}\nCompany: ${companyName || "—"}\nContact: ${contactPhone}\nBundle: ${network.toUpperCase()} ${size} × ${phoneList.length}\nTotal: GH₵${totalCharged.toFixed(2)}\n✅ Delivered: ${delivered}/${phoneList.length}${failed > 0 ? `\n❌ Failed: ${failed} — manual follow-up needed` : ""}`
+    `BULK ORDER AWAITING APPROVAL\nRef: ${paystackRef}\nCompany: ${companyName || "-"}\nContact: ${contactPhone}\nBundle: ${network.toUpperCase()} ${size} x ${phoneList.length}\nTotal: GHS ${totalCharged.toFixed(2)}\nQueued for approval: ${pendingApproval}/${phoneList.length}${failed > 0 ? `\nSave failures: ${failed} - payment review required` : ""}`
   ).catch(() => {});
 
-  return Response.json({ success: true, total: phoneList.length, delivered, failed, outcomes });
+  return Response.json({
+    success: true,
+    total: phoneList.length,
+    pendingApproval,
+    failed,
+    outcomes,
+  });
 }

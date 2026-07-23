@@ -8,12 +8,16 @@ const PLATFORM_FEE_RATE = 0.02;
 function usePaystackReady() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    if (window.PaystackPop) { setReady(true); return; }
+    if (window.PaystackPop) {
+      const timer = window.setTimeout(() => setReady(true), 0);
+      return () => window.clearTimeout(timer);
+    }
     const s = document.createElement("script");
     s.src = "https://js.paystack.co/v1/inline.js";
     s.async = true;
     s.onload = () => setReady(true);
     document.body.appendChild(s);
+    return () => { s.onload = null; };
   }, []);
   return ready;
 }
@@ -31,7 +35,7 @@ function networkBg(n: string) {
   return "bg-blue-500 text-white";
 }
 
-interface Outcome { phone: string; ref: string; status: "delivered" | "failed"; }
+interface Outcome { phone: string; ref: string; status: "pending_approval" | "failed"; }
 
 function BusinessContent() {
   useSearchParams(); // required for Suspense boundary
@@ -45,7 +49,7 @@ function BusinessContent() {
   const [contactPhone, setContactPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [results, setResults] = useState<{ delivered: number; failed: number; total: number; outcomes: Outcome[] } | null>(null);
+  const [results, setResults] = useState<{ pendingApproval: number; failed: number; total: number; outcomes: Outcome[] } | null>(null);
 
   const paystackReady = usePaystackReady();
 
@@ -124,11 +128,11 @@ function BusinessContent() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-8 pb-16">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className={`p-6 text-center ${allOk ? "bg-green-50" : "bg-amber-50"}`}>
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 ${allOk ? "bg-green-100" : "bg-amber-100"}`}>
+          <div className="bg-amber-50 p-6 text-center">
+            <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
               {allOk ? (
-                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                <svg className="h-8 w-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 3l7 3v5c0 4.5-2.8 8.5-7 10-4.2-1.5-7-5.5-7-10V6l7-3zM9 12l2 2 4-4" />
                 </svg>
               ) : (
                 <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -137,22 +141,23 @@ function BusinessContent() {
               )}
             </div>
             <h2 className="text-xl font-black text-gray-800 mb-1">
-              {allOk ? "All Delivered!" : `${results.delivered}/${results.total} Delivered`}
+              {allOk ? "Payment received" : `${results.pendingApproval}/${results.total} queued`}
             </h2>
             <p className="text-sm text-gray-500">
               {allOk
-                ? `${results.total} numbers topped up successfully.`
-                : `${results.failed} failed — support has been notified and will follow up.`}
+                ? `${results.total} numbers are waiting for admin approval before delivery.`
+                : `${results.failed} could not be queued. Support has been notified.`}
             </p>
+            <p className="mt-2 text-xs font-bold text-amber-700">Do not pay again. You will receive delivery after approval.</p>
           </div>
 
           <div className="divide-y divide-gray-50">
             {results.outcomes.map((o) => (
               <div key={o.ref} className="flex items-center gap-3 px-5 py-3">
-                <div className={`w-2 h-2 rounded-full shrink-0 ${o.status === "delivered" ? "bg-green-500" : "bg-red-400"}`} />
+                <div className={`w-2 h-2 rounded-full shrink-0 ${o.status === "pending_approval" ? "bg-amber-500" : "bg-red-400"}`} />
                 <span className="font-mono text-sm text-gray-700 flex-1">{o.phone}</span>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${o.status === "delivered" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
-                  {o.status === "delivered" ? "Delivered" : "Failed"}
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${o.status === "pending_approval" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-600"}`}>
+                  {o.status === "pending_approval" ? "Awaiting approval" : "Failed"}
                 </span>
               </div>
             ))}
@@ -160,7 +165,7 @@ function BusinessContent() {
 
           {results.failed > 0 && (
             <div className="px-5 py-4 bg-amber-50 border-t border-amber-100">
-              <p className="text-xs text-amber-700 font-semibold">Failed numbers: our team has been alerted and will top them up manually or process a refund.</p>
+              <p className="text-xs text-amber-700 font-semibold">Some paid numbers were not safely recorded. Our team has been alerted to queue them or process the correct refund.</p>
               <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer"
                 className="inline-flex items-center gap-1.5 mt-2 text-xs font-bold text-green-700 bg-green-100 hover:bg-green-200 px-3 py-1.5 rounded-lg transition-colors">
                 WhatsApp Support
