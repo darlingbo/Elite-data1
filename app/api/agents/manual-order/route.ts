@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { bundles } from "@/lib/bundles";
 import { sendAdminBotMessage } from "@/lib/telegram";
 import { requireAgentSession } from "@/lib/agentAuth";
+import { resolveAgentCommissionRate } from "@/lib/commission";
 
 export async function GET(req: NextRequest) {
   const agentId = req.nextUrl.searchParams.get("agentId");
@@ -41,8 +42,9 @@ export async function POST(req: NextRequest) {
   const amountPaid = bundle.price;
   const costPrice = bundle.costPrice;
   const profit = Math.max(0, amountPaid - costPrice);
-  const agentCommission = parseFloat((profit * 0.8).toFixed(2));
-  const adminProfit = parseFloat((profit * 0.2).toFixed(2));
+  const agentRate = await resolveAgentCommissionRate(agentId);
+  const agentCommission = parseFloat((profit * agentRate).toFixed(2));
+  const adminProfit = parseFloat((profit * (1 - agentRate)).toFixed(2));
 
   const { data, error } = await supabase
     .from("manual_orders")

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
+import { auditLog } from "@/lib/audit";
 
 async function isAdmin() {
   const c = await cookies();
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
 
     // Read back to confirm the value was actually stored
     const { data: confirmed } = await supabase.from("commission_settings").select("agent_pct").eq("id", "global").maybeSingle();
+    await auditLog("commission_global_rate_changed", { agent_pct: confirmed?.agent_pct ?? pct });
     return Response.json({ success: true, global_agent_pct: confirmed?.agent_pct ?? pct });
   }
 
@@ -70,6 +72,11 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString(),
       });
     if (error) return Response.json({ error: error.message }, { status: 500 });
+    await auditLog("commission_agent_override_changed", {
+      agent_id: body.agent_id,
+      agent_pct: pct,
+      note: body.note ?? null,
+    });
     return Response.json({ success: true });
   }
 
@@ -89,5 +96,6 @@ export async function DELETE(request: NextRequest) {
     .eq("agent_id", agentId);
 
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  await auditLog("commission_agent_override_removed", { agent_id: agentId });
   return Response.json({ success: true });
 }

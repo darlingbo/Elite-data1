@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { bundles, type Network } from "@/lib/bundles";
 import { sendAdminAlert, orderApprovalKeyboard } from "@/lib/telegram";
 import { sendCustomerSMS, orderReceivedSMS } from "@/lib/sms";
+import { resolveAgentCommissionRate } from "@/lib/commission";
 
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
@@ -108,8 +109,9 @@ export async function POST(request: NextRequest) {
         // Wallet accounting happens once, after admin approval.
       } else {
         const profit = Math.max(0, chargedAmount - costPrice);
-        agentCommission = parseFloat((profit * 0.8).toFixed(2));
-        adminCommission = parseFloat((profit * 0.2).toFixed(2));
+        const agentRate = await resolveAgentCommissionRate(agent.id);
+        agentCommission = parseFloat((profit * agentRate).toFixed(2));
+        adminCommission = parseFloat((profit * (1 - agentRate)).toFixed(2));
       }
     }
   }

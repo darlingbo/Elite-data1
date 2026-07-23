@@ -5,6 +5,7 @@ import { bundles, sizeLabel, type Network } from "@/lib/bundles";
 import { sendAdminAlert, fmtOrder, orderApprovalKeyboard } from "@/lib/telegram";
 import { sendCustomerSMS, orderReceivedSMS } from "@/lib/sms";
 import { getSurcharge, clearSurcharge } from "@/lib/surcharge";
+import { resolveAgentCommissionRate } from "@/lib/commission";
 
 const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
@@ -518,18 +519,9 @@ export async function POST(request: NextRequest) {
   // If commission_settings table is missing or the global row is absent, fall back to 80%
   // (silent fallback keeps orders flowing; admin should check the Commissions tab)
   const storedPct = commissionGlobalResult.data?.agent_pct;
-  const globalAgentPct = storedPct != null ? Number(storedPct) / 100 : 0.8;
-  let agentSplitRate = globalAgentPct;
-  if (agentId) {
-    const { data: overrideData } = await supabase
-      .from("agent_commission_overrides")
-      .select("agent_pct")
-      .eq("agent_id", agentId)
-      .maybeSingle();
-    if (overrideData?.agent_pct != null) {
-      agentSplitRate = Number(overrideData.agent_pct) / 100;
-    }
-  }
+  const agentSplitRate = agentId
+    ? await resolveAgentCommissionRate(agentId)
+    : (storedPct != null ? Number(storedPct) / 100 : 0.8);
 
   let agentCommission: number;
   let adminCommission: number;
