@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import PublicNav from "@/components/PublicNav";
 import MobileBottomNav from "@/components/MobileBottomNav";
@@ -11,6 +11,14 @@ import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import "./mobile.css";
+import "./mobile-header.css";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0d1b2e",
+};
 
 export const metadata: Metadata = {
   title: "Elite Data — Cheap Data Bundles in Ghana | MTN, Telecel, AirtelTigo",
@@ -68,9 +76,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en">
       <head>
-        <meta name="theme-color" content="#0d1b2e" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <link rel="apple-touch-icon" href="/logo.png" />
       </head>
       <body className={`min-h-screen flex flex-col bg-gray-50 text-gray-900 ${bodyModeClass}`} data-helpline={helplineEnabled ? "on" : "off"}>
