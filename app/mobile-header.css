@@ -1,0 +1,28 @@
+@media (max-width: 767px) {
+  .public-site .bloom-switch__track,
+  .agent-site .bloom-switch__track {
+    width: 3.6rem !important;
+    height: 2rem !important;
+  }
+
+  .public-site .bloom-switch__thumb,
+  .agent-site .bloom-switch__thumb {
+    width: 1.55rem !important;
+    height: 1.55rem !important;
+  }
+
+  .public-site .bloom-switch input:checked ~ .bloom-switch__track .bloom-switch__thumb,
+  .agent-site .bloom-switch input:checked ~ .bloom-switch__track .bloom-switch__thumb {
+    left: calc(100% - 1.75rem) !important;
+  }
+
+  .public-site > nav:first-of-type {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    gap: 8px !important;
+  }
+
+  .public-site > nav:first-of-type > a:first-child {
+    margin-right: 0 !important;
+  }
+}
