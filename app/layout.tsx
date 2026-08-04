@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import PublicNav from "@/components/PublicNav";
+import MobileBottomNav from "@/components/MobileBottomNav";
 import Footer from "@/components/Footer";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import WelcomePopup from "@/components/WelcomePopup";
@@ -9,6 +10,7 @@ import { supabase } from "@/lib/supabase";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
+import "./mobile.css";
 
 export const metadata: Metadata = {
   title: "Elite Data — Cheap Data Bundles in Ghana | MTN, Telecel, AirtelTigo",
@@ -58,25 +60,28 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const headersList = await headers();
   const pathname = headersList.get("x-pathname") ?? "";
   const isAdmin = pathname.startsWith("/admin");
-  const isStandalone = pathname.startsWith("/admin") || pathname.startsWith("/agent/dashboard") || pathname.startsWith("/agent");
+  const isAgent = pathname.startsWith("/agent");
+  const isStandalone = isAdmin || isAgent;
   const helplineEnabled = isStandalone ? false : await getHelplineEnabled();
+  const bodyModeClass = isAdmin ? "admin-site" : isAgent ? "agent-site" : "public-site";
 
   return (
     <html lang="en">
       <head>
-        <meta name="theme-color" content="#3b82f6" />
+        <meta name="theme-color" content="#0d1b2e" />
         <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <link rel="apple-touch-icon" href="/logo.png" />
       </head>
-      <body className="min-h-screen flex flex-col bg-gray-50 text-gray-900" data-helpline={helplineEnabled ? "on" : "off"}>
+      <body className={`min-h-screen flex flex-col bg-gray-50 text-gray-900 ${bodyModeClass}`} data-helpline={helplineEnabled ? "on" : "off"}>
         {!isStandalone && <PublicNav />}
         <main className="flex-1">{children}</main>
         {!isStandalone && <Footer />}
         {!isStandalone && helplineEnabled && <WhatsAppButton />}
         {!isStandalone && <WelcomePopup />}
-        {/* On standalone pages (admin/agent) the nav is absent so we float the toggle */}
-        {isStandalone && !isAdmin && (
-          <div style={{ position: "fixed", top: 14, right: 16, zIndex: 99999 }}>
+        {!isStandalone && <MobileBottomNav />}
+        {isAgent && (
+          <div className="agent-theme-toggle" style={{ position: "fixed", top: 14, right: 16, zIndex: 99999 }}>
             <ThemeToggle />
           </div>
         )}
