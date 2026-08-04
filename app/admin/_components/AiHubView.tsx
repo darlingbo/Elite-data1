@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { AiBusinessReport } from "./AiBusinessReport";
+import { AiBusinessReport } from "./SettingsView";
 import AiControlPanel from "./AiControlPanel";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -32,7 +32,7 @@ export default function AiHubView() {
     try {
       const parsed = JSON.parse(saved) as ChatMessage[];
       if (Array.isArray(parsed) && parsed.length) setMessages(parsed.slice(-20));
-    } catch { }
+    } catch { /* start a fresh conversation */ }
   }, []);
 
   useEffect(() => {
@@ -55,7 +55,10 @@ export default function AiHubView() {
     setInput("");
     setSending(true);
     try {
-      const transcript = nextMessages.map(message => `${message.role === "user" ? "Admin" : "Assistant"}: ${message.content}`).join("\n\n").slice(-7_500);
+      const transcript = nextMessages
+        .map(message => `${message.role === "user" ? "Admin" : "Assistant"}: ${message.content}`)
+        .join("\n\n")
+        .slice(-7_500);
       const response = await fetch("/api/admin/ai-insights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -84,7 +87,10 @@ export default function AiHubView() {
           <div className="flex items-start gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-violet-600 text-2xl shadow-lg shadow-violet-950/40">✦</div>
             <div>
-              <div className="flex items-center gap-2"><h1 className="text-xl font-black text-white sm:text-2xl">EliteData AI</h1><span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-black text-emerald-300">ONLINE</span></div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-black text-white sm:text-2xl">EliteData AI</h1>
+                <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-black text-emerald-300">ONLINE</span>
+              </div>
               <p className="mt-1 text-sm text-slate-400">Your conversational, read-only business assistant</p>
             </div>
           </div>
@@ -92,12 +98,30 @@ export default function AiHubView() {
         </div>
 
         <div className="h-[430px] space-y-4 overflow-y-auto p-4 sm:p-6">
-          {messages.map((message, index) => <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}><div className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "rounded-br-md bg-blue-600 text-white" : "rounded-bl-md border border-white/10 bg-slate-900/90 text-slate-200"}`}>{message.content}</div></div>)}
-          {sending && <div className="flex justify-start"><div className="flex items-center gap-1 rounded-2xl rounded-bl-md border border-white/10 bg-slate-900/90 px-4 py-4">{[0,1,2].map(dot => <span key={dot} className="h-2 w-2 animate-pulse rounded-full bg-violet-400" style={{ animationDelay: `${dot * 160}ms` }} />)}</div></div>}
+          {messages.map((message, index) => (
+            <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "rounded-br-md bg-blue-600 text-white" : "rounded-bl-md border border-white/10 bg-slate-900/90 text-slate-200"}`}>
+                {message.content}
+              </div>
+            </div>
+          ))}
+          {sending && (
+            <div className="flex justify-start">
+              <div className="flex items-center gap-1 rounded-2xl rounded-bl-md border border-white/10 bg-slate-900/90 px-4 py-4">
+                {[0, 1, 2].map(dot => <span key={dot} className="h-2 w-2 animate-pulse rounded-full bg-violet-400" style={{ animationDelay: `${dot * 160}ms` }} />)}
+              </div>
+            </div>
+          )}
           <div ref={conversationEnd} />
         </div>
 
-        {messages.length <= 1 && <div className="flex flex-wrap gap-2 px-4 pb-3 sm:px-6">{SUGGESTIONS.map(suggestion => <button key={suggestion} onClick={() => void sendMessage(undefined, suggestion)} className="rounded-full border border-blue-500/20 bg-blue-500/5 px-3 py-1.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/10">{suggestion}</button>)}</div>}
+        {messages.length <= 1 && (
+          <div className="flex flex-wrap gap-2 px-4 pb-3 sm:px-6">
+            {SUGGESTIONS.map(suggestion => (
+              <button key={suggestion} onClick={() => void sendMessage(undefined, suggestion)} className="rounded-full border border-blue-500/20 bg-blue-500/5 px-3 py-1.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/10">{suggestion}</button>
+            ))}
+          </div>
+        )}
 
         <form onSubmit={event => void sendMessage(event)} className="flex gap-2 border-t border-white/10 bg-black/20 p-3 sm:p-4">
           <textarea value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} rows={1} maxLength={1500} placeholder="Message EliteData AI…" className="min-h-12 flex-1 resize-none rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-blue-500" />
@@ -106,9 +130,16 @@ export default function AiHubView() {
         <p className="px-4 pb-3 text-center text-[10px] text-slate-600">AI can advise and draft. It cannot approve orders, retry delivery, refund, or change money.</p>
       </div>
 
-      <div><h2 className="mb-3 text-sm font-black uppercase tracking-wider text-slate-400">Specialist AI Tools</h2><AiBusinessReport showToast={showToast} /></div>
+      <div>
+        <h2 className="mb-3 text-sm font-black uppercase tracking-wider text-slate-400">Specialist AI Tools</h2>
+        <AiBusinessReport showToast={showToast} />
+      </div>
+
       <div><h2 className="mb-3 text-sm font-black uppercase tracking-wider text-slate-400">AI Control Center</h2><AiControlPanel /></div>
-      {toast && <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-2xl border px-5 py-3 text-sm font-bold shadow-xl md:bottom-6" style={{ background: toastOk ? "#14532d" : "#7f1d1d", color: toastOk ? "#4ade80" : "#f87171", borderColor: toastOk ? "#166534" : "#991b1b" }}>{toast}</div>}
+
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-2xl border px-5 py-3 text-sm font-bold shadow-xl md:bottom-6" style={{ background: toastOk ? "#14532d" : "#7f1d1d", color: toastOk ? "#4ade80" : "#f87171", borderColor: toastOk ? "#166534" : "#991b1b" }}>{toast}</div>
+      )}
     </div>
   );
 }
