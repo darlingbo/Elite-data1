@@ -81,7 +81,9 @@ button, a, input, select, textarea {
   body.agent-site [style*="max-width: 480px"],
   body.agent-site [style*="maxWidth: 480"],
   body.agent-site [style*="max-width: 440px"],
-  body.agent-site [style*="maxWidth: 440"] {
+  body.agent-site [style*="maxWidth: 440"],
+  body.agent-site [style*="max-width: 400px"],
+  body.agent-site [style*="maxWidth: 400"] {
     width: 100% !important;
     max-width: 100% !important;
   }
@@ -98,6 +100,61 @@ button, a, input, select, textarea {
 
   body.agent-site [class*="fixed"] {
     max-width: 100vw;
+  }
+
+  body.agent-site .main-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 14px !important;
+  }
+
+  body.agent-site [style*="grid-template-columns: 1fr 340px"],
+  body.agent-site [style*="gridTemplateColumns: 1fr 340px"],
+  body.agent-site [style*="grid-template-columns: 1fr 320px"],
+  body.agent-site [style*="gridTemplateColumns: 1fr 320px"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body.agent-site [style*="grid-template-columns: repeat(4"],
+  body.agent-site [style*="gridTemplateColumns: repeat(4"],
+  body.agent-site [style*="grid-template-columns: repeat(3"],
+  body.agent-site [style*="gridTemplateColumns: repeat(3"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  body.agent-site [style*="padding: 24px"],
+  body.agent-site [style*="padding: 28px"] {
+    padding: 16px !important;
+  }
+
+  body.agent-site [style*="gap: 20px"] {
+    gap: 14px !important;
+  }
+
+  body.agent-site [style*="width: 260px"],
+  body.agent-site [style*="width: 280px"] {
+    max-width: min(86vw, 300px) !important;
+  }
+
+  body.agent-site [style*="min-width"] {
+    min-width: 0 !important;
+  }
+
+  body.agent-site [style*="white-space: nowrap"] {
+    white-space: normal !important;
+  }
+
+  body.agent-site [style*="display: flex"][style*="justify-content: space-between"] {
+    row-gap: 10px;
+  }
+
+  body.agent-site button {
+    overflow-wrap: anywhere;
+  }
+
+  body.agent-site .agent-theme-toggle {
+    top: 10px !important;
+    right: 10px !important;
   }
 }
 
