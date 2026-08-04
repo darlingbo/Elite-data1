@@ -8,6 +8,12 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
 }) {
   const sections = [
     {
+      label: "AI",
+      items: [
+        { id: "ai-hub" as Tab, icon: <Ic.sparkles />, label: "AI Assistant" },
+      ],
+    },
+    {
       label: "OPERATIONS",
       items: [
         { id: "reconciliation" as Tab, icon: <Ic.cash />, label: "Reconciliation" },
@@ -21,7 +27,7 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
         { id: "data-bundles" as Tab,      icon: <Ic.bundle />,  label: "Data Bundles" },
         { id: "mashup-bundles" as Tab,    icon: <Ic.bundle />,  label: "Mashup Bundles" },
         { id: "all-orders" as Tab,        icon: <Ic.orders />,  label: "Orders" },
-        { id: "transactions" as Tab,      icon: <Ic.trend />,   label: "Transactions" },
+        { id: "transactions" as Tab,      icon: <Ic.trend />,   label: "Finance Analytics" },
         { id: "network-providers" as Tab, icon: <Ic.sync />,    label: "Network Providers" },
         { id: "coupons" as Tab,           icon: <Ic.tag />,     label: "Coupons" },
         { id: "commissions" as Tab,       icon: <Ic.cash />,    label: "Commissions" },
@@ -47,6 +53,7 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
         { id: "pending-orders" as Tab,  icon: <Ic.clock />, label: "Pending", badge: pendingOrders || undefined },
         { id: "processing" as Tab,      icon: <Ic.sync />,  label: "Processing" },
         { id: "manual" as Tab,          icon: <Ic.edit />,  label: "Manual Orders" },
+        { id: "result-checker" as Tab,  icon: <Ic.check />, label: "Result Checks" },
         { id: "refund-numbers" as Tab,  icon: <Ic.wallet />, label: "MoMo Refunds" },
       ],
     },
@@ -125,9 +132,7 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
               <p className="text-[9px] font-black text-slate-600 uppercase tracking-[0.18em]">{sec.label}</p>
               <div className="h-px flex-1" style={{ background: "#202b3d" }} />
             </div>
-            <div className="space-y-0.5">
-              {sec.items.map(item => <NavItem key={item.id} item={item} />)}
-            </div>
+            <div className="space-y-0.5">{sec.items.map(item => <NavItem key={item.id} item={item} />)}</div>
           </div>
         ))}
       </nav>
@@ -135,26 +140,14 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
       <div className="border-t" style={{ borderColor: "#202b3d" }}>
         <div className="mx-3 my-3 px-3 py-2.5 rounded-xl flex items-center gap-2.5" style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)" }}>
           <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-white text-xs shrink-0" style={{ background: "linear-gradient(135deg,#3b82f6,#7c3aed)" }}>A</div>
-          <div className="min-w-0">
-            <p className="text-xs font-black text-white leading-none truncate">Administrator</p>
-            <p className="text-[10px] mt-0.5" style={{ color: "#3b82f6" }}>Super Admin</p>
-          </div>
+          <div className="min-w-0"><p className="text-xs font-black text-white leading-none truncate">Administrator</p><p className="text-[10px] mt-0.5" style={{ color: "#3b82f6" }}>Super Admin</p></div>
           <span className="ml-auto text-[8px] font-black px-1.5 py-0.5 rounded-full text-green-900 bg-green-400 shrink-0">LIVE</span>
         </div>
         <div className="px-3 pb-3 space-y-0.5">
-          <a href="/" target="_blank" rel="noreferrer"
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all text-slate-500 hover:text-slate-300 hover:bg-white/5">
-            <Ic.website /> View Website
-          </a>
-          <button onClick={onChangePassword}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all">
-            <Ic.key /> Change Password
-          </button>
-          <button onClick={onLogout}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all hover:bg-red-900/20"
-            style={{ color: "#f87171" }}>
-            <Ic.logout /> Sign Out
-          </button>
+          <a href="/admin/sub-admins" className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"><Ic.agents /> Sub-admin Teams</a>
+          <a href="/" target="_blank" rel="noreferrer" className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all text-slate-500 hover:text-slate-300 hover:bg-white/5"><Ic.website /> View Website</a>
+          <button onClick={onChangePassword} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all"><Ic.key /> Change Password</button>
+          <button onClick={onLogout} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all hover:bg-red-900/20" style={{ color: "#f87171" }}><Ic.logout /> Sign Out</button>
         </div>
       </div>
     </aside>
