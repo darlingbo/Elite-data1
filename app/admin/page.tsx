@@ -35,6 +35,8 @@ const PaystackSplitAdmin = dynamic(() => import("./_components/PaystackSplitAdmi
 const RefundNumbers      = dynamic(() => import("./_components/RefundNumbers"),       { loading: () => <Spinner /> });
 const OperationsCenter   = dynamic(() => import("./_components/OperationsCenter"),   { loading: () => <Spinner /> });
 const FinancialReconciliation = dynamic(() => import("./_components/FinancialReconciliation"), { loading: () => <Spinner /> });
+const AiHubView          = dynamic(() => import("./_components/AiHubView"),           { loading: () => <Spinner /> });
+const ResultCheckerAdmin = dynamic(() => import("./_components/ResultCheckerAdmin"), { loading: () => <Spinner /> });
 
 const tabToOrderFilter: Record<string, OrderStatus> = {
   "all-orders": "ALL", "pending-orders": "PENDING", "processing": "PROCESSING",
@@ -49,7 +51,7 @@ const pageTitle: Record<Tab, string> = {
   "failed-orders": "Failed Orders", "data-bundles": "Data Bundles", "bundle-prices": "Agent Prices",
   "all-agents": "All Agents", "agent-applications": "Agent Applications", "agent-wallets": "Agent Wallets",
   "leaderboard": "Referrals & Leaderboard", "referrals": "Referrals & Leaderboard",
-  "transactions": "Transactions", "commissions": "Commissions", "manual": "Manual Orders",
+  "transactions": "Finance Analytics", "commissions": "Commissions", "manual": "Manual Orders",
   "refund-numbers": "MoMo Refund Numbers", "compensate": "Compensate",
   "announcements": "Notifications", "notifications": "Notifications", "promo": "Promo Banner",
   "sms": "SMS Messaging", "apikeys": "API Keys", "settings": "Settings",
@@ -58,6 +60,8 @@ const pageTitle: Record<Tab, string> = {
   "analytics": "Analytics", "developer-api": "Developer API", "paystack-split": "Paystack Split Payments",
   "operations": "Operations & Audit",
   "reconciliation": "Financial Reconciliation",
+  "ai-hub": "AI Assistant",
+  "result-checker": "Result Checker Requests",
 };
 
 const pageSubtitle: Partial<Record<Tab, string>> = {
@@ -66,7 +70,9 @@ const pageSubtitle: Partial<Record<Tab, string>> = {
   "all-orders": "Search, verify, and manage order fulfilment",
   operations: "Reconcile warnings and review admin activity",
   reconciliation: "Compare payments, delivery, refunds, commission, cost, and profit",
-  transactions: "Track revenue, cost, commission, and profit",
+  "ai-hub": "Ask questions, analyze the business, and create content safely",
+  "result-checker": "Check paid BECE and WASSCE results and send them to customers on WhatsApp",
+  transactions: "Server-validated revenue, profit, customers, agents, and transaction intelligence",
   commissions: "Manage private commission rules safely",
   withdrawals: "Review and approve agent payout requests",
   "agent-wallets": "Adjust balances with a complete transaction record",
@@ -105,16 +111,14 @@ export default function AdminDashboard() {
       if (res.ok) {
         const data = await res.json() as { orders: Order[] };
         setPendingOrders(data.orders ?? []);
-        // Keep the sidebar count in sync
         setStats(prev => prev ? { ...prev, orders: { ...prev.orders, pendingApproval: data.orders?.length ?? 0 } } : prev);
       }
-    } catch { /* silent — next interval will retry */ }
+    } catch { }
   }, []);
 
   useEffect(() => { const t = setTimeout(() => void fetchStats(), 0); return () => clearTimeout(t); }, [fetchStats]);
   useEffect(() => { if (tab === "overview") { setTimeout(() => setAnimated(false), 0); setTimeout(() => setAnimated(true), 60); } }, [tab]);
 
-  // Full stats every 30s; live approval-queue refresh every 8s when on that tab
   useEffect(() => {
     const id = setInterval(() => void fetchStats(), 30_000);
     return () => clearInterval(id);
@@ -236,7 +240,7 @@ export default function AdminDashboard() {
               {isAgentTab(tab)             && <AgentsView key={tab === "agent-applications" ? "pending" : "approved"} stats={stats} onRefresh={fetchStats} defaultTab={tab === "agent-applications" ? "pending" : "approved"} />}
               {tab === "agent-wallets"     && <AgentWalletsAdmin />}
               {(tab === "leaderboard" || tab === "referrals" || tab === "agent-ranks") && <LeaderboardView stats={stats} />}
-              {tab === "transactions"      && <PnLView orders={stats.orders.all} agents={stats.agents.all} />}
+              {tab === "transactions"      && <PnLView />}
               {tab === "commissions"       && <CommissionAdmin />}
               {tab === "manual"            && <ManualOrdersAdmin />}
               {tab === "refund-numbers"    && <RefundNumbers />}
@@ -255,6 +259,8 @@ export default function AdminDashboard() {
               {tab === "paystack-split"    && <PaystackSplitAdmin />}
               {tab === "operations"        && <OperationsCenter />}
               {tab === "reconciliation"    && <FinancialReconciliation />}
+              {tab === "ai-hub"            && <AiHubView />}
+              {tab === "result-checker"     && <ResultCheckerAdmin />}
             </>
           ) : null}
         </main>
