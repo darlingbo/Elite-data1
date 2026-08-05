@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendAdminAlert } from "@/lib/telegram";
+import { sendAdminAlert, orderApprovalKeyboard } from "@/lib/telegram";
 import { sendCustomerSMS } from "@/lib/sms";
 
 const PLATFORM_FEE_RATE = 0.02;
@@ -29,6 +29,22 @@ async function getVoucherPrices() {
   } catch { return DEFAULT_PRICES; }
 }
 
+async function getNewOrderAutomationTrigger() {
+  try {
+    const { data } = await supabase
+      .from("system_settings")
+      .select("key,value")
+      .in("key", ["new_order_automation_enabled", "new_order_automation_enabled_at"]);
+    const values = Object.fromEntries((data ?? []).map(row => [row.key, row.value]));
+    return {
+      enabled: values.new_order_automation_enabled === "true",
+      enabledAt: values.new_order_automation_enabled_at || null,
+    };
+  } catch {
+    return { enabled: false, enabledAt: null };
+  }
+}
+
 function normalizePhone(value: string) {
   return value.trim().replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0");
 }
@@ -47,7 +63,11 @@ export async function POST(request: NextRequest) {
   const label = VOUCHER_LABELS[vType];
   if (!label) return Response.json({ error: "Invalid voucher type. Use BECE or WASSCE." }, { status: 400 });
 
-  const [prices, validDiscountCode] = await Promise.all([getVoucherPrices(), getVoucherDiscountCode()]);
+  const [prices, validDiscountCode, trigger] = await Promise.all([
+    getVoucherPrices(),
+    getVoucherDiscountCode(),
+    getNewOrderAutomationTrigger(),
+  ]);
   const vPrice = prices[vType] ?? DEFAULT_PRICES[vType];
   const promo = String(promoCode ?? "").trim();
   const promoApplied = Boolean(promo && validDiscountCode && promo === validDiscountCode);
@@ -93,6 +113,7 @@ export async function POST(request: NextRequest) {
   const paid = verification.status === true && transaction?.status === "success" && Number(transaction?.amount ?? 0) >= expectedKobo;
   if (!paid) return Response.json({ error: "Payment verification failed." }, { status: 400 });
 
+  const initialStatus = trigger.enabled ? "processing" : "pending_approval";
   const { error: insertError } = await supabase.from("orders").insert({
     reference,
     paystack_reference: reference,
@@ -107,9 +128,19 @@ export async function POST(request: NextRequest) {
     admin_commission: profit,
     agent_commission: 0,
     agent_id: null,
-    status: "processing",
+    status: initialStatus,
   });
   if (insertError) return Response.json({ error: `Order could not be saved: ${insertError.message}` }, { status: 500 });
+
+  if (!trigger.enabled) {
+    await sendAdminAlert(
+      `🎟 <b>VOUCHER ORDER — APPROVE TO DELIVER</b>\n${label} x${qty}\n📞 <code>${phone}</code>\n💰 GH₵${chargedAmount}\n📎 <code>${reference}</code>\n\nAutomation trigger is OFF.`,
+      orderApprovalKeyboard(reference)
+    ).catch(() => {});
+    const firstName = String(name).split(" ")[0] || "Customer";
+    await sendCustomerSMS(String(phone), `Hi ${firstName}! Your ${label} x${qty} order was received and is awaiting approval. Ref: ${reference.slice(-8).toUpperCase()}. You will not be charged twice.`);
+    return Response.json({ success: true, reference, status: "pending_approval", pendingApproval: true, automationTrigger: false });
+  }
 
   const { data: assigned, error: assignError } = await supabase.rpc("assign_vouchers_from_inventory", {
     p_voucher_type: vType,
@@ -119,7 +150,7 @@ export async function POST(request: NextRequest) {
 
   if (assignError || !assigned || assigned.length !== qty) {
     await supabase.from("orders").update({ status: "pending_approval" }).eq("reference", reference);
-    await sendAdminAlert(`⚠️ VOUCHER STOCK ATTENTION\n${label} x${qty}\nPhone: ${phone}\nRef: ${reference}\nPayment verified, but stored stock could not be assigned. Please review manually.`).catch(() => {});
+    await sendAdminAlert(`⚠️ VOUCHER STOCK ATTENTION\n${label} x${qty}\nPhone: ${phone}\nRef: ${reference}\nAutomation was ON, but stored stock could not be assigned. Please review manually.`).catch(() => {});
     await sendCustomerSMS(String(phone), `Your ${label} order was received, but stock needs admin attention. Ref: ${reference.slice(-8).toUpperCase()}. You will not be charged twice.`);
     return Response.json({ success: true, reference, pendingApproval: true, error: "Stored voucher stock needs admin attention." });
   }
@@ -135,6 +166,6 @@ export async function POST(request: NextRequest) {
     supabase.from("orders").update({ status: "completed", completed_at: now }).eq("reference", reference),
   ]);
 
-  await sendAdminAlert(`✅ STORED VOUCHER DELIVERED\n${label} x${qty}\nPhone: ${phone}\nRef: ${reference}\nInventory delivery used — no external voucher API.`).catch(() => {});
-  return Response.json({ success: true, reference, status: "completed", voucherCodes: codes, automaticInventoryDelivery: true });
+  await sendAdminAlert(`✅ STORED VOUCHER DELIVERED\n${label} x${qty}\nPhone: ${phone}\nRef: ${reference}\nTrigger was ON. Inventory delivery used — no external voucher API.`).catch(() => {});
+  return Response.json({ success: true, reference, status: "completed", voucherCodes: codes, automaticInventoryDelivery: true, automationEnabledAt: trigger.enabledAt });
 }
