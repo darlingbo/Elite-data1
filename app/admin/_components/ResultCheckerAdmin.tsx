@@ -9,6 +9,9 @@ export default function ResultCheckerAdmin() {
   const [vouchers, setVouchers] = useState<VoucherRow[]>([]);
   const [voucherType, setVoucherType] = useState<"BECE" | "WASSCE">("BECE");
   const [codes, setCodes] = useState("");
+  const [automationEnabled, setAutomationEnabled] = useState(false);
+  const [automationEnabledAt, setAutomationEnabledAt] = useState<string | null>(null);
+  const [changingTrigger, setChangingTrigger] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -17,16 +20,21 @@ export default function ResultCheckerAdmin() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [requestsRes, controlRes] = await Promise.all([
+      const [requestsRes, controlRes, triggerRes] = await Promise.all([
         fetch("/api/admin/result-checker", { cache: "no-store" }),
         fetch("/api/admin/control-center", { cache: "no-store" }),
+        fetch("/api/admin/automation-trigger", { cache: "no-store" }),
       ]);
       const requestsJson = await requestsRes.json();
       const controlJson = await controlRes.json();
+      const triggerJson = await triggerRes.json();
       if (!requestsRes.ok) throw new Error(requestsJson.error || "Could not load requests");
       if (!controlRes.ok) throw new Error(controlJson.error || "Could not load voucher inventory");
+      if (!triggerRes.ok) throw new Error(triggerJson.error || "Could not load automation trigger");
       setRows(requestsJson.requests ?? []);
       setVouchers(controlJson.vouchers ?? []);
+      setAutomationEnabled(Boolean(triggerJson.enabled));
+      setAutomationEnabledAt(triggerJson.enabledAt ?? null);
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load result checker data");
@@ -43,6 +51,32 @@ export default function ResultCheckerAdmin() {
     assigned: vouchers.filter(v => v.status === "assigned").length,
     sent: vouchers.filter(v => v.status === "sent").length,
   }), [vouchers]);
+
+  async function toggleAutomation() {
+    const next = !automationEnabled;
+    if (next && !window.confirm("Turn automatic delivery ON for NEW voucher orders only? Old pending orders will remain pending. No automatic retry, refund, or provider switching will be allowed.")) return;
+    setChangingTrigger(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch("/api/admin/automation-trigger", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Could not update automation trigger");
+      setAutomationEnabled(Boolean(json.enabled));
+      setAutomationEnabledAt(json.enabledAt ?? null);
+      setNotice(next
+        ? "Automatic delivery is ON for new voucher orders only. Existing pending orders were not changed."
+        : "Automatic delivery is OFF. New voucher orders will wait for your approval.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not update automation trigger");
+    } finally {
+      setChangingTrigger(false);
+    }
+  }
 
   async function addVouchers() {
     const parsed = Array.from(new Set(codes.split(/\r?\n|,/).map(code => code.trim()).filter(Boolean)));
@@ -78,10 +112,32 @@ export default function ResultCheckerAdmin() {
     {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">{error}</div>}
     {notice && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-300">{notice}</div>}
 
+    <section className={`rounded-2xl border p-4 sm:p-5 ${automationEnabled ? "border-emerald-500/40 bg-emerald-500/10" : "border-amber-500/30 bg-amber-500/10"}`}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className={`h-3 w-3 rounded-full ${automationEnabled ? "bg-emerald-400" : "bg-amber-400"}`} />
+            <h2 className="text-lg font-black text-white">New-order automation trigger</h2>
+          </div>
+          <p className="mt-2 text-sm text-slate-300">
+            {automationEnabled
+              ? "ON: new paid voucher orders can receive stored codes automatically."
+              : "OFF: new paid voucher orders stay pending until you approve them."}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-slate-400">Old pending orders are never processed by this switch. No automatic retry, refund, provider switch, or second charge.</p>
+          {automationEnabledAt && automationEnabled && <p className="mt-2 text-xs text-emerald-300">Enabled {new Date(automationEnabledAt).toLocaleString("en-GH")}</p>}
+        </div>
+        <button onClick={() => void toggleAutomation()} disabled={changingTrigger}
+          className={`min-h-12 rounded-xl px-6 text-sm font-black text-white disabled:opacity-50 ${automationEnabled ? "bg-red-600" : "bg-emerald-600"}`}>
+          {changingTrigger ? "Saving…" : automationEnabled ? "Turn OFF" : "Turn ON"}
+        </button>
+      </div>
+    </section>
+
     <section className="rounded-2xl border border-slate-700 bg-slate-900/70 p-4 sm:p-5">
       <div className="mb-4">
         <h2 className="text-lg font-black text-white">Stored voucher inventory</h2>
-        <p className="mt-1 text-sm text-slate-400">Add BECE or WASSCE voucher codes manually. Paid orders receive available stored codes directly; no external voucher API is used.</p>
+        <p className="mt-1 text-sm text-slate-400">Add BECE or WASSCE voucher codes manually. No external voucher API is used.</p>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-xl bg-black/20 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">BECE available</p><p className="mt-1 text-2xl font-black text-emerald-300">{stock.BECE}</p></div>
