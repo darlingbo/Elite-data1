@@ -1,8 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { SettingsView as SettingsViewBase } from "./SettingsViewBase";
+import VoucherInventorySettings from "./VoucherInventorySettings";
 import { BG, CARD, BORDER, BORDER2 } from "./shared/constants";
-export { SettingsView } from "./SettingsViewBase";
+
+export function SettingsView({ onChangePassword }: { onChangePassword: () => void }) {
+  return (
+    <div className="space-y-5">
+      <VoucherInventorySettings />
+      <SettingsViewBase onChangePassword={onChangePassword} />
+    </div>
+  );
+}
 
 const AI_TOOLS = [
   ["business_health", "Business Health"], ["pricing", "Pricing & Profit"], ["voucher_forecast", "Voucher Forecast"],
