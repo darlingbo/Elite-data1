@@ -2447,7 +2447,7 @@ function TeamInvitations({ data }: { data: AgentData }) {
 
 function ProPage({ data, onNavigate }: { data: AgentData; onNavigate: (p: Page) => void }) {
   const isPro = data.plan === "pro";
-  const [tab, setTab] = useState<"overview" | "store" | "prices" | "api">("overview");
+  const [tab, setTab] = useState<"overview" | "team" | "store" | "prices" | "api">("overview");
   const [upgrading, setUpgrading] = useState(false);
   const [upgradeMsg, setUpgradeMsg] = useState("");
   const [upgradeOk, setUpgradeOk] = useState(false);
@@ -2594,18 +2594,19 @@ function ProPage({ data, onNavigate }: { data: AgentData; onNavigate: (p: Page) 
 
       {/* Tabs — shown when Pro */}
       <TeamInvitations data={data} />
-      {isPro && <ProTeamAdmin data={data} />}
 
       {isPro && (
-        <div style={{ display: "flex", gap: 8 }}>
-          {([{ key: "overview", label: "Overview" }, { key: "store", label: "🏪 Store Settings" }, { key: "prices", label: "💰 My Prices" }, { key: "api", label: "🔌 API Access" }] as const).map(t => (
+        <div className="pro-tabs" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+          {([{ key: "overview", label: "Overview" }, { key: "team", label: "👥 My Team" }, { key: "store", label: "🏪 Store Settings" }, { key: "prices", label: "💰 My Prices" }, { key: "api", label: "🔌 API Access" }] as const).map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              style={{ padding: "10px 18px", borderRadius: 10, border: `1px solid ${tab === t.key ? "rgba(124,58,237,0.5)" : M.border}`, background: tab === t.key ? "rgba(124,58,237,0.12)" : M.card, color: tab === t.key ? "#a78bfa" : M.muted, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+              style={{ padding: "10px 18px", borderRadius: 10, border: `1px solid ${tab === t.key ? "rgba(124,58,237,0.5)" : M.border}`, background: tab === t.key ? "rgba(124,58,237,0.12)" : M.card, color: tab === t.key ? "#a78bfa" : M.muted, fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
               {t.label}
             </button>
           ))}
         </div>
       )}
+
+      {isPro && tab === "team" && <ProTeamAdmin data={data} />}
 
       {/* Overview / feature list */}
       {(!isPro || tab === "overview") && (
@@ -2613,14 +2614,21 @@ function ProPage({ data, onNavigate }: { data: AgentData; onNavigate: (p: Page) 
           <div style={{ padding: "18px 22px", borderBottom: `1px solid ${M.border}` }}>
             <p style={{ color: M.text, fontWeight: 800, fontSize: 15, margin: 0 }}>What you get with Pro</p>
           </div>
+          {isPro && (
+            <button onClick={() => setTab("team")} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "18px 22px", textAlign: "left", border: 0, borderBottom: `1px solid ${M.border}`, background: "linear-gradient(135deg,rgba(124,58,237,.18),rgba(59,130,246,.10))", color: M.text, cursor: "pointer" }}>
+              <span><strong style={{ display: "block", fontSize: 15 }}>👥 Recruit and manage your agent team</strong><small style={{ display: "block", marginTop: 5, color: M.muted, lineHeight: 1.5 }}>Get your recruitment link, invite existing agents, manage prices and review team orders.</small></span>
+              <span style={{ color: "#a78bfa", fontSize: 22 }}>→</span>
+            </button>
+          )}
           {[
             { icon: "💰", title: "Set Your Own Prices", desc: "Add any markup on top of admin's base price and earn more per sale." },
             { icon: "🏪", title: "Public Store Link", desc: "Share your store. Customers buy directly — orders and earnings are yours." },
             { icon: "📅", title: "Withdraw Every Day", desc: "Mon–Sun, 6AM–6PM. Free agents can only withdraw on weekdays." },
             { icon: "⬇️", title: "Lower Minimum Withdrawal", desc: "Withdraw from GH₵40 (Free agents: GH₵20 but weekdays only)." },
             { icon: "🎨", title: "Custom Store Design", desc: "Set your store name, colour, and tagline to match your brand." },
+            { icon: "👥", title: "Build Your Own Agent Team", desc: "Recruit agents with your team link and earn your Pro team share after approved sales." },
           ].map((f, i) => (
-            <div key={i} style={{ display: "flex", gap: 14, padding: "16px 22px", borderBottom: i < 4 ? `1px solid ${M.border}` : "none", alignItems: "flex-start" }}>
+            <div key={i} style={{ display: "flex", gap: 14, padding: "16px 22px", borderBottom: i < 5 ? `1px solid ${M.border}` : "none", alignItems: "flex-start" }}>
               <span style={{ fontSize: 22, flexShrink: 0 }}>{f.icon}</span>
               <div style={{ flex: 1 }}>
                 <p style={{ color: M.text, fontWeight: 700, fontSize: 13, margin: "0 0 3px" }}>{f.title}</p>

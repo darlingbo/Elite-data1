@@ -83,9 +83,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const nonce = headersList.get("x-nonce") ?? undefined;
   const isAdmin = pathname.startsWith("/admin");
   const isAgent = pathname.startsWith("/agent");
-  const isStandalone = isAdmin || isAgent;
+  const isSubAdmin = pathname.startsWith("/subadmin");
+  const isStandalone = isAdmin || isAgent || isSubAdmin;
   const helplineEnabled = isStandalone ? false : await getHelplineEnabled();
-  const bodyModeClass = isAdmin ? "admin-site" : isAgent ? "agent-site" : "public-site";
+  const bodyModeClass = isAdmin ? "admin-site" : isAgent ? "agent-site" : isSubAdmin ? "subadmin-site" : "public-site";
 
   return (
     <html lang="en">

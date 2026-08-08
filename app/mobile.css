@@ -19,7 +19,8 @@ button, a, input, select, textarea {
 
   body.public-site main,
   body.agent-site main,
-  body.admin-site main {
+  body.admin-site main,
+  body.subadmin-site main {
     width: 100%;
     max-width: 100vw;
     overflow-x: clip;
@@ -27,13 +28,15 @@ button, a, input, select, textarea {
 
   body.public-site main > *,
   body.agent-site main > *,
-  body.admin-site main > * {
+  body.admin-site main > *,
+  body.subadmin-site main > * {
     max-width: 100%;
   }
 
   body.public-site :is(input, select, textarea),
   body.agent-site :is(input, select, textarea),
-  body.admin-site :is(input, select, textarea) {
+  body.admin-site :is(input, select, textarea),
+  body.subadmin-site :is(input, select, textarea) {
     min-height: 48px;
     max-width: 100%;
     font-size: 16px !important;
@@ -44,7 +47,9 @@ button, a, input, select, textarea {
   body.agent-site button,
   body.agent-site a[class*="rounded"],
   body.admin-site button,
-  body.admin-site a[class*="rounded"] {
+  body.admin-site a[class*="rounded"],
+  body.subadmin-site button,
+  body.subadmin-site a[class*="rounded"] {
     min-height: 44px;
   }
 
@@ -289,6 +294,38 @@ button, a, input, select, textarea {
     max-width: calc(100vw - 20px) !important;
     max-height: calc(100dvh - 20px) !important;
     overflow-y: auto;
+  }
+
+  body.subadmin-site {
+    background: #070b14;
+    color: #e5edf9;
+  }
+
+  body.subadmin-site main {
+    min-height: 100dvh;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  body.subadmin-site :is(section, article, form, [class*="rounded"]) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  body.subadmin-site table {
+    min-width: 640px;
+  }
+
+  body.subadmin-site :is(.overflow-x-auto, [class*="overflow-x-auto"]) {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body :is(p, span, small, strong, td, th, a) {
+    overflow-wrap: anywhere;
+  }
+
+  [role="dialog"], dialog {
+    max-width: calc(100vw - 20px) !important;
+    max-height: calc(100dvh - 20px) !important;
   }
 }
 
