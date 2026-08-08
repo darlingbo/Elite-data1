@@ -28,12 +28,16 @@ export async function GET(request: NextRequest) {
 
     const totalRevenue = (revenueRows ?? []).reduce((s, o) => s + Number(o.amount), 0);
 
-    // Export last 500 orders as the backup payload
-    const { data: orders } = await supabase
-      .from("orders")
-      .select("reference,status,customer_name,phone,network,bundle_size,amount,created_at")
-      .order("created_at", { ascending: false })
-      .limit(500);
+    // Export every order in bounded pages; Supabase limits a single response.
+    const orders: Record<string, unknown>[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data: page, error: pageError } = await supabase.from("orders")
+        .select("reference,status,customer_name,phone,network,bundle_size,amount,cost_price,agent_commission,admin_commission,agent_id,refunded,refund_amount,created_at")
+        .order("created_at", { ascending: false }).range(from, from + 999);
+      if (pageError) throw pageError;
+      orders.push(...(page ?? []));
+      if ((page ?? []).length < 1000) break;
+    }
 
     const { data: agents } = await supabase
       .from("agents")
@@ -48,7 +52,7 @@ export async function GET(request: NextRequest) {
     await supabase.from("system_settings").upsert(
       {
         key: `backup_snapshot_${today}`,
-        value: JSON.stringify({ orders, agents, bundles, created_at: new Date().toISOString() }),
+        value: JSON.stringify({ version: 2, orders, agents, bundles, created_at: new Date().toISOString() }),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "key" }

@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendSwiftAlert } from "@/lib/telegram";
+import { sendAssistantAlert } from "@/lib/telegram";
 import { requireAgentSession } from "@/lib/agentAuth";
+import { syncProAgentSubAdmin } from "@/lib/pro-subadmin";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -11,7 +12,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "agentId, referralCode, and paystackRef are required." }, { status: 400 });
   }
 
-  const auth = requireAgentSession(request, agentId);
+  const auth = requireAgentSession(request, agentId, { requireFull: true });
   if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
 
   // Verify ownership
@@ -70,8 +71,11 @@ export async function POST(request: NextRequest) {
 
   if (updateErr) return Response.json({ error: updateErr.message }, { status: 500 });
 
+  const { data: upgradedAgent } = await supabase.from("agents").select("id,name,email,password_hash,plan,status,sub_admin_id").eq("id", agentId).single();
+  if (upgradedAgent) await syncProAgentSubAdmin(upgradedAgent);
+
   // Alert admin
-  sendSwiftAlert(
+  sendAssistantAlert(
     `⭐ <b>PRO AGENT UPGRADE</b>\n\n` +
     `👤 ${agent.name} (${agent.referral_code})\n` +
     `💰 GH₵${amountGhc} paid\n` +

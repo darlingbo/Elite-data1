@@ -7,6 +7,7 @@ interface Props {
   agentCode?: string;
   referralVia?: string;
   onClose: () => void;
+  displayMode?: "modal" | "page";
 }
 
 declare global {
@@ -114,7 +115,7 @@ function copyToClipboard(text: string, onDone: () => void) {
   navigator.clipboard?.writeText(text).then(onDone).catch(onDone);
 }
 
-export default function CheckoutModal({ bundle, agentCode, referralVia, onClose }: Props) {
+export default function CheckoutModal({ bundle, agentCode, referralVia, onClose, displayMode = "modal" }: Props) {
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
@@ -617,8 +618,8 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+    <div className={displayMode === "page" ? "w-full" : "fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"}>
+      <div className={displayMode === "page" ? "bg-white w-full overflow-hidden" : "bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto"}>
         {/* Header */}
         <div className={`${net.bgLight} rounded-t-2xl px-6 py-4 flex items-center justify-between border-b ${net.borderColor} border`}>
           <div>

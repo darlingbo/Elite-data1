@@ -3,6 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
+    const origin = request.headers.get("origin");
+    if (origin && origin !== request.nextUrl.origin) {
+      return NextResponse.json({ error: "Cross-origin request blocked" }, { status: 403 });
+    }
+  }
+
   // Admin route protection — redirect unauthenticated visitors to login
   if (
     pathname.startsWith("/admin") &&
@@ -17,6 +24,13 @@ export function proxy(request: NextRequest) {
     const session = request.cookies.get("admin_session");
     if (!session?.value) {
       return NextResponse.redirect(new URL("/admin/login", request.url));
+    }
+  }
+
+  if (pathname.startsWith("/subadmin") && pathname !== "/subadmin/login") {
+    const session = request.cookies.get("sub_admin_session");
+    if (!session?.value) {
+      return NextResponse.redirect(new URL("/subadmin/login", request.url));
     }
   }
 

@@ -1,28 +1,30 @@
 "use client";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 const WA_URL = "https://whatsapp.com/channel/0029Vb8BFMA42DchXuWWOu3z";
 const TG_URL = "https://t.me/elitedata1";
 const STORAGE_KEY = "elite_welcome_seen";
 
 export default function WelcomePopup() {
+  const pathname = usePathname();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     try {
-      if (!localStorage.getItem(STORAGE_KEY)) {
+      if (pathname !== "/checkout" && !localStorage.getItem(STORAGE_KEY)) {
         const t = setTimeout(() => setVisible(true), 1500);
         return () => clearTimeout(t);
       }
     } catch {}
-  }, []);
+  }, [pathname]);
 
   function dismiss() {
     try { localStorage.setItem(STORAGE_KEY, "1"); } catch {}
     setVisible(false);
   }
 
-  if (!visible) return null;
+  if (!visible || pathname === "/checkout") return null;
 
   return (
     <div
@@ -40,6 +42,7 @@ export default function WelcomePopup() {
       `}</style>
 
       <div
+        className="welcome-popup-card"
         onClick={e => e.stopPropagation()}
         style={{
           background: "#0d1b2e", borderRadius: 24, padding: "32px 28px 28px",

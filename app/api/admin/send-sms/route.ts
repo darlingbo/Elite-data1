@@ -15,6 +15,16 @@ export async function POST(request: NextRequest) {
   if (!phone || !message) return Response.json({ error: "Phone and message are required" }, { status: 400 });
   if (message.length > 500) return Response.json({ error: "Message too long (max 500 chars)" }, { status: 400 });
 
-  await sendCustomerSMS(phone, message);
-  return Response.json({ success: true });
+  const result = await sendCustomerSMS(phone, message);
+  if (!result.ok) {
+    console.error("[admin/send-sms] provider rejected message", {
+      status: result.status,
+      providerMessage: result.message,
+    });
+    return Response.json(
+      { error: result.message, providerStatus: result.status },
+      { status: result.status >= 400 && result.status < 600 ? result.status : 502 },
+    );
+  }
+  return Response.json({ success: true, recipients: result.recipients });
 }

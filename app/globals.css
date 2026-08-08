@@ -4,15 +4,110 @@
   box-sizing: border-box;
 }
 
+:root {
+  --elite-ink: #050b16;
+  --elite-navy: #081426;
+  --elite-surface: #0d1b30;
+  --elite-surface-2: #12233b;
+  --elite-line: rgba(148, 163, 184, 0.16);
+  --elite-text: #f8fafc;
+  --elite-muted: #9aa9bd;
+  --elite-yellow: #fbbf24;
+  --elite-blue: #4f8cff;
+  --elite-radius: 1.25rem;
+  --elite-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+
+html { scroll-behavior: smooth; background: var(--elite-ink); }
+
+body {
+  margin: 0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  text-rendering: optimizeLegibility;
+}
+
+button, input, select, textarea { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid rgba(79, 140, 255, 0.55);
+  outline-offset: 3px;
+}
+
+.site-shell {
+  color: var(--elite-text);
+  background:
+    radial-gradient(circle at 78% -5%, rgba(59, 130, 246, 0.13), transparent 34rem),
+    radial-gradient(circle at 6% 28%, rgba(251, 191, 36, 0.06), transparent 25rem),
+    var(--elite-ink);
+}
+
+.workspace-shell { background: #070b14; color: #e5edf9; }
+
+.public-nav {
+  border-bottom: 1px solid var(--elite-line);
+  background: rgba(5, 11, 22, 0.82);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
+.public-nav a { letter-spacing: -0.01em; }
+.public-drawer {
+  border-right: 1px solid var(--elite-line);
+  background:
+    radial-gradient(circle at 10% 0, rgba(79, 140, 255, 0.18), transparent 18rem),
+    linear-gradient(160deg, #0d1b30, #050b16 72%);
+  box-shadow: 30px 0 90px rgba(0, 0, 0, 0.5);
+}
+
+.site-shell main { isolation: isolate; }
+.site-shell h1, .site-shell h2, .site-shell h3 {
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+.site-shell p { text-wrap: pretty; }
+
+.site-shell input:not([type="checkbox"]):not([type="radio"]),
+.site-shell select,
+.site-shell textarea {
+  min-height: 3rem;
+  border-radius: 0.85rem;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+.site-shell input:focus, .site-shell select:focus, .site-shell textarea:focus {
+  border-color: rgba(79, 140, 255, 0.75) !important;
+  box-shadow: 0 0 0 4px rgba(79, 140, 255, 0.11);
+}
+
+.site-shell :is(button, a) { transition-duration: 180ms; }
+.site-shell ::selection { color: #111827; background: var(--elite-yellow); }
+
+@keyframes elite-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.site-shell main > * { animation: elite-rise 420ms ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .site-shell main > * { animation: none; }
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+
+@media (max-width: 640px) {
+  .public-nav { height: 64px; }
+  .site-shell input:not([type="checkbox"]):not([type="radio"]),
+  .site-shell select,
+  .site-shell textarea { font-size: 16px; }
+}
+
 /* ── Helpline toggle — hides every WhatsApp link to the support number ── */
 body[data-helpline="off"] a[href*="wa.me/233509794503"],
 body[data-helpline="off"] a[href*="wa.me/+233509794503"] {
   display: none !important;
 }
 
-body {
-  font-family: Arial, Helvetica, sans-serif;
-}
 
 /* ── Light mode overrides ─────────────────────────────────── */
 :root[data-theme="light"] body {

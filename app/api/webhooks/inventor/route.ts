@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendAdminAlert, sendAgentNotification } from "@/lib/telegram";
+import { sendAssistantAlert, sendCompletedOrderAlert, sendAgentNotification } from "@/lib/telegram";
 
 async function refundWallet(agentId: string, amount: number) {
   const { data: agent } = await supabase
@@ -18,13 +18,14 @@ export async function POST(request: NextRequest) {
   // Optional shared-secret check — set INVENTOR_WEBHOOK_SECRET in Vercel env vars
   // to match whatever secret Inventor lets you configure on their dashboard.
   const secret = process.env.INVENTOR_WEBHOOK_SECRET;
-  if (secret) {
-    const sig = request.headers.get("x-webhook-secret") ??
-                request.headers.get("x-inventor-secret") ??
-                request.headers.get("authorization")?.replace("Bearer ", "");
-    if (sig !== secret) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!secret || secret.length < 24) {
+    return Response.json({ error: "Webhook is not configured" }, { status: 503 });
+  }
+  const sig = request.headers.get("x-webhook-secret") ??
+              request.headers.get("x-inventor-secret") ??
+              request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  if (sig !== secret) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   let body: Record<string, unknown>;
@@ -89,8 +90,8 @@ export async function POST(request: NextRequest) {
 
     if (!isWallet) {
       const profit = (Number(target.amount) - Number(target.cost_price)).toFixed(2);
-      sendAdminAlert(
-        `✅ <b>ORDER COMPLETED</b> (Inventor webhook)\n\n` +
+      sendCompletedOrderAlert(
+        `✅ <b>ORDER COMPLETED</b>\n\n` +
         `📱 ${(target.network ?? "").toUpperCase()} ${target.bundle_size} → <code>${target.phone}</code>\n` +
         `📎 Ref: <code>${targetRef}</code>\n💰 Profit: GH₵${profit}`
       ).catch(() => {});
@@ -129,8 +130,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    sendAdminAlert(
-      `❌ <b>ORDER FAILED</b> (Inventor webhook)\n\n` +
+    sendAssistantAlert(
+      `❌ <b>ORDER FAILED</b>\n\n` +
       `📱 ${(target.network ?? "").toUpperCase()} ${target.bundle_size} → <code>${target.phone}</code>\n` +
       `📎 Ref: <code>${targetRef}</code>` +
       (isWallet ? "\n💳 Wallet auto-refunded" : "")

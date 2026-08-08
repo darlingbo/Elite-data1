@@ -14,6 +14,51 @@ async function tgSend(token: string, message: string, markup?: object): Promise<
   } catch { /* never crash the main flow */ }
 }
 
+export async function sendAssistantAlert(message: string, markup?: object): Promise<void> {
+  await tgSend((ASSISTANT_TOKEN || ADMIN_BOT_TOKEN)!, message, markup);
+}
+
+/**
+ * Event-specific admin routing:
+ * - DallenBoy99 assistant: new orders, completed orders, wallet top-ups.
+ * - Elite Data Agent bot: new orders (with approval buttons), stuck orders.
+ * - Swift Data GH bot: refund and withdrawal requests only.
+ */
+export async function sendNewOrderAlert(message: string, approvalMarkup?: object): Promise<void> {
+  const smsAlert = import("@/lib/sms")
+    .then(({ sendAdminApprovalSMS }) => sendAdminApprovalSMS(message))
+    .catch(() => {});
+  await Promise.all([
+    tgSend(ADMIN_BOT_TOKEN!, message, approvalMarkup),
+    tgSend((ASSISTANT_TOKEN || ADMIN_BOT_TOKEN)!, message),
+    smsAlert,
+  ]);
+}
+
+export async function sendCompletedOrderAlert(message: string): Promise<void> {
+  await tgSend((ASSISTANT_TOKEN || ADMIN_BOT_TOKEN)!, message);
+}
+
+export async function sendStuckOrderAlert(message: string, markup?: object): Promise<void> {
+  await tgSend(ADMIN_BOT_TOKEN!, message, markup);
+}
+
+export async function sendWalletTopupAlert(message: string): Promise<void> {
+  await tgSend((ASSISTANT_TOKEN || ADMIN_BOT_TOKEN)!, message);
+}
+
+export async function sendFinancialTransactionAlert(message: string): Promise<void> {
+  await tgSend((ASSISTANT_TOKEN || ADMIN_BOT_TOKEN)!, message);
+}
+
+export async function sendRefundRequestAlert(message: string): Promise<void> {
+  await tgSend(SWIFT_TOKEN!, message);
+}
+
+export async function sendWithdrawalRequestAlert(message: string): Promise<void> {
+  await tgSend(SWIFT_TOKEN!, message);
+}
+
 // ── Send to a specific agent's Telegram chat via Elite_dataAgentbot ───────────
 export async function sendAgentNotification(agentChatId: string, message: string): Promise<void> {
   if (!ADMIN_BOT_TOKEN || !agentChatId) return;
@@ -29,26 +74,17 @@ export async function sendAgentNotification(agentChatId: string, message: string
 // ── Admin alerts ─────────────────────────────────────────────────────────────
 // Messages with inline keyboards (approve/reject buttons) MUST be sent via
 // ADMIN_BOT_TOKEN — the same bot the Telegram webhook is registered on —
-// so button callbacks are received. Plain text alerts use ASSISTANT_TOKEN.
+// so button callbacks are received. Plain text alerts use the admin bot for
+// operational updates like new orders and completed orders.
 export async function sendAdminAlert(message: string, markup?: object): Promise<void> {
   if (markup) {
-    // Must use the same bot the Telegram webhook is registered on so button callbacks arrive
     await tgSend(ADMIN_BOT_TOKEN!, message, markup);
   } else {
-    // Use assistant bot for plain alerts; fall back to admin bot if assistant token not set
     await tgSend((ASSISTANT_TOKEN || ADMIN_BOT_TOKEN)!, message);
   }
 }
 
-export async function sendAdminBotMessage(message: string, replyMarkup?: object): Promise<void> {
-  await tgSend(ADMIN_BOT_TOKEN!, message, replyMarkup);
-}
-
 // ── @SWIFTDATAGH_BOT — stuck order approval alerts only ──────────────────────
-export async function sendSwiftAlert(message: string, markup?: object): Promise<void> {
-  await tgSend(SWIFT_TOKEN!, message, markup);
-}
-
 // ── Escape user-supplied content before inserting into Telegram HTML messages ──
 export function tgEscape(text: string): string {
   return String(text ?? "")
@@ -67,12 +103,16 @@ function e(text: string): string {
 
 // ── Message formatters ────────────────────────────────────────────────────────
 export function fmtOrder({
-  ref, network, size, phone, amount, profit, agentName,
+  ref, network, size, phone, amount, profit, agentName, sourceLabel,
 }: {
   ref: string; network: string; size: string; phone: string;
-  amount: number; profit: number; agentName?: string;
+  amount: number; profit: number; agentName?: string; sourceLabel?: string;
 }) {
-  const source = agentName ? `🔗 Agent: <b>${e(agentName)}</b>` : "🛒 Direct sale";
+  const source = sourceLabel
+    ? `🔗 ${e(sourceLabel)}`
+    : agentName
+      ? `🔗 Agent: <b>${e(agentName)}</b>`
+      : "🛒 Direct customer";
   return (
     `🛒 <b>New Order</b>\n` +
     `📱 ${e(network.toUpperCase())} ${e(size)}\n` +

@@ -27,7 +27,7 @@ interface AgentData {
 interface WalletTx {
   id: string; type: string; amount: number; description: string; created_at: string;
 }
-type Page = "dashboard" | "orders" | "customers" | "wallet" | "transactions" | "referrals" | "leaderboard" | "profile" | "settings" | "prices" | "place_order" | "api" | "buy_data" | "affiliate" | "notifications" | "support" | "pro";
+type Page = "dashboard" | "orders" | "customers" | "wallet" | "transactions" | "referrals" | "leaderboard" | "profile" | "settings" | "prices" | "voucher_prices" | "place_order" | "api" | "buy_data" | "affiliate" | "notifications" | "support" | "pro";
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const SB = { bg: "#0d1b2e", border: "#1e3a5f", text: "#f8fafc", muted: "#94a3b8" };
@@ -562,13 +562,13 @@ function DashboardPage({ data, onAddFunds, onWithdraw, onNavigate }: { data: Age
       ); })()}
 
       {/* Page title */}
-      <div>
+      <div className="agent-dashboard-title">
         <h1 style={{ color: M.text, fontSize: 28, fontWeight: 900, margin: 0 }}>Dashboard</h1>
         <p style={{ color: M.muted, fontSize: 14, margin: "4px 0 0" }}>{greeting()}, {data.name.split(" ")[0]} 👋</p>
       </div>
 
       {/* Quick action circles */}
-      <div style={{ display: "flex", gap: 24, overflowX: "auto", paddingBottom: 4 }}>
+      <div className="agent-quick-actions" style={{ display: "flex", gap: 24, overflowX: "auto", paddingBottom: 4 }}>
         {quickActions.map(qa => (
           <button key={qa.label} onClick={() => onNavigate(qa.page)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}>
             <div style={{ width: 64, height: 64, borderRadius: "50%", background: qa.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, boxShadow: "0 4px 14px rgba(0,0,0,0.12)", transition: "transform 0.15s" }}>
@@ -2375,6 +2375,76 @@ function SupportPage() {
 }
 
 // ─── Pro Features Page ────────────────────────────────────────────────────────
+function TeamPriceEditor({ master, target, onClose }: { master: AgentData; target: { id: string; name: string }; onClose: () => void }) {
+  const [details, setDetails] = useState<{ bundles: { id: string; network: string; size: string; basePrice: number }[]; prices: { bundle_id: string; custom_price: number; locked_by_sub_admin_id?: string | null }[]; vouchers: { voucher_type: string; sell_price: number; locked_by_sub_admin_id?: string | null }[] } | null>(null);
+  const [bundleId, setBundleId] = useState(""); const [price, setPrice] = useState(""); const [message, setMessage] = useState("");
+  const load = useCallback(() => fetch(`/api/agents/sub-admin/prices?agentId=${master.id}&targetAgentId=${target.id}`, { cache: "no-store" }).then(r => r.json()).then(setDetails), [master.id, target.id]);
+  useEffect(() => { void load(); }, [load]);
+  async function save(payload: Record<string, unknown>) { setMessage(""); const response = await fetch("/api/agents/sub-admin/prices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: master.id, targetAgentId: target.id, ...payload }) }); const body = await response.json(); setMessage(response.ok ? "Price saved and locked for this agent." : body.error ?? "Could not save price."); if (response.ok) void load(); }
+  const current = new Map((details?.prices ?? []).map(item => [item.bundle_id, Number(item.custom_price)]));
+  return <div style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(0,0,0,.72)", display: "grid", placeItems: "center", padding: 16 }} onClick={onClose}><section style={{ width: "min(620px,100%)", maxHeight: "88vh", overflowY: "auto", background: M.card, border: `1px solid ${M.border}`, borderRadius: 18, padding: 22 }} onClick={event => event.stopPropagation()}><div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}><div><h2 style={{ color: M.text, margin: 0, fontSize: 19 }}>Set prices for {target.name}</h2><p style={{ color: M.muted, fontSize: 12 }}>Prices cannot be below the platform base price.</p></div><button onClick={onClose} style={{ background: "none", border: 0, color: M.muted, fontSize: 22, cursor: "pointer" }}>×</button></div>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 120px auto", gap: 8, marginBottom: 18 }}><select value={bundleId} onChange={event => { const id = event.target.value; setBundleId(id); const bundle = details?.bundles.find(item => item.id === id); setPrice(String(current.get(id) ?? bundle?.basePrice ?? "")); }}><option value="">Select data bundle</option>{details?.bundles.map(bundle => <option key={bundle.id} value={bundle.id}>{bundle.network.toUpperCase()} {bundle.size} · base GH₵{bundle.basePrice.toFixed(2)}</option>)}</select><input type="number" step="0.01" value={price} onChange={event => setPrice(event.target.value)} placeholder="Price" /><button disabled={!bundleId} onClick={() => save({ kind: "bundle", bundleId, price: Number(price) })} style={{ border: 0, borderRadius: 9, background: "#2563eb", color: "white", fontWeight: 800, padding: "9px 12px" }}>Save</button></div>
+    <h3 style={{ color: M.text, fontSize: 14 }}>Voucher prices</h3><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>{["BECE", "WASSCE"].map(type => { const saved = details?.vouchers.find(item => item.voucher_type === type)?.sell_price ?? 18; return <button key={`${type}-${saved}`} onClick={() => { const entered = prompt(`${type} selling price (minimum GH₵17)`, String(saved)); if (entered) void save({ kind: "voucher", voucherType: type, price: Number(entered) }); }} style={{ textAlign: "left", border: `1px solid ${M.border}`, borderRadius: 11, padding: 13, background: M.bg, color: M.text, cursor: "pointer" }}><b>{type}</b><small style={{ display: "block", color: M.muted, marginTop: 4 }}>Current: GH₵{Number(saved).toFixed(2)} · Click to change</small></button>; })}</div>{message && <p style={{ color: message === "Price saved." ? M.green : M.red, fontSize: 12 }}>{message}</p>}
+    <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}><button onClick={() => { const entered = prompt("Markup to add to every platform bundle price", "1.00"); if (entered !== null) void save({ kind: "bulk", markup: Number(entered) }); }} style={{ border: 0, borderRadius: 9, background: "#7c3aed", color: "white", fontWeight: 800, padding: "9px 12px" }}>Bulk price & lock all bundles</button><button disabled={!bundleId || !details?.prices.find(item => item.bundle_id === bundleId)?.locked_by_sub_admin_id} onClick={() => save({ kind: "bundle", bundleId, action: "unlock" })} style={{ border: `1px solid ${M.border}`, borderRadius: 9, background: M.bg, color: M.text, fontWeight: 800, padding: "9px 12px" }}>Unlock selected bundle</button>{bundleId && <span style={{ alignSelf: "center", color: details?.prices.find(item => item.bundle_id === bundleId)?.locked_by_sub_admin_id ? M.amber : M.muted, fontSize: 12 }}>{details?.prices.find(item => item.bundle_id === bundleId)?.locked_by_sub_admin_id ? "🔒 Locked by you" : "Unlocked"}</span>}</div>
+  </section></div>;
+}
+
+function ProTeamAdmin({ data }: { data: AgentData }) {
+  const [team, setTeam] = useState<{ agents: { id: string; name: string; email: string; phone: string; status: string }[]; availableAgents: { id: string; name: string; email: string; phone: string; status: string }[]; orders: Order[]; canApproveOrders: boolean; commissionSummary?: { subAdminEarnings: number; adminEarnings: number; transactions: number } } | null>(null);
+  const [error, setError] = useState("");
+  const [approving, setApproving] = useState<string | null>(null);
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
+  const [savingTeam, setSavingTeam] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const [pricingAgent, setPricingAgent] = useState<{ id: string; name: string } | null>(null);
+  const load = useCallback(() => {
+    fetch(`/api/agents/sub-admin?agentId=${encodeURIComponent(data.id)}`, { cache: "no-store" }).then(async response => ({ response, body: await response.json() })).then(({ response, body }) => { if (response.ok) { setTeam(body); setSelectedAgents((body.agents ?? []).map((agent: { id: string }) => agent.id)); } else setError(body.error ?? "Could not load team tools."); }).catch(() => setError("Could not load team tools."));
+  }, [data.id]);
+  useEffect(() => { load(); }, [load]);
+  async function approve(reference: string) {
+    if (!confirm(`Approve ${reference}? This can start delivery.`)) return;
+    setApproving(reference); setError("");
+    const response = await fetch("/api/agents/sub-admin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: data.id, reference }) });
+    const body = await response.json();
+    if (!response.ok) setError(body.error ?? body.message ?? "Approval failed."); else load();
+    setApproving(null);
+  }
+  async function saveTeam() {
+    setSavingTeam(true); setError("");
+    const response = await fetch("/api/agents/sub-admin", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: data.id, assignedAgentIds: selectedAgents }) });
+    const body = await response.json();
+    if (!response.ok) setError(body.error ?? "Could not send invitations."); else { setError(body.message ?? "Invitations sent."); load(); }
+    setSavingTeam(false);
+  }
+  return <section style={{ background: M.card, border: `1px solid ${M.border}`, borderRadius: 18, overflow: "hidden" }}>
+    <div style={{ padding: "18px 22px", borderBottom: `1px solid ${M.border}` }}><p style={{ color: M.text, fontWeight: 800, margin: 0 }}>Sub-admin team management</p><p style={{ color: M.muted, fontSize: 12, margin: "4px 0 0" }}>Manage assigned agents and their orders here—no separate portal.</p></div>
+    <div style={{ padding: 16, borderBottom: `1px solid ${M.border}` }}><p style={{ color: M.text, fontSize: 13, fontWeight: 800, margin: "0 0 7px" }}>Unlimited agent recruitment link</p><div style={{ display: "flex", gap: 8 }}><input readOnly value={typeof window !== "undefined" ? `${window.location.origin}/agent?master=${data.referral_code}` : `/agent?master=${data.referral_code}`} style={{ flex: 1, minWidth: 0, borderRadius: 9, padding: "9px 11px" }} /><button onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/agent?master=${data.referral_code}`); setInviteCopied(true); setTimeout(() => setInviteCopied(false), 1800); }} style={{ border: 0, borderRadius: 9, padding: "9px 14px", background: "#7c3aed", color: "white", fontWeight: 800, cursor: "pointer" }}>{inviteCopied ? "Copied" : "Copy"}</button></div><small style={{ color: M.muted }}>Team commission split: 70% selling agent, 20% you, and 10% platform admin. Anyone using this link consents to join your team.</small></div>
+    {error && <p style={{ color: M.red, margin: 16 }}>{error}</p>}
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, padding: 16 }}>
+      {[{ label: "Assigned agents", value: team?.agents.length ?? 0 }, { label: "Team orders", value: team?.orders.length ?? 0 }, { label: "Your team earnings", value: `GH₵${Number(team?.commissionSummary?.subAdminEarnings ?? 0).toFixed(2)}` }, { label: "Admin earnings", value: `GH₵${Number(team?.commissionSummary?.adminEarnings ?? 0).toFixed(2)}` }, { label: "Approval access", value: team?.canApproveOrders ? "Enabled" : "Admin controlled" }].map(item => <div key={item.label} style={{ background: M.bg, border: `1px solid ${M.border}`, borderRadius: 12, padding: 14 }}><small style={{ color: M.muted }}>{item.label}</small><strong style={{ display: "block", color: M.text, fontSize: typeof item.value === "number" ? 24 : 14, marginTop: 7 }}>{item.value}</strong></div>)}
+    </div>
+    {team && <div style={{ padding: "4px 16px 16px" }}><p style={{ color: M.text, fontSize: 13, fontWeight: 800 }}>Choose agents for your team</p><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 8 }}>{[...team.agents, ...team.availableAgents].map(agent => <label key={agent.id} style={{ display: "flex", gap: 9, alignItems: "center", border: `1px solid ${M.border}`, borderRadius: 10, padding: 11, color: M.text, fontSize: 12, cursor: "pointer" }}><input type="checkbox" checked={selectedAgents.includes(agent.id)} onChange={event => setSelectedAgents(current => event.target.checked ? [...current, agent.id] : current.filter(id => id !== agent.id))} /><span><b>{agent.name}</b><small style={{ display: "block", color: M.muted, marginTop: 2 }}>{agent.email}</small></span></label>)}</div><button onClick={saveTeam} disabled={savingTeam} style={{ marginTop: 12, border: 0, borderRadius: 9, padding: "10px 15px", background: "#2563eb", color: "white", fontWeight: 800, cursor: "pointer" }}>{savingTeam ? "Saving..." : "Save my team"}</button></div>}
+    {team?.agents.map(agent => <div key={agent.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 20px", borderTop: `1px solid ${M.border}` }}><span><b style={{ color: M.text, fontSize: 13 }}>{agent.name}</b><small style={{ display: "block", color: M.muted, marginTop: 3 }}>{agent.email} · {agent.phone}</small></span><span style={{ display: "flex", gap: 9, alignItems: "center" }}><span style={{ color: agent.status === "approved" ? M.green : M.amber, fontSize: 12 }}>{agent.status}</span><button onClick={() => setPricingAgent(agent)} style={{ border: `1px solid ${M.border}`, borderRadius: 8, background: "rgba(59,130,246,.12)", color: "#60a5fa", padding: "6px 9px", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>Set prices</button></span></div>)}
+    {team?.orders.slice(0, 20).map(order => <div key={order.reference} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 20px", borderTop: `1px solid ${M.border}`, flexWrap: "wrap" }}><span><b style={{ color: M.text, fontSize: 13 }}>{order.network} {order.bundle_size}</b><small style={{ display: "block", color: M.muted, marginTop: 3 }}>{order.phone} · {order.reference}</small></span><span style={{ display: "flex", alignItems: "center", gap: 9 }}><small style={{ color: M.muted }}>{order.status.replaceAll("_", " ")}</small>{order.status === "pending_approval" && team.canApproveOrders && <button onClick={() => approve(order.reference)} disabled={approving === order.reference} style={{ border: 0, borderRadius: 8, padding: "7px 11px", background: "#16a34a", color: "white", fontWeight: 700, cursor: "pointer" }}>{approving === order.reference ? "Approving..." : "Approve"}</button>}</span></div>)}
+    {pricingAgent && <TeamPriceEditor master={data} target={pricingAgent} onClose={() => setPricingAgent(null)} />}
+  </section>;
+}
+
+function TeamInvitations({ data }: { data: AgentData }) {
+  const [items, setItems] = useState<{ id: string; status: string; sub_admins?: { name?: string } | { name?: string }[] }[]>([]);
+  const [message, setMessage] = useState("");
+  const load = useCallback(() => fetch(`/api/agents/team-invitations?agentId=${encodeURIComponent(data.id)}`, { cache: "no-store" }).then(r => r.ok ? r.json() : { invitations: [] }).then(body => setItems(body.invitations ?? [])), [data.id]);
+  useEffect(() => { void load(); }, [load]);
+  async function decide(requestId: string, action: "accept" | "decline") {
+    const response = await fetch("/api/agents/team-invitations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: data.id, requestId, action }) });
+    const body = await response.json();
+    setMessage(response.ok ? (body.status === "pending_admin" ? "Accepted. Platform admin approval is required for this transfer." : `Invitation ${body.status}.`) : body.error ?? "Could not update invitation.");
+    void load();
+  }
+  if (!items.length && !message) return null;
+  return <section style={{ background: M.card, border: `1px solid ${M.border}`, borderRadius: 16, padding: 16 }}><b style={{ color: M.text }}>Team invitations</b><p style={{ color: M.muted, fontSize: 12 }}>Accepting means sales commission is split 70% to you, 20% to the Pro sub-admin and 10% to the platform admin.</p>{items.map(item => { const sa = Array.isArray(item.sub_admins) ? item.sub_admins[0] : item.sub_admins; return <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: 10, borderTop: `1px solid ${M.border}` }}><span style={{ color: M.text }}>{sa?.name ?? "Pro Agent team"} · {item.status.replaceAll("_", " ")}</span>{item.status === "pending_agent" && <span style={{ display: "flex", gap: 8 }}><button onClick={() => decide(item.id, "accept")} style={{ border: 0, borderRadius: 8, background: M.green, color: "white", padding: "7px 10px", fontWeight: 800 }}>Accept 70/20/10</button><button onClick={() => decide(item.id, "decline")} style={{ border: `1px solid ${M.border}`, borderRadius: 8, background: M.bg, color: M.text, padding: "7px 10px" }}>Decline</button></span>}</div>; })}{message && <p style={{ color: M.muted, fontSize: 12 }}>{message}</p>}</section>;
+}
+
 function ProPage({ data, onNavigate }: { data: AgentData; onNavigate: (p: Page) => void }) {
   const isPro = data.plan === "pro";
   const [tab, setTab] = useState<"overview" | "store" | "prices" | "api">("overview");
@@ -2523,6 +2593,9 @@ function ProPage({ data, onNavigate }: { data: AgentData; onNavigate: (p: Page) 
       </div>
 
       {/* Tabs — shown when Pro */}
+      <TeamInvitations data={data} />
+      {isPro && <ProTeamAdmin data={data} />}
+
       {isPro && (
         <div style={{ display: "flex", gap: 8 }}>
           {([{ key: "overview", label: "Overview" }, { key: "store", label: "🏪 Store Settings" }, { key: "prices", label: "💰 My Prices" }, { key: "api", label: "🔌 API Access" }] as const).map(t => (
@@ -2829,6 +2902,92 @@ function ProPage({ data, onNavigate }: { data: AgentData; onNavigate: (p: Page) 
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
+function VoucherPricesPage({ data }: { data: AgentData }) {
+  const [prices, setPrices] = useState<Record<string, number>>({ BECE: 18, WASSCE: 18 });
+  const [wholesale, setWholesale] = useState(17);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    fetch(`/api/agents/voucher-prices?agentId=${encodeURIComponent(data.id)}`).then(r => r.json()).then(result => {
+      if (result.wholesalePrice) setWholesale(Number(result.wholesalePrice));
+      setPrices(current => ({ ...current, ...(result.prices ?? {}) }));
+    }).catch(() => setMessage("Could not load voucher prices."));
+  }, [data.id]);
+  async function save(voucherType: string) {
+    setSaving(voucherType); setMessage("");
+    const response = await fetch("/api/agents/voucher-prices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId: data.id, referralCode: data.referral_code, voucherType, sellPrice: prices[voucherType] }) });
+    const result = await response.json();
+    setMessage(response.ok ? `${voucherType} price saved.` : result.error ?? "Could not save price."); setSaving(null);
+  }
+  return <div style={{ maxWidth: 820, display: "flex", flexDirection: "column", gap: 18 }}>
+    <div><h1 style={{ color: M.text, fontSize: 26, fontWeight: 900, margin: 0 }}>Voucher Prices</h1><p style={{ color: M.muted, fontSize: 13, margin: "5px 0 0" }}>Every agent buys at GH₵{wholesale.toFixed(2)}. Choose what customers pay in your store.</p></div>
+    <div style={{ padding: 16, borderRadius: 14, background: "rgba(20,184,166,.09)", border: "1px solid rgba(20,184,166,.25)", color: "#5eead4", fontSize: 13 }}>Profit is credited only after the voucher order is approved and delivered.</div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 16 }}>
+      {(["BECE", "WASSCE"] as const).map(type => { const margin = Math.max(0, Number(prices[type] || 0) - wholesale); return <section key={type} style={{ background: M.card, border: `1px solid ${M.border}`, borderRadius: 18, padding: 22 }}>
+        <p style={{ color: M.text, fontWeight: 900, fontSize: 18, margin: "0 0 4px" }}>{type} Result Checker</p><p style={{ color: M.muted, fontSize: 12, margin: "0 0 18px" }}>Wholesale: GH₵{wholesale.toFixed(2)}</p>
+        <label style={{ color: M.muted, fontSize: 11, fontWeight: 800, display: "block", marginBottom: 6 }}>YOUR SELLING PRICE</label>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: M.muted }}>GH₵</span><input type="number" min={wholesale} step="0.50" value={prices[type]} onChange={e => setPrices(current => ({ ...current, [type]: Number(e.target.value) }))} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: `1px solid ${M.border}`, background: M.bg, color: M.text }} /></div>
+        <p style={{ color: margin > 0 ? M.green : M.red, fontSize: 12, fontWeight: 800, margin: "10px 0 16px" }}>Profit per voucher: GH₵{margin.toFixed(2)}</p>
+        <button onClick={() => save(type)} disabled={saving === type} style={{ width: "100%", border: 0, borderRadius: 11, padding: 12, background: "linear-gradient(90deg,#2563eb,#7c3aed)", color: "white", fontWeight: 800, cursor: "pointer" }}>{saving === type ? "Saving…" : "Save Price"}</button>
+      </section>; })}
+    </div>{message && <p style={{ color: message.includes("saved") ? M.green : M.red, fontSize: 13, fontWeight: 700 }}>{message}</p>}
+  </div>;
+}
+
+function ProHomeDashboard({ data, onAddFunds, onNavigate }: { data: AgentData; onAddFunds: () => void; onNavigate: (page: Page) => void }) {
+  const completedOrders = data.orders.filter(order => order.status.toLowerCase() === "completed");
+  const totalSpent = completedOrders.reduce((sum, order) => sum + Number(order.amount || 0), 0);
+  const now = new Date();
+  const thisMonth = data.orders.filter(order => {
+    const created = new Date(order.created_at);
+    return created.getFullYear() === now.getFullYear() && created.getMonth() === now.getMonth();
+  }).length;
+  const recentOrders = data.orders.slice(0, 6);
+  const shortcuts: { label: string; page?: Page; action?: () => void; tone: string; icon: React.ReactNode }[] = [
+    { label: "Buy Data", page: "buy_data", tone: "blue", icon: <path d="M5 12.5a10 10 0 0114 0M8.5 16a5 5 0 017 0M12 20h.01" /> },
+    { label: "Add Funds", action: onAddFunds, tone: "green", icon: <path d="M12 5v14M5 12h14" /> },
+    { label: "Orders", page: "orders", tone: "purple", icon: <path d="M4 5h2l2 10h9l2-7H7m2 11h.01M17 19h.01" /> },
+    { label: "Transactions", page: "transactions", tone: "slate", icon: <path d="M12 7v5l3 2m6-2a9 9 0 11-9-9" /> },
+  ];
+  const statusColors: Record<string, string> = { completed: "#00d39b", rejected: "#ff6178", failed: "#ff6178", pending: "#fbbf24", pending_approval: "#60a5fa", processing: "#60a5fa" };
+
+  return (
+    <div className="pro-home">
+      <div className="pro-stat-grid">
+        <button className="pro-card pro-balance" onClick={() => onNavigate("wallet")}>
+          <span><small>Available balance</small><strong>GH&#8373;{(data.wallet_balance ?? 0).toFixed(2)}</strong></span>
+          <span className="pro-wallet-icon"><svg viewBox="0 0 24 24"><path d="M4 6h14a2 2 0 012 2v11H6a2 2 0 01-2-2V6zm0 4h16m-5 4h2" /></svg></span>
+        </button>
+        <div className="pro-card pro-metric"><small>Total orders</small><strong>{data.total_sales ?? data.orders.length}</strong><span>All time</span></div>
+        <div className="pro-card pro-metric"><small>Total spent</small><strong>GH&#8373;{totalSpent.toFixed(2)}</strong><span>Lifetime</span></div>
+        <div className="pro-card pro-metric"><small>This month</small><strong>{thisMonth}</strong><span>Orders</span></div>
+      </div>
+
+      <div className="pro-shortcuts">
+        {shortcuts.map(shortcut => (
+          <button key={shortcut.label} className="pro-card" onClick={() => shortcut.action ? shortcut.action() : shortcut.page && onNavigate(shortcut.page)}>
+            <span className={`pro-shortcut-icon ${shortcut.tone}`}><svg viewBox="0 0 24 24">{shortcut.icon}</svg></span>
+            <b>{shortcut.label}</b><span className="pro-chevron">›</span>
+          </button>
+        ))}
+      </div>
+
+      <section className="pro-card pro-orders-card">
+        <div className="pro-orders-head"><div><h2>Recent orders</h2><p>Your latest data and voucher purchases</p></div><button onClick={() => onNavigate("orders")}>View all ↗</button></div>
+        {recentOrders.length === 0 ? <div className="pro-empty"><p>No orders yet</p><button onClick={() => onNavigate("buy_data")}>Buy your first bundle</button></div> : recentOrders.map(order => {
+          const status = order.status.toLowerCase();
+          return <button className="pro-order-row" key={order.reference} onClick={() => onNavigate("orders")}>
+            <span className="pro-order-check">✓</span>
+            <span className="pro-order-info"><b>{order.network} {order.bundle_size}</b><small>{order.phone} · #{order.reference.slice(-8)} · {new Date(order.created_at).toLocaleString("en-GH", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</small></span>
+            <strong className="pro-order-price">GH&#8373;{Number(order.amount || 0).toFixed(2)}</strong>
+            <span className="pro-order-status" style={{ color: statusColors[status] ?? "#94a3b8", borderColor: `${statusColors[status] ?? "#64748b"}55`, background: `${statusColors[status] ?? "#64748b"}12` }}>{status === "pending_approval" ? "Awaiting approval" : status.replaceAll("_", " ")}</span>
+          </button>;
+        })}
+      </section>
+    </div>
+  );
+}
+
 function Sidebar({ page, setPage, data, onLogout, onWithdraw, open, onClose }: { page: Page; setPage: (p: Page) => void; data: AgentData; onLogout: () => void; onWithdraw: () => void; open: boolean; onClose: () => void }) {
   const isPriceMode = data.agent_type === "custom_price";
   const isPro = data.plan === "pro";
@@ -2839,9 +2998,11 @@ function Sidebar({ page, setPage, data, onLogout, onWithdraw, open, onClose }: {
     { id: "dashboard", label: "Dashboard", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
     { id: "buy_data",  label: "Buy Data",  svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg> },
     { id: "wallet",    label: "Wallet",    svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg> },
+    { id: "voucher_prices", label: "Voucher Prices", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v3a2 2 0 000 4v3a2 2 0 01-2 2H7a2 2 0 01-2-2v-3a2 2 0 000-4V5z"/></svg> },
     ...(isPriceMode || isPro ? [{ id: "prices" as Page, label: "My Prices", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/></svg> }] : []),
     ...(isPriceMode || isPro ? [{ id: "affiliate" as Page, label: "My Store", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg> }] : [{ id: "affiliate" as Page, label: "Sale & Earn", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/></svg> }]),
     { id: "orders",    label: "My Orders", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg> },
+    { id: "transactions", label: "Transactions", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h2m3 0h2M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg> },
     { id: "customers", label: "Customers", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg> },
     { id: "notifications", label: "Notifications", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg> },
     ...(isPro ? [{ id: "pro" as Page, label: "⭐ Pro Dashboard", svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> }] : []),
@@ -2908,6 +3069,10 @@ function Sidebar({ page, setPage, data, onLogout, onWithdraw, open, onClose }: {
               </button>
             );
           })}
+          <button onClick={() => { window.location.href = "/vouchers"; }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 14px", borderRadius: 12, border: "none", cursor: "pointer", background: "transparent", color: SB.muted, fontSize: 13, fontWeight: 500, textAlign: "left", marginBottom: 2 }}>
+            <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v3a2 2 0 000 4v3a2 2 0 01-2 2H7a2 2 0 01-2-2v-3a2 2 0 000-4V5z"/></svg>
+            Result Checkers
+          </button>
         </nav>
 
         {/* Logout */}
@@ -2962,10 +3127,23 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
   }, []);
 
   return (
-    <div style={{ minHeight: "100vh", background: M.bg, display: "flex", width: "100%", maxWidth: "100vw", overflowX: "hidden" }}>
+    <div className="agent-app-shell" style={{ minHeight: "100vh", background: M.bg, display: "flex", width: "100%", maxWidth: "100vw", overflowX: "hidden" }}>
       <Sidebar page={page} setPage={setPage} data={data} onLogout={onLogout} onWithdraw={() => setShowWithdraw(true)} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: "100vh", overflowX: "hidden" }} className="main-with-sidebar">
+        <header className="agent-desktop-header">
+          <div>
+            <h1>{greeting()}, {data.name.split(" ")[0]}</h1>
+            <p>{new Date().toLocaleDateString("en-GH", { weekday: "long", month: "long", day: "numeric" })}</p>
+          </div>
+          <div className="agent-header-actions">
+            <button onClick={() => setPage("notifications")} aria-label="Notifications">
+              <svg width={21} height={21} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 00-4-5.7V5a2 2 0 10-4 0v.3A6 6 0 006 11v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 11-6 0"/></svg>
+              {data.orders.length > 0 && <span />}
+            </button>
+            <button onClick={() => setPage("profile")} className="agent-header-avatar" aria-label="Open profile">{(data.name ?? "A").charAt(0).toUpperCase()}</button>
+          </div>
+        </header>
         {/* FuzeServe-style mobile header */}
         <header className="mobile-header" style={{ display: "none", background: SB.bg, padding: "10px 20px", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 30, borderBottom: `1px solid ${SB.border}` }}>
           {/* USER / PRO pill */}
@@ -2986,7 +3164,9 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
         </header>
 
         <main style={{ flex: 1, padding: "28px 28px", overflowY: "auto", overflowX: "hidden", maxWidth: 1300, width: "100%", minWidth: 0, margin: "0 auto", boxSizing: "border-box" }} className="main-content">
-          {page === "dashboard"    && <DashboardPage data={data} onAddFunds={() => setShowAddFunds(true)} onWithdraw={() => setShowWithdraw(true)} onNavigate={setPage} />}
+          {page === "dashboard" && (isPro
+            ? <ProHomeDashboard data={data} onAddFunds={() => setShowAddFunds(true)} onNavigate={setPage} />
+            : <DashboardPage data={data} onAddFunds={() => setShowAddFunds(true)} onWithdraw={() => setShowWithdraw(true)} onNavigate={setPage} />)}
           {page === "orders"       && <OrdersPage orders={data.orders} agentId={data.id} onPlaceOrder={() => setPage("buy_data")} isPro={data.plan === "pro"} />}
           {page === "customers"    && <CustomersPage orders={data.orders} />}
           {page === "wallet"       && <WalletPage data={data} onAddFunds={() => setShowAddFunds(true)} onWithdraw={() => setShowWithdraw(true)} />}
@@ -2997,6 +3177,7 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
           {page === "profile"      && <ProfilePage data={data} />}
           {page === "settings"     && <SettingsPage />}
           {page === "prices"       && <PricesPage data={data} />}
+          {page === "voucher_prices" && <VoucherPricesPage data={data} />}
           {(page === "place_order" || page === "buy_data") && <PlaceOrderPage data={data} onRefresh={onRefresh} />}
           {page === "affiliate"    && <AffiliatePage data={data} onWithdraw={() => setShowWithdraw(true)} />}
           {page === "notifications" && <NotificationsPage data={data} />}
@@ -3046,11 +3227,60 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
         html, body { overflow-x: hidden !important; max-width: 100% !important; }
         *, *::before, *::after { box-sizing: border-box; }
 
-        /* FuzeServe layout — header + bottom nav always on */
-        .mobile-header { display: flex !important; }
-        .bottom-nav { display: flex !important; justify-content: center !important; }
+        .agent-desktop-header {
+          display: none; height: 82px; padding: 0 32px; align-items: center; justify-content: space-between;
+          position: sticky; top: 0; z-index: 30; background: rgba(13,27,46,.96);
+          border-bottom: 1px solid #1e3a5f; backdrop-filter: blur(16px);
+        }
+        .agent-desktop-header h1 { margin: 0; color: #f8fafc; font-size: 23px; font-weight: 850; letter-spacing: -.03em; }
+        .agent-desktop-header p { margin: 4px 0 0; color: #8292a9; font-size: 13px; }
+        .agent-header-actions { display: flex; align-items: center; gap: 12px; }
+        .agent-header-actions button { position: relative; display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #2a3b55; border-radius: 50%; background: transparent; color: #a9b7ca; cursor: pointer; }
+        .agent-header-actions button > span { position: absolute; top: 2px; right: 3px; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 0 3px #0d1b2e; }
+        .agent-header-actions .agent-header-avatar { color: white; font-weight: 900; background: linear-gradient(135deg,#2563eb,#7c3aed); }
         .main-content { padding: 16px 16px 82px !important; overflow-x: hidden !important; }
         .main-with-sidebar { overflow-x: hidden !important; min-width: 0 !important; }
+        .pro-home { display: flex; flex-direction: column; gap: 28px; }
+        .pro-card { background: linear-gradient(180deg,#17243a,#142036); border: 1px solid #293850; border-radius: 17px; color: #f4f7fb; }
+        .pro-stat-grid { display: grid; grid-template-columns: 2.2fr repeat(3,minmax(0,1fr)); gap: 18px; }
+        .pro-balance { min-height: 158px; padding: 28px 34px; display: flex; align-items: center; justify-content: space-between; text-align: left; cursor: pointer; }
+        .pro-balance small, .pro-metric small { display: block; color: #8ca5cb; font-size: 14px; text-transform: none; }
+        .pro-balance strong { display: block; margin-top: 10px; font-size: clamp(30px,3vw,43px); line-height: 1; }
+        .pro-wallet-icon { width: 50px; height: 50px; display: grid; place-items: center; border-radius: 14px; color: #53a1ff; background: #173869; }
+        .pro-wallet-icon svg, .pro-shortcut-icon svg { width: 23px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+        .pro-metric { min-height: 158px; padding: 27px 25px; display: flex; flex-direction: column; justify-content: center; }
+        .pro-metric small { text-transform: uppercase; letter-spacing: .05em; font-size: 12px; }
+        .pro-metric strong { margin: 15px 0 4px; font-size: 29px; line-height: 1; }
+        .pro-metric span { color: #7188ad; font-size: 13px; }
+        .pro-shortcuts { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }
+        .pro-shortcuts > button { min-height: 82px; padding: 0 20px; display: flex; align-items: center; gap: 15px; cursor: pointer; text-align: left; }
+        .pro-shortcuts > button:hover { border-color: #3b5478; transform: translateY(-1px); }
+        .pro-shortcut-icon { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center; color: #56a4ff; background: #14366a; }
+        .pro-shortcut-icon.green { color: #00d5a4; background: #083f46; }.pro-shortcut-icon.purple { color: #a47cff; background: #2a205d; }.pro-shortcut-icon.slate { color: #b8c7df; background: #243149; }
+        .pro-shortcuts b { font-size: 15px; }.pro-chevron { margin-left: auto; color: #657c9f; font-size: 24px; }
+        .pro-orders-card { padding: 28px 30px; overflow: hidden; }
+        .pro-orders-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }.pro-orders-head h2 { margin: 0; font-size: 17px; }.pro-orders-head p { margin: 5px 0 0; color: #7890b5; font-size: 14px; }.pro-orders-head button { border: 0; background: none; color: #9db5d7; cursor: pointer; font-size: 14px; }
+        .pro-order-row { width: 100%; min-height: 92px; display: grid; grid-template-columns: 38px 1fr 120px 125px; align-items: center; gap: 10px; padding: 16px 8px; background: none; color: #f4f7fb; border: 0; border-top: 1px solid #293850; text-align: left; cursor: pointer; }
+        .pro-order-row:hover { background: rgba(255,255,255,.018); }.pro-order-check { width: 19px; height: 19px; border: 2px solid #7188aa; border-radius: 50%; display: grid; place-items: center; color: #9cb0ce; font-size: 10px; }.pro-order-info { min-width: 0; display: flex; flex-direction: column; gap: 6px; }.pro-order-info b { text-transform: uppercase; font-size: 14px; }.pro-order-info small { color: #7088ad; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.pro-order-price { text-align: right; font-size: 14px; }.pro-order-status { justify-self: end; border: 1px solid; border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 700; text-transform: capitalize; white-space: nowrap; }.pro-empty { padding: 48px 10px; text-align: center; color: #7890b5; border-top: 1px solid #293850; }.pro-empty button { background: #1d67ff; border: 0; border-radius: 9px; color: white; padding: 10px 15px; font-weight: 700; cursor: pointer; }
+
+        @media (min-width: 1024px) {
+          .sidebar-desktop { left: 0 !important; width: 280px !important; box-shadow: 18px 0 55px rgba(0,0,0,.18); }
+          .main-with-sidebar { margin-left: 280px; }
+          .agent-desktop-header { display: flex; }
+          .mobile-header, .bottom-nav { display: none !important; }
+          .main-content { max-width: 1540px !important; padding: 32px 34px 50px !important; }
+          .stat-grid { grid-template-columns: 2.2fr repeat(3,minmax(0,1fr)) !important; }
+          .stat-grid > :first-child { background: linear-gradient(135deg,#102139,#0d1b2e) !important; }
+          .agent-dashboard-title { display: none; }
+          .agent-quick-actions { display: grid !important; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 12px !important; overflow: visible !important; }
+          .agent-quick-actions > button { min-height: 118px; justify-content: center; border: 1px solid #1e3a5f !important; border-radius: 16px; background: #0d1b2e !important; }
+          .agent-quick-actions > button:hover { border-color: #31517c !important; transform: translateY(-2px); }
+        }
+
+        @media (max-width: 1023px) {
+          .mobile-header { display: flex !important; }
+          .bottom-nav { display: flex !important; justify-content: center !important; }
+        }
 
         /* Dark theme: override hardcoded light inputs */
         input, textarea, select {
@@ -3062,6 +3292,7 @@ function AgentApp({ data, onLogout, onRefresh }: { data: AgentData; onLogout: ()
 
         /* Responsive grids */
         @media (max-width: 767px) {
+          .pro-home { gap: 16px; }.pro-stat-grid { grid-template-columns: 1fr 1fr; gap: 10px; }.pro-balance { grid-column: 1/-1; min-height: 130px; padding: 22px; }.pro-metric { min-height: 118px; padding: 18px; }.pro-metric strong { font-size: 23px; }.pro-shortcuts { grid-template-columns: 1fr 1fr; gap: 10px; }.pro-shortcuts > button { min-height: 68px; padding: 0 13px; }.pro-shortcut-icon { width: 38px; height: 38px; }.pro-orders-card { padding: 20px 14px; }.pro-order-row { grid-template-columns: 28px 1fr auto; }.pro-order-status { display: none; }.pro-order-price { font-size: 12px; }.pro-order-info small { max-width: 45vw; }
           .stat-grid { grid-template-columns: 1fr 1fr !important; }
           .main-grid { grid-template-columns: 1fr !important; }
           .wallet-grid { grid-template-columns: 1fr !important; }

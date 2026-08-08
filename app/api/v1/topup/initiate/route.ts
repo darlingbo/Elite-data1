@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateApiKey } from "@/lib/apiKeyAuth";
+import { roundCurrency, toMinorUnits } from "@/lib/finance";
 
 export async function POST(request: NextRequest) {
   const auth = await authenticateApiKey(request);
@@ -17,8 +18,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "A valid email address is required for Paystack." }, { status: 400 });
   }
 
-  const amountGhc = parseFloat(Number(amount).toFixed(2));
-  const amountPesewas = Math.round(amountGhc * 100);
+  const amountGhc = roundCurrency(Number(amount));
+  const amountPesewas = toMinorUnits(amountGhc);
 
   // Initialize Paystack transaction
   let psRes: Response;

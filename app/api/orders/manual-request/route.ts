@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { sendSwiftAlert } from "@/lib/telegram";
+import { sendRefundRequestAlert } from "@/lib/telegram";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { supabase } from "@/lib/supabase";
 
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
     `📲 MoMo Number: <code>${refundPhone}</code>\n\n` +
     `➡️ Send refund via Mobile Money within 12 hours.`;
 
-  sendSwiftAlert(msg).catch(() => {});
+  sendRefundRequestAlert(msg).catch(() => {});
   sendAdminWhatsApp(msg.replace(/<[^>]*>/g, "")).catch(() => {});
 
   return Response.json({ success: true });

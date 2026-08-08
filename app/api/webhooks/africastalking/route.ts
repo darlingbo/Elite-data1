@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendSwiftAlert } from "@/lib/telegram";
+import { sendAssistantAlert } from "@/lib/telegram";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
+import { approveOrder } from "@/lib/order-approval";
+import { rejectOrder } from "@/lib/order-rejection";
+import { getSmsApprovalSettings, normaliseGhanaPhone, sendAdminCommandReplySMS } from "@/lib/sms";
 
 export async function GET() {
   return new Response("OK", { status: 200 });
@@ -20,6 +23,41 @@ export async function POST(request: NextRequest) {
 
     // Look up the most recent order for this phone number
     const normalizedFrom = from.replace(/^\+233/, "0");
+
+    const command = text.match(/^\s*(APPROVE|REJECT)\s+([A-Z0-9_-]{3,100})\s*$/i);
+    if (command) {
+      const expectedSecret = process.env.SMS_WEBHOOK_SECRET ?? "";
+      const suppliedSecret =
+        request.headers.get("x-webhook-secret") ??
+        request.nextUrl.searchParams.get("secret") ??
+        "";
+      const { enabled, adminPhone } = await getSmsApprovalSettings();
+      const authorised =
+        enabled &&
+        expectedSecret.length >= 24 &&
+        suppliedSecret === expectedSecret &&
+        Boolean(adminPhone) &&
+        normaliseGhanaPhone(from) === normaliseGhanaPhone(adminPhone);
+
+      if (!authorised) {
+        sendAssistantAlert(
+          `Unauthorized SMS approval command blocked. From: <code>${from}</code>`,
+        ).catch(() => {});
+        return new Response("OK", { status: 200 });
+      }
+
+      const action = command[1].toUpperCase();
+      const reference = command[2];
+      const result = action === "APPROVE"
+        ? await approveOrder(reference, "sms")
+        : await rejectOrder(reference, "sms");
+      await sendAdminCommandReplySMS(
+        adminPhone,
+        `${action} ${reference}: ${result.ok ? "SUCCESS" : "NOT COMPLETED"} - ${result.message}`,
+      );
+      return new Response("OK", { status: 200 });
+    }
+
     const { data: order } = await supabase
       .from("orders")
       .select("reference, network, bundle_size, status, created_at")
@@ -39,7 +77,7 @@ export async function POST(request: NextRequest) {
       `💬 Message:\n"${text}"\n\n` +
       `${orderLine}`;
 
-    sendSwiftAlert(msg).catch(() => {});
+    sendAssistantAlert(msg).catch(() => {});
     sendAdminWhatsApp(msg.replace(/<[^>]*>/g, "")).catch(() => {});
 
     return new Response("OK", { status: 200 });

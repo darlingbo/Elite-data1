@@ -52,3 +52,7 @@ next-env.d.ts
 # Migration scripts (contain secrets)
 run-migration.mjs
 .claude/settings.local.json
+
+# Local n8n runtime and encrypted instance data
+/.tools/
+/node-v22.*-win-x64.zip

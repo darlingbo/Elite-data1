@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
 
   const { data } = await supabase
     .from("agent_bundle_prices")
-    .select("bundle_id, custom_price, active")
+    .select("bundle_id, custom_price, active, locked_by_sub_admin_id, locked_at")
     .eq("agent_id", agentId);
 
   return Response.json({ prices: data ?? [] });
@@ -37,6 +37,16 @@ export async function POST(request: NextRequest) {
 
   if (!agent) return Response.json({ error: "Unauthorized." }, { status: 403 });
 
+  const { data: existing } = await supabase
+    .from("agent_bundle_prices")
+    .select("locked_by_sub_admin_id")
+    .eq("agent_id", agentId)
+    .eq("bundle_id", bundleId)
+    .maybeSingle();
+  if (existing?.locked_by_sub_admin_id) {
+    return Response.json({ error: "This price is locked by your Pro sub-admin. Ask them to change or unlock it." }, { status: 423 });
+  }
+
   const { error } = await supabase
     .from("agent_bundle_prices")
     .upsert(
@@ -45,5 +55,9 @@ export async function POST(request: NextRequest) {
     );
 
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  await supabase.from("agent_price_history").insert({
+    target_agent_id: agentId, actor_type: "agent", price_kind: "bundle",
+    item_key: bundleId, new_price: Number(customPrice), action: "set",
+  });
   return Response.json({ success: true });
 }

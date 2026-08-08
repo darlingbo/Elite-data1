@@ -2,7 +2,8 @@
 import { useState, useEffect } from "react";
 import { use } from "react";
 import Link from "next/link";
-import CheckoutModal from "@/components/CheckoutModal";
+import { useRouter } from "next/navigation";
+import VoucherModal from "@/components/VoucherModal";
 import { Bundle } from "@/lib/bundles";
 
 const NET_COLORS: Record<string, { bg: string; color: string; label: string }> = {
@@ -22,22 +23,26 @@ interface StoreAgent {
 
 export default function StorePage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
+  const router = useRouter();
   const [agent, setAgent] = useState<StoreAgent | null>(null);
   const [bundles, setBundles] = useState<Bundle[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [activeNet, setActiveNet] = useState<string>("mtn");
-  const [selected, setSelected] = useState<Bundle | null>(null);
+  const [voucherOpen, setVoucherOpen] = useState(false);
+  const [voucherPrice, setVoucherPrice] = useState(18);
 
   useEffect(() => {
     Promise.all([
       fetch(`/api/store/${code}`).then(r => r.json()),
       fetch(`/api/bundles?agent=${encodeURIComponent(code)}`).then(r => r.json()),
-    ]).then(([storeData, bundleData]) => {
+      fetch(`/api/vouchers/prices?agent=${encodeURIComponent(code)}`).then(r => r.json()),
+    ]).then(([storeData, bundleData, voucherData]) => {
       if (storeData.error) { setNotFound(true); setLoading(false); return; }
       setAgent(storeData.agent);
       const b: Bundle[] = bundleData.bundles ?? [];
       setBundles(b);
+      setVoucherPrice(Math.min(Number(voucherData.BECE?.sellPrice ?? 18), Number(voucherData.WASSCE?.sellPrice ?? 18)));
       // Pick first network that has bundles
       const nets = ["mtn", "telecel", "airteltigo"];
       const first = nets.find(n => b.some(x => x.network === n));
@@ -106,6 +111,11 @@ export default function StorePage({ params }: { params: Promise<{ code: string }
           </div>
         )}
 
+        <button onClick={() => setVoucherOpen(true)} style={{ width: "100%", marginTop: 20, padding: "18px", borderRadius: 16, border: `1px solid ${themeColor}55`, background: `${themeColor}12`, color: "#f8fafc", cursor: "pointer", textAlign: "left", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <span><strong style={{ display: "block", fontSize: 15 }}>BECE &amp; WASSCE Result Checkers</strong><small style={{ color: "#94a3b8" }}>Voucher codes sent by SMS after approval</small></span>
+          <strong style={{ color: themeColor, whiteSpace: "nowrap" }}>From GH₵{voucherPrice.toFixed(2)}</strong>
+        </button>
+
         {/* Bundle grid */}
         {shown.length === 0 ? (
           <div style={{ textAlign: "center", padding: "60px 20px", color: "#475569" }}>
@@ -117,7 +127,7 @@ export default function StorePage({ params }: { params: Promise<{ code: string }
             {shown.map(b => {
               const nc = NET_COLORS[b.network] ?? { bg: "#1e293b", color: "#94a3b8", label: b.network };
               return (
-                <button key={b.id} onClick={() => setSelected(b)}
+                <button key={b.id} onClick={() => router.push(`/checkout?bundle=${encodeURIComponent(b.id)}&agent=${encodeURIComponent(agent.referral_code)}`)}
                   style={{ background: "#0d1b2e", border: `2px solid #1e3a5f`, borderRadius: 16, padding: "18px 14px", cursor: "pointer", textAlign: "center", transition: "border-color 0.15s", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}
                   onMouseEnter={e => (e.currentTarget.style.borderColor = themeColor)}
                   onMouseLeave={e => (e.currentTarget.style.borderColor = "#1e3a5f")}>
@@ -137,14 +147,7 @@ export default function StorePage({ params }: { params: Promise<{ code: string }
         </p>
       </div>
 
-      {/* Checkout modal */}
-      {selected && (
-        <CheckoutModal
-          bundle={selected}
-          agentCode={agent.referral_code}
-          onClose={() => setSelected(null)}
-        />
-      )}
+      {voucherOpen && <VoucherModal agentCode={agent.referral_code} onClose={() => setVoucherOpen(false)} />}
     </div>
   );
 }

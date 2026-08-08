@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { sendAdminAlert, fmtAgentApproved } from "@/lib/telegram";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
 import { auditLog } from "@/lib/audit";
+import { syncProAgentSubAdmin } from "@/lib/pro-subadmin";
 
 function generateReferralCode(name: string): string {
   const prefix = name.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, "X");
@@ -61,6 +62,9 @@ export async function PATCH(
       .update({ status: "approved", referral_code, updated_at: new Date().toISOString() })
       .eq("id", id);
     if (updateError) return Response.json({ error: updateError.message }, { status: 500 });
+
+    const { data: approvedAgent } = await supabase.from("agents").select("id,name,email,password_hash,plan,status,sub_admin_id").eq("id", id).single();
+    if (approvedAgent) await syncProAgentSubAdmin(approvedAgent);
 
     await sendAdminAlert(fmtAgentApproved(agent.name, referral_code));
     await auditLog("agent_approved", { agent_id: id, referral_code });

@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName } from "@/lib/bundles";
 import { sendAgentNotification } from "@/lib/telegram";
+import { generateDeepSeekReply } from "@/lib/deepseek";
+import { normaliseGhanaPhone, sendCustomerSMS } from "@/lib/sms";
 
 const INVENTOR_TIMEOUT_MS = 10_000;
 
@@ -13,6 +15,77 @@ const SITE_URL = process.env.SITE_URL ?? "https://elitedata1.com";
 
 const pendingSend = new Map<string, { ref: string; phone: string; network: string; size: string; sizeGB: number; costPrice: number; price: number }>();
 const pendingClearStuck = new Set<string>();
+
+function escapeHtml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+async function draftCustomerSms(chatId: string, phoneInput: string, instruction: string) {
+  const phone = normaliseGhanaPhone(phoneInput);
+  if (!/^\+233\d{9}$/.test(phone)) {
+    await send(chatId, "❌ Enter one valid Ghana phone number. Example: <code>/sms 0241234567 Your order is ready</code>");
+    return;
+  }
+  if (!instruction.trim()) {
+    await send(chatId, "❌ Tell me what the SMS should say. Example: <code>/sms 0241234567 Tell the customer their order is ready</code>");
+    return;
+  }
+
+  let message = instruction.trim().slice(0, 500);
+  try {
+    message = (await generateDeepSeekReply([
+      { role: "system", content: "Draft one professional Elite Data customer SMS in plain text. Preserve all factual details supplied by the admin. Do not invent order status, refunds, prices, links, or promises. No markdown, emojis, headings, or quotation marks. Maximum 320 characters. Return only the SMS text." },
+      { role: "user", content: instruction.trim().slice(0, 800) },
+    ])).trim().slice(0, 320) || message;
+  } catch {
+    // The exact admin text remains a safe fallback when the drafting provider is unavailable.
+  }
+
+  const { data: draft, error } = await supabase.from("sms_drafts").insert({
+    requested_by: chatId,
+    phone,
+    message,
+  }).select("id").single();
+  if (error || !draft) {
+    await send(chatId, "❌ I could not save the SMS draft. Nothing was sent.");
+    return;
+  }
+
+  await send(chatId,
+    `📱 <b>Confirm customer SMS</b>\n\n<b>To:</b> <code>${escapeHtml(phone)}</code>\n\n<b>Message:</b>\n${escapeHtml(message)}\n\n<i>Nothing has been sent yet. This draft expires in 15 minutes.</i>`,
+    { inline_keyboard: [[
+      { text: "✅ Confirm Send", callback_data: `sms_confirm:${draft.id}` },
+      { text: "❌ Cancel", callback_data: `sms_cancel:${draft.id}` },
+    ]] },
+  );
+}
+
+async function confirmCustomerSms(chatId: string, draftId: string) {
+  const { data: draft } = await supabase.from("sms_drafts")
+    .update({ status: "sending" })
+    .eq("id", draftId)
+    .eq("requested_by", chatId)
+    .eq("status", "pending")
+    .gt("expires_at", new Date().toISOString())
+    .select("id, phone, message")
+    .maybeSingle();
+  if (!draft) {
+    await send(chatId, "❌ This SMS draft expired, was cancelled, or was already used. Nothing was sent.");
+    return;
+  }
+
+  const result = await sendCustomerSMS(draft.phone, draft.message);
+  await supabase.from("sms_drafts").update({
+    status: result.ok ? "sent" : "failed",
+    provider_message: result.message.slice(0, 500),
+    sent_at: result.ok ? new Date().toISOString() : null,
+  }).eq("id", draft.id).eq("status", "sending");
+
+  await send(chatId, result.ok
+    ? `✅ SMS sent to <code>${escapeHtml(draft.phone)}</code>.`
+    : `❌ SMS provider rejected the message. Nothing else will be retried automatically.\n\n${escapeHtml(result.message.slice(0, 300))}`,
+    mainMenu());
+}
 
 async function send(chatId: string | number, text: string, markup?: object) {
   await fetch(`https://api.telegram.org/bot${BOT}/sendMessage`, {
@@ -28,6 +101,10 @@ async function answerCb(id: string, text = "", alert = false) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ callback_query_id: id, text, show_alert: alert }),
   });
+}
+
+async function refuseAiMutation(chatId: string | number) {
+  await send(chatId, "🔒 <b>AI is read-only.</b> It can analyze and recommend, but it cannot approve, retry, deliver, reject, refund, edit, or change an order. Use the reviewed admin dashboard controls yourself.");
 }
 
 function mainMenu() {
@@ -1193,9 +1270,6 @@ Keep REPLY answers under 80 words. Output only ACTION: or REPLY: and nothing els
         profit: () => cmdProfit(chatId),
         agents: () => cmdAgents(chatId),
         health: () => cmdHealth(chatId),
-        fix: () => cmdFix(chatId),
-        clearstuck: () => cmdClearStuck(chatId),
-        sync: () => cmdSync(chatId),
         upgrade: () => cmdUpgrade(chatId),
         bundles: () => cmdBundles(chatId),
         manual: () => cmdManualOrders(chatId),
@@ -1278,7 +1352,7 @@ Be direct. Under 120 words total.`;
     await send(chatId, msg);
 
     for (const fix of fixes) {
-      if (fix === "fix") await cmdFix(chatId);
+      if (fix === "fix") await refuseAiMutation(chatId);
       else if (fix === "sync") await cmdSync(chatId);
       else if (fix === "clearstuck") await cmdClearStuck(chatId);
       else if (fix === "health") await cmdHealth(chatId);
@@ -1636,6 +1710,17 @@ export async function POST(request: NextRequest) {
       return Response.json({ ok: true });
     }
 
+    const mutationCallbacks = new Set(["cmd:fix", "cmd:clearstuck", "cmd:sync", "cmd:recover", "clearstuck:confirm", "ai_retry:confirm"]);
+    const mutationPrefixes = [
+      "bundle_toggle:", "retry:", "approve_retry:", "skip_retry:", "manual_ask:", "manual_exec:",
+      "approve:", "reject:", "manual_approve:", "manual_reject:", "send_exec:",
+    ];
+    if (mutationCallbacks.has(data ?? "") || mutationPrefixes.some(prefix => data?.startsWith(prefix))) {
+      await answerCb(id, "AI is read-only", true);
+      await refuseAiMutation(chatId);
+      return Response.json({ ok: true });
+    }
+
     await answerCb(id, "One moment…");
 
     if (data === "cmd:status") await cmdStatus(chatId);
@@ -1737,6 +1822,12 @@ export async function POST(request: NextRequest) {
     else if (data === "cmd:manual") await cmdManualOrders(chatId);
     else if (data?.startsWith("manual_approve:")) await execManualApprove(chatId, data.replace("manual_approve:", ""));
     else if (data?.startsWith("manual_reject:")) await execManualReject(chatId, data.replace("manual_reject:", ""));
+    else if (data?.startsWith("sms_confirm:")) await confirmCustomerSms(chatId, data.replace("sms_confirm:", ""));
+    else if (data?.startsWith("sms_cancel:")) {
+      const draftId = data.replace("sms_cancel:", "");
+      await supabase.from("sms_drafts").update({ status: "cancelled" }).eq("id", draftId).eq("requested_by", chatId).eq("status", "pending");
+      await send(chatId, "✅ SMS cancelled. Nothing was sent.", mainMenu());
+    }
     else if (data?.startsWith("send_exec:")) {
       const pending = pendingSend.get(chatId);
       if (!pending) { await send(chatId, "❌ Session expired. Use /send again."); }
@@ -1837,6 +1928,19 @@ export async function POST(request: NextRequest) {
   const arg = parts.slice(1).join(" ");
   const args = parts.slice(1);
 
+  const naturalSms = raw.match(/^(?:please\s+)?send\s+(?:an?\s+)?sms\s+(?:to\s+)?(?:customer\s+)?(\+?233\d{9}|0\d{9})\s*[:,-]?\s*(.+)$/i);
+  if (naturalSms) {
+    await draftCustomerSms(chatId, naturalSms[1], naturalSms[2]);
+    return Response.json({ ok: true });
+  }
+
+  const mutationCommand = /^\/(fix|clearstuck|sync|recover|patchorder|send|retry|approve|reject|approveorder|rejectorder|cancel)\b/i;
+  const mutationRequest = /\b(approve|reject|retry|redeliver|deliver again|force.?complete|mark .*completed|refund|cancel order|change status|edit order|clear stuck|fix failed|send bundle)\b/i;
+  if (mutationCommand.test(raw) || mutationRequest.test(raw)) {
+    await refuseAiMutation(chatId);
+    return Response.json({ ok: true });
+  }
+
   // Problem detection — route to AI diagnosis before NLP
   const PROBLEM_WORDS = /problem|issue|wrong|not working|not deliver|not receiv|not getting|didn.t receive|didn.t get|can.t receive|haven.t got|error|something wrong|broken|glitch|weird|failing|customer.{0,50}(complain|call|messag|not|didn|can.t)|they (didn.t|not|can.t).{0,20}(receive|get|deliver)|bundle not|data not|what.{0,10}s happening|what is happening|what.{0,10}s wrong|help me fix/i;
   if (PROBLEM_WORDS.test(raw) && !raw.startsWith("/")) {
@@ -1870,6 +1974,11 @@ export async function POST(request: NextRequest) {
     case "/recover":                   await cmdRecover(chatId, arg); break;
     case "/patchorder":                await cmdPatchOrder(chatId, arg); break;
     case "/send":                      await cmdSend(chatId, args); break;
+    case "/sms": {
+      const [phone, ...instructionParts] = args;
+      await draftCustomerSms(chatId, phone ?? "", instructionParts.join(" "));
+      break;
+    }
     case "/retry":
       arg ? await execRetry(chatId, arg) : await send(chatId, "Usage: /retry [reference]");
       break;

@@ -49,6 +49,13 @@ export async function POST(req: NextRequest) {
   const { data: before } = await supabase.from("orders").select(Object.keys(patch).join(",")).eq("reference", reference).maybeSingle();
   const { error } = await supabase.from("orders").update(patch).eq("reference", reference);
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (body.refunded) {
+    const { error: reversalError } = await supabase.rpc("reverse_team_commission", {
+      p_reference: reference,
+      p_reason: "manual_refund",
+    });
+    if (reversalError) return Response.json({ error: reversalError.message }, { status: 500 });
+  }
 
   try {
     await supabase.from("order_logs").insert({

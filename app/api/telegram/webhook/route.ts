@@ -4,6 +4,7 @@ import { networkApiName } from "@/lib/bundles";
 import { sendAgentNotification } from "@/lib/telegram";
 import { inventorPurchase, inventorVoucher } from "@/lib/inventor";
 import { sendCustomerSMS, orderFailedSMS } from "@/lib/sms";
+import { approveOrder as approveOrderSafely } from "@/lib/order-approval";
 
 const ADMIN_BOT_TOKEN = process.env.TELEGRAM_ADMIN_BOT_TOKEN!;
 const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID!;
@@ -525,6 +526,18 @@ async function cmdLookup(chatId: string, phone: string) {
 }
 
 async function approveOrder(chatId: string, reference: string) {
+  const result = await approveOrderSafely(reference, "telegram");
+  await reply(
+    chatId,
+    result.ok
+      ? `✅ <b>${result.message}</b>\n\n📎 <code>${reference}</code>`
+      : `🚫 <b>Order not sent</b>\n\n📎 <code>${reference}</code>\n${result.message}`,
+  );
+}
+
+// Kept while older bot commands are migrated; callback approvals use the
+// shared function above.
+async function approveOrderLegacy(chatId: string, reference: string) {
   const { data: order } = await supabase
     .from("orders")
     .update({ status: "processing" })
@@ -622,7 +635,7 @@ async function approveOrder(chatId: string, reference: string) {
 async function rejectOrder(chatId: string, reference: string) {
   const { data: order } = await supabase
     .from("orders")
-    .select("phone, network, bundle_size, amount, status, agent_id")
+    .select("phone, network, bundle_size, amount, status, agent_id, payment_method")
     .eq("reference", reference)
     .maybeSingle();
 
@@ -632,19 +645,29 @@ async function rejectOrder(chatId: string, reference: string) {
     return;
   }
 
-  await supabase.from("orders").update({ status: "rejected" }).eq("reference", reference);
+  const { data: walletResult, error: walletRefundError } = await supabase.rpc(
+    "reject_reserved_wallet_order",
+    { p_reference: reference },
+  );
+  if (walletRefundError) {
+    await reply(chatId, `❌ Could not reject safely: <code>${walletRefundError.message}</code>`);
+    return;
+  }
+  if (walletResult === "not_wallet") {
+    await supabase.from("orders")
+      .update({ status: "rejected" })
+      .eq("reference", reference)
+      .eq("status", "pending_approval");
+  }
 
-  // Wallet orders: refund the deducted amount and notify agent
-  if (reference.startsWith("AGTWALLET-") && order.agent_id) {
+  // Wallet amount was refunded atomically by reject_reserved_wallet_order.
+  if (walletResult === "agent_wallet_refunded" && order.agent_id) {
     const { data: ag } = await supabase
       .from("agents")
-      .select("wallet_balance, telegram_chat_id, name")
+      .select("telegram_chat_id, name")
       .eq("id", order.agent_id)
       .maybeSingle();
     if (ag) {
-      await supabase.from("agents")
-        .update({ wallet_balance: Number(ag.wallet_balance ?? 0) + Number(order.amount ?? 0) })
-        .eq("id", order.agent_id);
       if (ag.telegram_chat_id) {
         sendAgentNotification(
           ag.telegram_chat_id,
@@ -662,7 +685,11 @@ async function rejectOrder(chatId: string, reference: string) {
     `📎 <code>${reference}</code>\n` +
     `📱 ${String(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
     `💰 GH₵${Number(order.amount ?? 0).toFixed(2)}\n\n` +
-    `${reference.startsWith("AGTWALLET-") ? "Agent wallet refunded." : "Issue refund manually if needed."}`
+    `${walletResult === "agent_wallet_refunded"
+      ? "Agent wallet refunded."
+      : walletResult === "api_wallet_refunded"
+        ? "API wallet refunded."
+        : "Issue refund manually if needed."}`
   );
 }
 

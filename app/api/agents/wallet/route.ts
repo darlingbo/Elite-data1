@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { requireAgentSession } from "@/lib/agentAuth";
 import { rateLimitDb } from "@/lib/rate-limit";
+import { sendWalletTopupAlert, tgEscape } from "@/lib/telegram";
+import { formatCurrency, roundCurrency } from "@/lib/finance";
 
 // POST — verify Paystack topup and credit agent wallet
 export async function POST(request: NextRequest) {
@@ -38,7 +40,7 @@ export async function POST(request: NextRequest) {
   }
 
   const amountKobo = Number(transaction?.amount ?? 0);
-  const amountGhc = parseFloat((amountKobo / 100).toFixed(2));
+  const amountGhc = roundCurrency(amountKobo / 100);
   if (amountGhc <= 0) return Response.json({ error: "Invalid payment amount." }, { status: 400 });
 
   const { error } = await supabase.rpc("credit_agent_wallet_topup", {
@@ -50,6 +52,17 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "This payment has already been applied." }, { status: 409 });
   }
   if (error) return Response.json({ error: "Could not credit the wallet." }, { status: 500 });
+
+  const { data: agent } = await supabase.from("agents").select("name, referral_code").eq("id", agentId).maybeSingle();
+  await sendWalletTopupAlert(
+    `💳 <b>WALLET TOP-UP</b>\n\n` +
+    `👤 Agent: <b>${tgEscape(agent?.name ?? "Agent")}</b>\n` +
+    `🔗 Agent code: <code>${tgEscape((agent?.referral_code ?? "—").toUpperCase())}</code>\n` +
+    `💵 Amount: <b>${formatCurrency(amountGhc)}</b>\n` +
+    `📎 Paystack ref: <code>${tgEscape(paystackRef)}</code>\n` +
+    `✅ Purpose: Agent wallet funding\n\n` +
+    `<b>${tgEscape(agent?.name ?? "This agent")} topped up their wallet with ${formatCurrency(amountGhc)}.</b>`
+  ).catch(() => {});
 
   return Response.json({ success: true, amount: amountGhc });
 }

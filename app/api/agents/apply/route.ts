@@ -2,30 +2,54 @@ import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { supabase } from "@/lib/supabase";
 import { sendAdminAlert, agentApprovalKeyboard, tgEscape } from "@/lib/telegram";
+import { generateDeepSeekReply } from "@/lib/deepseek";
+import { getAiSetting, logAiActivity, redactAiText } from "@/lib/ai-safety";
+import { rateLimitDb } from "@/lib/rate-limit";
 
 const PRO_FEE_GHC = 100;
 
-// ── In-memory rate limit: first-line defence (per serverless instance) ─────────
-const applyAttempts = new Map<string, { count: number; resetAt: number }>();
+type ScreeningAnswers = {
+  experience: string;
+  customers: string;
+  promotionPlan: string;
+  supportPlan: string;
+  expectedSales: string;
+  agreesToRules: boolean;
+};
 
+async function screenFreeAgent(answers: ScreeningAnswers): Promise<{ approved: boolean; reason: string; score: number; confidence: string }> {
+  const textAnswers = [answers.experience, answers.customers, answers.promotionPlan, answers.supportPlan, answers.expectedSales];
+  if (!answers.agreesToRules || textAnswers.some(answer => answer.trim().length < 15)) {
+    return { approved: false, reason: "Interview answers were incomplete or the applicant did not accept the agent rules.", score: 0, confidence: "high" };
+  }
+  try {
+    const reply = await generateDeepSeekReply([
+      {
+        role: "system",
+        content: `You screen free Elite Data agent applications in Ghana. Return JSON only: {"decision":"APPROVE|HOLD","score":0-100,"confidence":"low|medium|high","reason":"one short sentence"}.
+APPROVE only when the applicant gives specific, coherent plans to find customers, promote honestly, support customers, and follow platform rules. HOLD vague, contradictory, abusive, fraudulent, spam-oriented, misleading, or policy-evading answers. Do not use or infer protected personal traits. You approve only a free reseller account; never approve orders, money, refunds, credit, or paid plans.`,
+      },
+      { role: "user", content: redactAiText(JSON.stringify(answers)) },
+    ]);
+    const result = JSON.parse(reply.replace(/^```json\s*|\s*```$/g, "")) as { decision?: string; score?: number; confidence?: string; reason?: string };
+    const score = Math.min(100, Math.max(0, Number(result.score) || 0));
+    const minScore = Number(await getAiSetting("agent_ai_min_score", "70"));
+    const enabled = await getAiSetting("agent_ai_auto_approve_enabled", "1") !== "0";
+    const approved = enabled && result.decision === "APPROVE" && score >= minScore && result.confidence !== "low";
+    await logAiActivity({ scope: "agent_screening", role: "assistant", content: `Decision ${approved ? "APPROVE" : "HOLD"}; score ${score}; ${String(result.reason ?? "")}` });
+    return { approved, score, confidence: ["low", "medium", "high"].includes(String(result.confidence)) ? String(result.confidence) : "low", reason: String(result.reason ?? "AI requested manual review.").slice(0, 300) };
+  } catch {
+    return { approved: false, reason: "AI screening was unavailable, so the application was held for manual review.", score: 0, confidence: "low" };
+  }
+}
+
+// ── In-memory rate limit: first-line defence (per serverless instance) ─────────
 function getClientIP(req: NextRequest): string {
   return (
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     req.headers.get("x-real-ip") ??
     "unknown"
   );
-}
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = applyAttempts.get(ip);
-  if (!entry || entry.resetAt < now) {
-    applyAttempts.set(ip, { count: 1, resetAt: now + 60 * 60 * 1000 });
-    return true;
-  }
-  if (entry.count >= 3) return false;
-  entry.count++;
-  return true;
 }
 
 async function generateUniqueReferralCode(name: string): Promise<string> {
@@ -41,12 +65,13 @@ async function generateUniqueReferralCode(name: string): Promise<string> {
 export async function POST(request: NextRequest) {
   // ── Rate limit ────────────────────────────────────────────────────────────────
   const ip = getClientIP(request);
-  if (!checkRateLimit(ip)) {
+  if (await rateLimitDb(`agent-application:${ip}`, 3, 60 * 60 * 1000)) {
     return Response.json({ error: "Too many applications from your device. Please wait an hour and try again." }, { status: 429 });
   }
 
   const body = await request.json();
-  const { name, email, phone, whatsapp, business_name, password, plan, paystackRef } = body;
+  const { name, email, phone, whatsapp, business_name, password, plan, paystackRef, masterCode, teamTermsAccepted } = body;
+  const screeningAnswers = body.screeningAnswers as ScreeningAnswers | undefined;
 
   // ── Basic field validation ────────────────────────────────────────────────────
   if (!["free", "pro"].includes(plan)) {
@@ -71,6 +96,9 @@ export async function POST(request: NextRequest) {
   }
   if (!password || password.length < 6) {
     return Response.json({ error: "Password must be at least 6 characters." }, { status: 400 });
+  }
+  if (plan === "free" && !screeningAnswers) {
+    return Response.json({ error: "Complete the free-agent interview before applying." }, { status: 400 });
   }
 
   // ── Pro payment verification ──────────────────────────────────────────────────
@@ -130,7 +158,21 @@ export async function POST(request: NextRequest) {
   const password_hash = await bcrypt.hash(password, 10);
   const referral_code = await generateUniqueReferralCode(name.trim());
   const agent_type = "custom_price";
-  const status = plan === "pro" ? "approved" : "pending";
+  const screening = plan === "free"
+    ? await screenFreeAgent(screeningAnswers!)
+    : { approved: true, reason: "Pro registration payment verified.", score: 100, confidence: "high" };
+  const status = plan === "pro" || screening.approved ? "approved" : "pending";
+  let recruitingSubAdminId: string | null = null;
+  let recruitingMasterName: string | null = null;
+  if (masterCode) {
+    if (teamTermsAccepted !== true) return Response.json({ error: "You must accept the 70/20/10 team commission terms." }, { status: 400 });
+    const { data: masterAgent } = await supabase.from("agents").select("id,name,email,phone,status,plan").eq("referral_code", String(masterCode).trim().toUpperCase()).maybeSingle();
+    if (!masterAgent || masterAgent.status !== "approved" || masterAgent.plan !== "pro") return Response.json({ error: "This team invitation is no longer valid." }, { status: 400 });
+    if (masterAgent.email.toLowerCase() === email.toLowerCase().trim() || masterAgent.phone === cleanPhone) return Response.json({ error: "A Pro agent cannot recruit their own account." }, { status: 409 });
+    const { data: master } = await supabase.from("sub_admins").select("id").eq("agent_id", masterAgent.id).eq("status", "active").maybeSingle();
+    if (!master) return Response.json({ error: "The Pro Agent team is not active yet." }, { status: 409 });
+    recruitingSubAdminId = master.id; recruitingMasterName = masterAgent.name;
+  }
 
   const { data: inserted, error: insertErr } = await supabase.from("agents").insert({
     name: name.trim(),
@@ -147,6 +189,16 @@ export async function POST(request: NextRequest) {
     commission_balance: 0,
     total_sales: 0,
     total_revenue: 0,
+    application_answers: plan === "free" ? screeningAnswers : null,
+    ai_screening_decision: plan === "free" ? (screening.approved ? "approved" : "manual_review") : null,
+    ai_screening_reason: plan === "free" ? screening.reason : null,
+    ai_screening_score: plan === "free" ? screening.score : null,
+    ai_screening_confidence: plan === "free" ? screening.confidence : null,
+    ai_screened_at: plan === "free" ? new Date().toISOString() : null,
+    approved_via: plan === "free" && screening.approved ? "ai_free_agent_screening" : plan === "pro" ? "verified_pro_payment" : null,
+    sub_admin_id: recruitingSubAdminId,
+    team_terms_accepted_at: recruitingSubAdminId ? new Date().toISOString() : null,
+    team_terms_version: recruitingSubAdminId ? "2026-08-02-70-20-10" : null,
   }).select("id").maybeSingle();
 
   if (insertErr) {
@@ -164,11 +216,22 @@ export async function POST(request: NextRequest) {
     );
   } else {
     const agentId = (inserted as { id: string } | null)?.id ?? "";
+    if (screening.approved) {
+      await sendAdminAlert(
+        `✅ <b>Free Agent Approved After AI Interview</b>\n\n👤 ${n}\n📧 ${em}\n📞 ${ph}\n🔗 Code: <code>${tgEscape(referral_code)}</code>\n🧠 ${tgEscape(screening.reason)}\n\nThe AI approved agent access only. It did not approve any order or financial action.`
+      );
+    } else {
     await sendAdminAlert(
       `📋 <b>New Agent Application</b>\n\n👤 ${n}\n📧 ${em}\n📞 ${ph}\n🔗 Code: <code>${tgEscape(referral_code)}</code>\n⏳ Tap below to approve or reject:`,
       agentId ? agentApprovalKeyboard(agentId) : undefined
     );
+    }
   }
 
-  return Response.json({ success: true, referral_code });
+  if (recruitingSubAdminId) {
+    await supabase.from("sub_admin_activity").insert({ sub_admin_id: recruitingSubAdminId, action: "agent_joined_via_invite", target: (inserted as { id: string } | null)?.id ?? null, details: { agent_name: name.trim(), status } });
+    await sendAdminAlert(`🤝 <b>AGENT JOINED PRO TEAM</b>\n\n👤 ${n}\n⭐ Team: ${tgEscape(recruitingMasterName ?? "Pro Agent")}\n📌 Status: ${status}`);
+  }
+
+  return Response.json({ success: true, referral_code, autoApproved: plan === "free" && screening.approved });
 }

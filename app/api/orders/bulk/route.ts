@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles } from "@/lib/bundles";
-import { sendAdminAlert } from "@/lib/telegram";
+import { sendAdminAlert, sendNewOrderAlert } from "@/lib/telegram";
+import { maybeAutoApprove } from "@/lib/order-approval";
+import { addCurrency, fromMinorUnits, multiplyCurrency, percentageOf, roundCurrency, toMinorUnits } from "@/lib/finance";
 
 const PLATFORM_FEE_RATE = 0.02;
 const MAX_PHONES = 50;
@@ -60,7 +62,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Verify Paystack payment
-  const expectedKobo = Math.round(price * (1 + PLATFORM_FEE_RATE) * phoneList.length * 100);
+  const unitCharged = addCurrency(price, percentageOf(price, PLATFORM_FEE_RATE));
+  const expectedKobo = toMinorUnits(multiplyCurrency(unitCharged, phoneList.length));
 
   let psData: Record<string, unknown> = {};
   try {
@@ -83,14 +86,13 @@ export async function POST(request: NextRequest) {
     }, { status: 400 });
   }
 
-  const unitCharged = parseFloat((price * (1 + PLATFORM_FEE_RATE)).toFixed(2));
-  const adminCommission = parseFloat(Math.max(0, price - costPrice).toFixed(2));
-  const totalCharged = parseFloat((unitCharged * phoneList.length).toFixed(2));
+  const adminCommission = Math.max(0, roundCurrency(price - costPrice));
+  const totalCharged = multiplyCurrency(unitCharged, phoneList.length);
 
   // Atomically claim the Paystack transaction. The unique reference index means
   // two retries can never both proceed to provider delivery.
   const { error: claimError } = await supabase.from("payments").insert({
-    amount: txnAmount / 100,
+    amount: fromMinorUnits(txnAmount),
     method: "paystack_bulk",
     reference: paystackRef,
     status: "processing",
@@ -154,9 +156,23 @@ export async function POST(request: NextRequest) {
     ).catch(() => {});
   }
 
-  await sendAdminAlert(
-    `BULK ORDER AWAITING APPROVAL\nRef: ${paystackRef}\nCompany: ${companyName || "-"}\nContact: ${contactPhone}\nBundle: ${network.toUpperCase()} ${size} x ${phoneList.length}\nTotal: GHS ${totalCharged.toFixed(2)}\nQueued for approval: ${pendingApproval}/${phoneList.length}${failed > 0 ? `\nSave failures: ${failed} - payment review required` : ""}`
+  await sendNewOrderAlert(
+    `📦 <b>BULK ORDER — AWAITING APPROVAL</b>\n\n` +
+    `🎯 Source: <b>Guest / business bulk checkout</b>\n` +
+    `🏢 Company: ${companyName || "Not supplied"}\n` +
+    `📞 Contact: <code>${contactPhone}</code>\n` +
+    `📱 ${network.toUpperCase()} ${size} × ${phoneList.length}\n` +
+    `💰 Total paid: GH₵${totalCharged.toFixed(2)}\n` +
+    `✅ Queued: ${pendingApproval}/${phoneList.length}` +
+    (failed > 0 ? `\n⚠️ Save failures: ${failed} — payment review required` : "") +
+    `\n📎 Ref: <code>${paystackRef}</code>`
   ).catch(() => {});
+
+  // Keep provider calls sequential so a bulk payment cannot create an unsafe
+  // delivery burst. Each order is claimed atomically before it is sent.
+  for (const outcome of outcomes) {
+    if (outcome.status === "pending_approval") await maybeAutoApprove(outcome.ref);
+  }
 
   return Response.json({
     success: true,

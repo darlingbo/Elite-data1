@@ -2,10 +2,12 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { rateLimitDb } from "@/lib/rate-limit";
 import { bundles, sizeLabel, type Network } from "@/lib/bundles";
-import { sendAdminAlert, fmtOrder, orderApprovalKeyboard } from "@/lib/telegram";
+import { sendAdminAlert, sendNewOrderAlert, fmtOrder, orderApprovalKeyboard } from "@/lib/telegram";
+import { maybeAutoApprove } from "@/lib/order-approval";
 import { sendCustomerSMS, orderReceivedSMS } from "@/lib/sms";
 import { getSurcharge, clearSurcharge } from "@/lib/surcharge";
 import { resolveAgentCommissionRate } from "@/lib/commission";
+import { percentageOf, roundCurrency, subtractCurrency, toMinorUnits } from "@/lib/finance";
 
 const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
@@ -365,7 +367,7 @@ export async function POST(request: NextRequest) {
       adminTierPrice = tierResult.data?.price ? Number(tierResult.data.price) : adminSellingPrice;
     } else {
       // Free plan: admin selling price minus 4%
-      adminTierPrice = parseFloat((adminSellingPrice * 0.96).toFixed(2));
+      adminTierPrice = percentageOf(adminSellingPrice, 0.96);
     }
 
   }
@@ -418,7 +420,7 @@ export async function POST(request: NextRequest) {
   // If someone paid less than 50% of the bundle price they clearly manipulated
   // the frontend. Let the payment appear to succeed — they see a "success" screen
   // but we save the order as FRAUD, auto-block them, and never deliver the data.
-  const halfPriceKobo = Math.round(pricing.price * 0.50 * 100);
+  const halfPriceKobo = toMinorUnits(percentageOf(pricing.price, 0.5));
   if (psData.status === true && txnStatus === "success" && txnAmount < halfPriceKobo) {
     // Auto-block this phone
     const updatedList = [...new Set([...blocklist, normalizedPhone])];
@@ -451,10 +453,10 @@ export async function POST(request: NextRequest) {
 
   // Floor: customer must pay at least 80% of the selling price + any surcharge.
   const pendingSurcharge = await getSurcharge(phone);
-  const surchargeKobo = Math.round(pendingSurcharge * 100);
+  const surchargeKobo = toMinorUnits(pendingSurcharge);
   const minKobo = Math.max(
-    Math.round(ABSOLUTE_MIN_GHC * 100),
-    Math.round(pricing.price * 0.80 * 100)
+    toMinorUnits(ABSOLUTE_MIN_GHC),
+    toMinorUnits(percentageOf(pricing.price, 0.8))
   ) + surchargeKobo;
   const paid =
     psData.status === true &&
@@ -508,11 +510,11 @@ export async function POST(request: NextRequest) {
 
   // Use Paystack as source of truth for the charged amount.
   // Strip fast delivery fee before commission calc — it goes entirely to admin.
-  const chargedAmount = parseFloat((txnAmount / 100).toFixed(2));
+  const chargedAmount = roundCurrency(txnAmount / 100);
   const fastDeliveryFee = fastDelivery === true ? 0.50 : 0;
-  const chargedForCommission = parseFloat((chargedAmount - fastDeliveryFee).toFixed(2));
-  const effectivePriceFromPayment = parseFloat(
-    ((chargedForCommission + creditAmount) / (1 + PLATFORM_FEE_RATE)).toFixed(2)
+  const chargedForCommission = roundCurrency(chargedAmount - fastDeliveryFee);
+  const effectivePriceFromPayment = roundCurrency(
+    (chargedForCommission + creditAmount) / (1 + PLATFORM_FEE_RATE)
   );
 
   // Resolve commission split — global default then per-agent override
@@ -527,19 +529,19 @@ export async function POST(request: NextRequest) {
   let adminCommission: number;
   if (!agentId) {
     agentCommission = 0;
-    adminCommission = parseFloat(Math.max(0, effectivePriceFromPayment - pricing.costPrice).toFixed(2));
+    adminCommission = Math.max(0, subtractCurrency(effectivePriceFromPayment, pricing.costPrice));
   } else if (agentType === "custom_price") {
     // Both free and pro plan: agent profit = charged minus their buy price (adminTierPrice)
-    agentCommission = parseFloat(Math.max(0, chargedForCommission - adminTierPrice).toFixed(2));
-    adminCommission = parseFloat(Math.max(0, adminTierPrice - pricing.costPrice).toFixed(2)) + fastDeliveryFee;
+    agentCommission = roundCurrency(Math.max(0, chargedForCommission - adminTierPrice));
+    adminCommission = roundCurrency(Math.max(0, adminTierPrice - pricing.costPrice) + fastDeliveryFee);
   } else {
     // commission type: old percentage split — do not change
     const profit = Math.max(0, effectivePriceFromPayment - pricing.costPrice);
-    agentCommission = parseFloat((profit * agentSplitRate).toFixed(2));
+    agentCommission = roundCurrency(profit * agentSplitRate);
     // Fast delivery fee goes entirely to admin, not split with agent
-    adminCommission = parseFloat((profit * (1 - agentSplitRate) + fastDeliveryFee).toFixed(2));
+    adminCommission = roundCurrency(profit * (1 - agentSplitRate) + fastDeliveryFee);
   }
-  const profit = agentCommission + adminCommission;
+  const profit = roundCurrency(agentCommission + adminCommission);
 
   const saved = await saveOrder({
     reference: paystackRef,
@@ -587,13 +589,16 @@ export async function POST(request: NextRequest) {
     refund_name: null,
   }).catch(() => {});
 
-  await sendAdminAlert(
+  const sourceLabel = agentName
+    ? `Agent sale by ${agentName} (agent storefront/page)`
+    : "Guest / direct customer checkout";
+  const orderText =
     (isMashup ? "🟡 <b>MASHUP — DELIVER MANUALLY AFTER APPROVING</b>\n" : "") +
     (fastDelivery ? "⚡ <b>FAST DELIVERY</b>\n" : "") +
     `🔔 <b>NEW ORDER — APPROVE TO DELIVER</b>\n\n` +
-    fmtOrder({ ref: paystackRef, network: bundleMeta.network, size: bundleMeta.size, phone, amount: chargedAmount, profit, agentName }),
-    orderApprovalKeyboard(paystackRef)
-  );
+    fmtOrder({ ref: paystackRef, network: bundleMeta.network, size: bundleMeta.size, phone, amount: chargedAmount, profit, agentName, sourceLabel });
+
+  await sendNewOrderAlert(orderText, orderApprovalKeyboard(paystackRef)).catch(() => {});
 
   // Await so Vercel doesn't terminate the function before the SMS fetch completes
   await sendCustomerSMS(phone, orderReceivedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef));
@@ -670,5 +675,6 @@ export async function POST(request: NextRequest) {
 
   // All orders — including Mashup — are held for admin approval.
   processLoyalty(phone, bundleMeta.network, paystackRef).catch(() => {});
-  return Response.json({ success: true, reference: paystackRef, pendingApproval: true });
+  const autoApproval = await maybeAutoApprove(paystackRef);
+  return Response.json({ success: true, reference: paystackRef, pendingApproval: !autoApproval.ok, autoApproved: autoApproval.ok });
 }

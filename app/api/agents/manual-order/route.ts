@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles } from "@/lib/bundles";
-import { sendAdminBotMessage } from "@/lib/telegram";
+import { sendNewOrderAlert } from "@/lib/telegram";
 import { requireAgentSession } from "@/lib/agentAuth";
 import { resolveAgentCommissionRate } from "@/lib/commission";
+import { percentageOf, roundCurrency, subtractCurrency } from "@/lib/finance";
 
 export async function GET(req: NextRequest) {
   const agentId = req.nextUrl.searchParams.get("agentId");
@@ -43,8 +44,9 @@ export async function POST(req: NextRequest) {
   const costPrice = bundle.costPrice;
   const profit = Math.max(0, amountPaid - costPrice);
   const agentRate = await resolveAgentCommissionRate(agentId);
-  const agentCommission = parseFloat((profit * agentRate).toFixed(2));
-  const adminProfit = parseFloat((profit * (1 - agentRate)).toFixed(2));
+  const roundedProfit = roundCurrency(profit);
+  const agentCommission = percentageOf(roundedProfit, agentRate);
+  const adminProfit = subtractCurrency(roundedProfit, agentCommission);
 
   const { data, error } = await supabase
     .from("manual_orders")
@@ -69,8 +71,9 @@ export async function POST(req: NextRequest) {
 
   // Notify admin via assistant bot with approve/reject buttons
   const orderId = data.id as string;
-  await sendAdminBotMessage(
+  await sendNewOrderAlert(
     `🧾 <b>New Manual Order Request</b>\n\n` +
+    `🎯 Source: <b>Agent page/manual request</b>\n` +
     `👤 Agent: <b>${agentName ?? "Agent"}</b> (${agentCode ?? "?"})\n` +
     `📱 ${network.toUpperCase()} ${bundleSize} → <code>${cleaned}</code>\n` +
     `💰 Amount: GH₵${amountPaid.toFixed(2)}\n` +

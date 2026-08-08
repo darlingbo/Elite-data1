@@ -7,6 +7,7 @@ interface Message {
   text: string;
   time: string;
   quickReplies?: string[];
+  aiId?: string;
 }
 
 const now = () => new Date().toLocaleTimeString("en-GH", { hour: "2-digit", minute: "2-digit" });
@@ -111,6 +112,12 @@ function matchFAQ(input: string) {
   return null;
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
+  })[character] ?? character);
+}
+
 let idCounter = 0;
 const nextId = () => ++idCounter;
 
@@ -129,6 +136,7 @@ export default function ChatWidget() {
   const [typing, setTyping] = useState(false);
   const [unread, setUnread] = useState(1);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const sessionId = useRef(`web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
 
   useEffect(() => {
     if (open) {
@@ -160,8 +168,10 @@ export default function ChatWidget() {
       return;
     }
     if (text === "Talk to human") {
+      const summary = [...messages, userMsg].slice(-6).map(message => `${message.from}: ${message.text.replace(/<[^>]+>/g, "")}`).join("\n");
+      void fetch("/api/ai/escalate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: sessionId.current, summary }) });
       addBot(
-        "Sure! Our team is on WhatsApp 24/7.\nClick below to start a chat:",
+        "I have sent this conversation to our human support team. You can also open WhatsApp now:",
         ["Open WhatsApp"]
       );
       return;
@@ -180,18 +190,34 @@ export default function ChatWidget() {
       return;
     }
 
-    // FAQ matching
-    const match = matchFAQ(text);
-    if (match) {
-      addBot(match.answer, match.quickReplies);
-      return;
+    // Use the live AI for normal conversation. Order lookups and human handoff
+    // stay deterministic above so the model cannot claim that an action happened.
+    setTyping(true);
+    try {
+      const conversation = [...messages, userMsg]
+        .slice(-8)
+        .map(message => ({
+          role: message.from === "user" ? "user" as const : "assistant" as const,
+          content: message.text.replace(/<[^>]+>/g, ""),
+        }));
+      const response = await fetch("/api/ai/support", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: conversation, sessionId: sessionId.current }),
+      });
+      const result = await response.json();
+      const reply = response.ok ? String(result.reply ?? "") : String(result.error ?? "");
+      setMessages(prev => [...prev, {
+        id: nextId(), from: "bot", text: escapeHtml(reply || "Please contact our support team on WhatsApp."), time: now(), aiId: result.messageId,
+        quickReplies: ["Track order", "Twi please", "Talk to human"],
+      }]);
+    } catch {
+      setMessages(prev => [...prev, {
+        id: nextId(), from: "bot", text: "The AI assistant is temporarily unavailable. Please contact our support team.", time: now(), quickReplies: ["Open WhatsApp"],
+      }]);
+    } finally {
+      setTyping(false);
     }
-
-    // Fallback
-    addBot(
-      "I'm not sure about that one 🤔\nLet me connect you with our team who can help right away!",
-      ["Open WhatsApp", "Buy data", "Track order"]
-    );
   }
 
   // ─── Draggable bubble ────────────────────────────────────────────────────────
@@ -256,8 +282,8 @@ export default function ChatWidget() {
           <div className="bg-blue-600 px-4 py-3 flex items-center gap-3">
             <div className="w-9 h-9 bg-blue-400 rounded-full flex items-center justify-center font-black text-white text-sm">E</div>
             <div className="flex-1">
-              <p className="text-white font-bold text-sm leading-tight">Elite Data Support</p>
-              <p className="text-blue-200 text-xs">Always here to help</p>
+              <p className="text-white font-bold text-sm leading-tight">EliteData AI Support</p>
+              <p className="text-blue-200 text-xs">AI online · Human help available</p>
             </div>
             <span className="w-2.5 h-2.5 bg-green-400 rounded-full" title="Online" />
           </div>
@@ -284,6 +310,7 @@ export default function ChatWidget() {
                 <p className={`text-xs text-gray-400 mt-0.5 ${msg.from === "user" ? "text-right" : "text-left"} px-1`}>
                   {msg.time}
                 </p>
+                {msg.from === "bot" && msg.aiId && <div className="mt-1 flex gap-2 px-1"><button aria-label="Helpful answer" onClick={() => void fetch("/api/ai/feedback", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messageId: msg.aiId, feedback: 1 }) })} className="text-xs text-gray-400 hover:text-green-600">👍 Helpful</button><button aria-label="Unhelpful answer" onClick={() => void fetch("/api/ai/feedback", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messageId: msg.aiId, feedback: -1 }) })} className="text-xs text-gray-400 hover:text-red-600">👎</button></div>}
                 {msg.quickReplies && msg.from === "bot" && (
                   <div className="flex flex-wrap gap-1.5 mt-1.5">
                     {msg.quickReplies.map((qr) => (

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateApiKey } from "@/lib/apiKeyAuth";
 import { supabase } from "@/lib/supabase";
+import { sendWalletTopupAlert, tgEscape } from "@/lib/telegram";
+import { formatCurrency, fromMinorUnits, roundCurrency } from "@/lib/finance";
 
 export async function POST(request: NextRequest) {
   const auth = await authenticateApiKey(request);
@@ -49,36 +51,36 @@ export async function POST(request: NextRequest) {
   }
 
   const amountPesewas = Number(txn.amount ?? 0);
-  const amountGhc = parseFloat((amountPesewas / 100).toFixed(2));
+  const amountGhc = fromMinorUnits(amountPesewas);
   if (amountGhc <= 0) {
     return NextResponse.json({ success: false, error: "Invalid payment amount." }, { status: 400 });
   }
 
-  // Credit wallet
-  const newBalance = parseFloat((auth.walletBalance + amountGhc).toFixed(2));
-  const { error: updateErr } = await supabase
-    .from("api_keys")
-    .update({ wallet_balance: newBalance })
-    .eq("id", auth.keyId);
-
-  if (updateErr) {
+  const { data: creditedBalance, error: updateErr } = await supabase.rpc("credit_api_wallet", {
+    p_api_key_id: auth.keyId,
+    p_reference: reference,
+    p_amount: amountGhc,
+    p_description: "Paystack API-wallet top-up",
+  });
+  if (updateErr || creditedBalance == null) {
     return NextResponse.json({ success: false, error: "Failed to credit wallet. Please contact support with your reference." }, { status: 500 });
   }
+  const newBalance = roundCurrency(Number(creditedBalance));
 
-  await supabase.from("api_wallet_transactions").insert({
-    api_key_id: auth.keyId,
-    type: "credit",
-    amount: amountGhc,
-    description: `Paystack top-up`,
-    reference,
-    balance_after: newBalance,
-  });
+  await sendWalletTopupAlert(
+    `💳 <b>API WALLET TOP-UP</b>\n\n` +
+    `👤 Account: <b>${tgEscape(auth.name)}</b>\n` +
+    `💵 Amount: <b>${formatCurrency(amountGhc)}</b>\n` +
+    `💰 New balance: <b>${formatCurrency(newBalance)}</b>\n` +
+    `📎 Paystack ref: <code>${tgEscape(reference)}</code>\n` +
+    `✅ Purpose: Developer API wallet funding`,
+  ).catch(() => {});
 
   return NextResponse.json({
     success: true,
     amount_credited: amountGhc,
     new_balance: newBalance,
     currency: "GHS",
-    message: `GH₵${amountGhc.toFixed(2)} has been credited to your wallet.`,
+    message: `${formatCurrency(amountGhc)} has been credited to your wallet.`,
   });
 }

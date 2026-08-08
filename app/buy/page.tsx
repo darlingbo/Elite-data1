@@ -1,8 +1,7 @@
 "use client";
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Bundle, Network } from "@/lib/bundles";
-import CheckoutModal from "@/components/CheckoutModal";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import AgentStorefront from "@/components/AgentStorefront";
 import SocialProofTicker from "@/components/SocialProofTicker";
@@ -26,6 +25,7 @@ interface AgentInfo {
 
 function BuyContent() {
   const params = useSearchParams();
+  const router = useRouter();
   const agentCode = params.get("agent") ?? undefined;
   const viaCode   = params.get("via")   ?? undefined;
 
@@ -34,10 +34,16 @@ function BuyContent() {
   const [bundles, setBundles]               = useState<Bundle[]>([]);
   const [mashupBundles, setMashupBundles]   = useState<{id:string;name:string;data_value:number;data_unit:string;minutes:number;price:number}[]>([]);
   const [activeNet, setActiveNet]           = useState<Network | "mashup">("mtn");
-  const [selected, setSelected]             = useState<Bundle | null>(null);
   const [referralVia, setReferralVia]       = useState<string | undefined>();
   const [netStatus, setNetStatus]           = useState<{ mtn: boolean; telecel: boolean; at: boolean; mashup: boolean }>({ mtn: true, telecel: true, at: true, mashup: true });
   const [slowDelivery, setSlowDelivery]     = useState(false);
+
+  function openCheckout(bundleId: string) {
+    const checkoutParams = new URLSearchParams({ bundle: bundleId });
+    if (agentCode) checkoutParams.set("agent", agentCode);
+    if (referralVia) checkoutParams.set("via", referralVia);
+    router.push(`/checkout?${checkoutParams.toString()}`);
+  }
 
   useEffect(() => {
     fetch("/api/network-status").then(r => r.json()).then(d => {
@@ -190,7 +196,7 @@ function BuyContent() {
                   price: b.price, costPrice: 0, validity: "30 days",
                 };
                 return (
-                  <button key={b.id} onClick={() => setSelected(asBundle)} style={{ background: D.card, border: `2px solid #8b5cf620`, borderRadius: 18, padding: 18, cursor: "pointer", textAlign: "left", position: "relative", transition: "all .15s" }}>
+                  <button key={b.id} onClick={() => openCheckout(asBundle.id)} style={{ background: D.card, border: `2px solid #8b5cf620`, borderRadius: 18, padding: 18, cursor: "pointer", textAlign: "left", position: "relative", transition: "all .15s" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                       <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: "rgba(139,92,246,0.15)", color: "#a78bfa" }}>Mashup</span>
                       <span style={{ fontSize: 10, color: D.muted }}>30 days</span>
@@ -220,7 +226,7 @@ function BuyContent() {
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             {filtered.map(b => (
-              <button key={b.id} onClick={() => setSelected(b)} style={{ background: D.card, border: `2px solid ${b.id === bestId ? net.color : D.border}`, borderRadius: 18, padding: 18, cursor: "pointer", textAlign: "left", position: "relative", boxShadow: b.id === bestId ? `0 0 24px ${net.color}20` : "none", transition: "all .15s" }}>
+              <button key={b.id} onClick={() => openCheckout(b.id)} style={{ background: D.card, border: `2px solid ${b.id === bestId ? net.color : D.border}`, borderRadius: 18, padding: 18, cursor: "pointer", textAlign: "left", position: "relative", boxShadow: b.id === bestId ? `0 0 24px ${net.color}20` : "none", transition: "all .15s" }}>
                 {b.id === bestId && (
                   <span style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", background: net.color, color: net.text, fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: 20, whiteSpace: "nowrap" }}>
                     ⭐ Best Value
@@ -262,9 +268,6 @@ function BuyContent() {
         </div>
       </div>
 
-      {selected && (
-        <CheckoutModal bundle={selected} agentCode={agentCode} referralVia={referralVia} onClose={() => setSelected(null)} />
-      )}
     </div>
   );
 }

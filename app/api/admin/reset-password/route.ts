@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
   if (!verifyResetToken(resetToken)) {
     return Response.json(
-      { error: "Invalid reset token. Check your environment variables for ADMIN_SESSION_TOKEN." },
+      { error: "Invalid reset token. Check the dedicated ADMIN_RESET_TOKEN configuration." },
       { status: 403 }
     );
   }

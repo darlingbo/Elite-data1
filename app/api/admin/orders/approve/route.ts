@@ -6,6 +6,8 @@ import { inventorPurchase, inventorVoucher } from "@/lib/inventor";
 import { sendCustomerSMS, orderFailedSMS } from "@/lib/sms";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
 import { auditLog } from "@/lib/audit";
+import { approveOrder } from "@/lib/order-approval";
+import { rejectOrder } from "@/lib/order-rejection";
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -138,7 +140,7 @@ async function runApprove(reference: string): Promise<{ ok: boolean; message: st
 async function runReject(reference: string): Promise<{ ok: boolean; message: string }> {
   const { data: order } = await supabase
     .from("orders")
-    .select("phone, network, bundle_size, amount, status, customer_name, agent_id")
+    .select("phone, network, bundle_size, amount, status, customer_name, agent_id, payment_method")
     .eq("reference", reference)
     .maybeSingle();
 
@@ -147,20 +149,29 @@ async function runReject(reference: string): Promise<{ ok: boolean; message: str
     return { ok: false, message: `Already ${order.status}` };
   }
 
-  await supabase.from("orders").update({ status: "rejected" }).eq("reference", reference);
+  const { data: walletResult, error: walletRefundError } = await supabase.rpc(
+    "reject_reserved_wallet_order",
+    { p_reference: reference },
+  );
+  if (walletRefundError) return { ok: false, message: `Wallet refund failed: ${walletRefundError.message}` };
+  if (walletResult === "not_wallet") {
+    const { error: rejectError } = await supabase
+      .from("orders")
+      .update({ status: "rejected" })
+      .eq("reference", reference)
+      .eq("status", "pending_approval");
+    if (rejectError) return { ok: false, message: rejectError.message };
+  }
   await auditLog("order_rejected", { reference, channel: "admin_dashboard" });
 
-  // Wallet orders: refund the deducted amount and notify agent
-  if (reference.startsWith("AGTWALLET-") && order.agent_id) {
+  // Notify an agent after the atomic database function refunds their wallet.
+  if (walletResult === "agent_wallet_refunded" && order.agent_id) {
     const { data: ag } = await supabase
       .from("agents")
-      .select("wallet_balance, telegram_chat_id, name")
+      .select("telegram_chat_id, name")
       .eq("id", order.agent_id)
       .maybeSingle();
     if (ag) {
-      await supabase.from("agents")
-        .update({ wallet_balance: Number(ag.wallet_balance ?? 0) + Number(order.amount ?? 0) })
-        .eq("id", order.agent_id);
       if (ag.telegram_chat_id) {
         sendAgentNotification(
           ag.telegram_chat_id,
@@ -173,7 +184,14 @@ async function runReject(reference: string): Promise<{ ok: boolean; message: str
     }
   }
 
-  return { ok: true, message: "Rejected" };
+  return {
+    ok: true,
+    message: walletResult === "api_wallet_refunded"
+      ? "Rejected; API wallet refunded"
+      : walletResult === "agent_wallet_refunded"
+        ? "Rejected; agent wallet refunded"
+        : "Rejected",
+  };
 }
 
 export async function POST(request: Request) {
@@ -198,8 +216,8 @@ export async function POST(request: Request) {
   const results: Array<{ reference: string; ok: boolean; message: string }> = [];
   for (const reference of [...new Set(references)]) {
     const result = action === "approve"
-      ? await runApprove(reference)
-      : await runReject(reference);
+      ? await approveOrder(reference, "admin_dashboard")
+      : await rejectOrder(reference, "admin_dashboard");
     results.push({ reference, ...result });
   }
 

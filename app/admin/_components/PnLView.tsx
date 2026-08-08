@@ -1,466 +1,416 @@
 "use client";
-import { useState, useMemo, useEffect, useCallback } from "react";
 
-interface Order {
-  status: string;
-  amount: number;
-  admin_commission: number;
-  agent_commission: number;
-  cost_price?: number;
-  created_at: string;
-  agent_id?: string | null;
-  phone?: string;
-  bundle_size?: string;
-  network?: string;
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { FinanceAnalyticsResponse } from "@/lib/finance-analytics";
+import styles from "./FinanceDashboard.module.css";
+
+type Preset = "today" | "yesterday" | "7d" | "30d" | "month" | "lastMonth" | "custom";
+type ReportTab = "daily" | "weekly" | "monthly" | "agents" | "customers";
+type SortKey = "date" | "sellingPrice" | "actualCost" | "profit" | "agentCommission";
+type ChartDatum = { label: string; value: number; secondary?: number };
+
+const MONEY = new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS", minimumFractionDigits: 2 });
+const INTEGER = new Intl.NumberFormat("en-GH");
+const DATE = new Intl.DateTimeFormat("en-GH", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const COLORS = ["#635bff", "#00d4ff", "#34d399", "#f59e0b", "#f472b6", "#a78bfa", "#fb7185", "#22d3ee", "#84cc16", "#f97316"];
+
+function isoDate(date: Date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
 }
 
-interface AgentRow {
-  id: string;
-  name: string;
-}
-
-interface LedgerEntry {
-  id: string;
-  type: "snapshot" | "deposit" | "deduction";
-  amount: number;
-  balance_after: number | null;
-  note: string | null;
-  order_reference: string | null;
-  recorded_at: string;
-}
-
-function toDateKey(d: Date) { return d.toISOString().slice(0, 10); }
-function fmt(n: number) { return `GH₵${Math.abs(n).toFixed(2)}`; }
-function fmtDate(dk: string) {
-  return new Date(dk + "T12:00:00").toLocaleDateString("en-GH", {
-    weekday: "short", day: "2-digit", month: "short", year: "numeric",
-  });
-}
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-GH", { hour: "2-digit", minute: "2-digit", hour12: true });
-}
-
-const NET_COLOR: Record<string, string> = {
-  mtn: "#f59e0b",
-  telecel: "#ef4444",
-  airteltigo: "#3b82f6",
-};
-
-function getProfitByPeriod(orders: Order[]) {
+function presetDates(preset: Preset) {
   const now = new Date();
-  function startOf(period: "day" | "week" | "month" | "year") {
-    const d = new Date(now);
-    if (period === "day")   { d.setHours(0, 0, 0, 0); }
-    if (period === "week")  { d.setDate(d.getDate() - d.getDay()); d.setHours(0, 0, 0, 0); }
-    if (period === "month") { d.setDate(1); d.setHours(0, 0, 0, 0); }
-    if (period === "year")  { d.setMonth(0, 1); d.setHours(0, 0, 0, 0); }
-    return d;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (preset === "today") return { from: isoDate(today), to: isoDate(today) };
+  if (preset === "yesterday") {
+    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+    return { from: isoDate(yesterday), to: isoDate(yesterday) };
   }
-  function calc(period: "day" | "week" | "month" | "year") {
-    const start = startOf(period);
-    const slice = orders.filter(o => (o.status ?? "").toLowerCase() === "completed" && new Date(o.created_at) >= start);
+  if (preset === "7d" || preset === "30d") {
+    const from = new Date(today); from.setDate(from.getDate() - (preset === "7d" ? 6 : 29));
+    return { from: isoDate(from), to: isoDate(today) };
+  }
+  if (preset === "month") return { from: isoDate(new Date(now.getFullYear(), now.getMonth(), 1)), to: isoDate(today) };
+  if (preset === "lastMonth") {
     return {
-      profit:  slice.reduce((s, o) => s + (Number(o.admin_commission) || 0), 0),
-      revenue: slice.reduce((s, o) => s + (Number(o.amount) || 0), 0),
-      orders:  slice.length,
+      from: isoDate(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+      to: isoDate(new Date(now.getFullYear(), now.getMonth(), 0)),
     };
   }
-  return { day: calc("day"), week: calc("week"), month: calc("month"), year: calc("year") };
+  return { from: "", to: "" };
 }
 
-export default function PnLView({ orders, agents = [] }: { orders: Order[]; agents?: AgentRow[] }) {
-  const agentMap = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const a of agents) m.set(a.id, a.name);
-    return m;
-  }, [agents]);
-  const [earningPeriod, setEarningPeriod] = useState<"day" | "week" | "month" | "year">("day");
-  const profitPeriods = useMemo(() => getProfitByPeriod(orders), [orders]);
+function Icon({ name }: { name: string }) {
+  const paths: Record<string, React.ReactNode> = {
+    orders: <><path d="M6 3h12v18H6z" /><path d="M9 7h6M9 11h6M9 15h4" /></>,
+    revenue: <><circle cx="12" cy="12" r="9" /><path d="M15 8.5c-.7-.6-1.6-1-2.7-1-1.5 0-2.6.8-2.6 2 0 3 5.7 1.4 5.7 4.7 0 1.3-1.2 2.3-3 2.3-1.3 0-2.5-.5-3.3-1.3M12 5.5v13" /></>,
+    profit: <><path d="M4 18 10 12l4 4 6-8" /><path d="M15 8h5v5" /></>,
+    pending: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    completed: <><circle cx="12" cy="12" r="9" /><path d="m8 12 2.5 2.5L16 9" /></>,
+    failed: <><circle cx="12" cy="12" r="9" /><path d="m9 9 6 6m0-6-6 6" /></>,
+    wallet: <><path d="M4 6h15v13H4z" /><path d="M4 9h15m-4 4h4" /></>,
+    agents: <><circle cx="9" cy="8" r="3" /><path d="M3 19c.5-4 2.5-6 6-6s5.5 2 6 6m1-10h5m-2.5-2.5v5" /></>,
+    customers: <><circle cx="8" cy="8" r="3" /><circle cx="17" cy="9" r="2.5" /><path d="M2.5 19c.5-4 2.5-6 5.5-6s5 2 5.5 6m1-5c3 0 5 1.5 5.5 5" /></>,
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 3v4m10-4v4M3 10h18" /></>,
+  };
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name] ?? paths.profit}</svg>;
+}
 
-  const [ledger, setLedger]     = useState<LedgerEntry[]>([]);
-  const [openAmt, setOpenAmt]   = useState("");
-  const [closeAmt, setCloseAmt] = useState("");
-  const [saving, setSaving]     = useState<string | null>(null);
-  const todayKey = toDateKey(new Date());
+function Trend({ value }: { value?: number }) {
+  const number = Number(value ?? 0);
+  const positive = number >= 0;
+  return <span className={`${styles.trend} ${positive ? styles.up : styles.down}`}>
+    {positive ? "↗" : "↘"} {Math.abs(number).toFixed(1)}%
+  </span>;
+}
 
-  const loadLedger = useCallback(async () => {
-    const res = await fetch("/api/admin/balance-log").catch(() => null);
-    if (!res?.ok) return;
-    const d = await res.json().catch(() => ({}));
-    setLedger(d.entries ?? []);
-  }, []);
+function MetricCard({ label, value, icon, trend, tone = "violet", detail }: {
+  label: string; value: string; icon: string; trend?: number; tone?: string; detail?: string;
+}) {
+  return <article className={`${styles.metricCard} ${styles[tone]}`}>
+    <div className={styles.metricTop}>
+      <span className={styles.metricIcon}><Icon name={icon} /></span>
+      {trend !== undefined ? <Trend value={trend} /> : null}
+    </div>
+    <p className={styles.metricLabel}>{label}</p>
+    <p className={styles.metricValue}>{value}</p>
+    {detail ? <p className={styles.metricDetail}>{detail}</p> : null}
+  </article>;
+}
 
-  useEffect(() => { loadLedger(); }, [loadLedger]);
+function LineChart({ data, color = "#635bff", secondaryColor, money = true, title, subtitle }: {
+  data: ChartDatum[]; color?: string; secondaryColor?: string; money?: boolean; title: string; subtitle: string;
+}) {
+  const width = 640;
+  const height = 220;
+  const values = data.flatMap((point) => [point.value, point.secondary ?? 0]);
+  const max = Math.max(...values, 1);
+  const x = (index: number) => data.length <= 1 ? width / 2 : (index / (data.length - 1)) * width;
+  const y = (value: number) => height - (value / max) * (height - 28) - 12;
+  const line = (key: "value" | "secondary") => data.map((point, index) =>
+    `${index === 0 ? "M" : "L"}${x(index).toFixed(1)},${y(Number(point[key] ?? 0)).toFixed(1)}`).join(" ");
+  return <section className={styles.chartCard}>
+    <header><div><h3>{title}</h3><p>{subtitle}</p></div><span className={styles.liveDot}>Live</span></header>
+    <div className={styles.chartCanvas}>
+      <svg role="img" aria-label={title} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id={`fill-${title.replace(/\W/g, "")}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity=".28" /><stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[0.25, 0.5, 0.75].map((position) => <line key={position} x1="0" x2={width} y1={height * position} y2={height * position} className={styles.gridLine} />)}
+        <path d={`${line("value")} L${width},${height} L0,${height} Z`} fill={`url(#fill-${title.replace(/\W/g, "")})`} />
+        <path d={line("value")} fill="none" stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke" />
+        {secondaryColor ? <path d={line("secondary")} fill="none" stroke={secondaryColor} strokeWidth="2" strokeDasharray="7 5" vectorEffect="non-scaling-stroke" /> : null}
+      </svg>
+      <div className={styles.chartLabels}>
+        {data.filter((_, index) => index % Math.max(1, Math.ceil(data.length / 6)) === 0).map((point) => <span key={point.label}>{point.label}</span>)}
+      </div>
+    </div>
+    <div className={styles.chartLegend}><span><i style={{ background: color }} />{money ? MONEY.format(data.at(-1)?.value ?? 0) : INTEGER.format(data.at(-1)?.value ?? 0)}</span>
+      {secondaryColor ? <span><i style={{ background: secondaryColor }} />Profit {MONEY.format(data.at(-1)?.secondary ?? 0)}</span> : null}</div>
+  </section>;
+}
 
-  async function recordBalance(which: "start" | "end") {
-    const raw = which === "start" ? openAmt : closeAmt;
-    const amt = parseFloat(raw);
-    if (!amt || isNaN(amt)) return;
-    const note = which === "start" ? "Start of Day" : "End of Day";
-    setSaving(which);
-    await fetch("/api/admin/balance-log", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "snapshot", amount: amt, balance_after: amt, note }),
-    });
-    setSaving(null);
-    if (which === "start") setOpenAmt(""); else setCloseAmt("");
-    loadLedger();
+function BarRanking({ title, subtitle, rows, valueLabel = "revenue" }: {
+  title: string; subtitle: string; rows: Array<{ name: string; value: number; orders?: number; revenue?: number; commission?: number }>; valueLabel?: "revenue" | "orders" | "commission";
+}) {
+  const max = Math.max(...rows.map((row) => valueLabel === "orders" ? Number(row.orders ?? row.value) : Number(row[valueLabel] ?? row.value)), 1);
+  return <section className={styles.rankingCard}>
+    <header><div><h3>{title}</h3><p>{subtitle}</p></div></header>
+    <div className={styles.rankingList}>{rows.slice(0, 6).map((row, index) => {
+      const value = valueLabel === "orders" ? Number(row.orders ?? row.value) : Number(row[valueLabel] ?? row.value);
+      return <div className={styles.rankRow} key={`${row.name}-${index}`}>
+        <span className={styles.rankNumber}>{index + 1}</span>
+        <div className={styles.rankBody}><div><strong>{row.name}</strong><span>{valueLabel === "orders" ? `${value} orders` : MONEY.format(value)}</span></div>
+          <div className={styles.progress}><i style={{ width: `${Math.max(4, (value / max) * 100)}%`, background: COLORS[index % COLORS.length] }} /></div></div>
+      </div>;
+    })}</div>
+  </section>;
+}
+
+function ReportMetric({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return <div className={styles.reportMetric}><span>{label}</span><strong className={accent ? styles.accentValue : ""}>{value}</strong></div>;
+}
+
+function ReportList({ title, rows, money = true }: {
+  title: string;
+  rows: Array<{ name: string; value: number }>;
+  money?: boolean;
+}) {
+  return <div className={styles.reportList}>
+    <h3>{title}</h3>
+    <ol>{rows.length ? rows.map((row) => <li key={row.name}>
+      <span>{row.name}</span>
+      <strong>{money ? MONEY.format(row.value) : INTEGER.format(row.value)}</strong>
+    </li>) : <li><span>No completed sales</span><strong>—</strong></li>}</ol>
+  </div>;
+}
+
+const EMPTY_ARRAY: never[] = [];
+
+export default function PnLView() {
+  const router = useRouter();
+  const [data, setData] = useState<FinanceAnalyticsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [preset, setPreset] = useState<Preset>("30d");
+  const initialDates = presetDates("30d");
+  const [from, setFrom] = useState(initialDates.from);
+  const [to, setTo] = useState(initialDates.to);
+  const [agent, setAgent] = useState("all");
+  const [network, setNetwork] = useState("all");
+  const [status, setStatus] = useState("all");
+  const [paymentMethod, setPaymentMethod] = useState("all");
+  const [reportTab, setReportTab] = useState<ReportTab>("daily");
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
+  const [sort, setSort] = useState<SortKey>("date");
+  const [ascending, setAscending] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    const query = new URLSearchParams({ from, to, agent, network, status, paymentMethod });
+    try {
+      const response = await fetch(`/api/admin/finance?${query}`, { cache: "no-store" });
+      if (response.status === 401) { router.push("/admin/login"); return; }
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "Could not load finance analytics.");
+      setData(body as FinanceAnalyticsResponse);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load finance analytics.");
+    } finally {
+      setLoading(false);
+    }
+  }, [agent, from, network, paymentMethod, router, status, to]);
+
+  useEffect(() => {
+    const initialLoad = window.setTimeout(() => void load(), 0);
+    const refresh = window.setInterval(() => void load(), 60_000);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.clearInterval(refresh);
+    };
+  }, [load]);
+
+  function selectPreset(value: Preset) {
+    setPreset(value);
+    if (value !== "custom") {
+      const dates = presetDates(value);
+      setFrom(dates.from);
+      setTo(dates.to);
+    }
   }
 
-  // ── Today's completed sales ──────────────────────────────────────────────
-  const todaySales = useMemo(() =>
-    orders
-      .filter(o => (o.status ?? "").toLowerCase() === "completed" && toDateKey(new Date(o.created_at)) === todayKey)
-      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
-    [orders, todayKey]);
+  const visibleTransactions = useMemo(() => {
+    const query = deferredSearch.trim().toLowerCase();
+    const rows = (data?.transactions ?? EMPTY_ARRAY).filter((row) =>
+      !query || [row.reference, row.customer, row.phone, row.network, row.bundle, row.agent, row.paymentMethod, row.status]
+        .some((value) => String(value).toLowerCase().includes(query)));
+    return rows.toSorted((left, right) => {
+      const leftValue = sort === "date" ? new Date(left.date).getTime() : Number(left[sort]);
+      const rightValue = sort === "date" ? new Date(right.date).getTime() : Number(right[sort]);
+      return (leftValue - rightValue) * (ascending ? 1 : -1);
+    });
+  }, [ascending, data?.transactions, deferredSearch, sort]);
 
-  const todayProfit          = todaySales.reduce((s, o) => s + (Number(o.admin_commission) || 0), 0);
-  const todayRevenue         = todaySales.reduce((s, o) => s + (Number(o.amount) || 0), 0);
-  const todayAgentCommission = todaySales.reduce((s, o) => s + (Number(o.agent_commission) || 0), 0);
+  function exportTransactions(format: "csv" | "excel") {
+    if (!visibleTransactions.length) return;
+    const headers = ["Order ID", "Customer", "Phone", "Network", "Bundle", "Gross Sale", "Net Revenue", "Provider Cost", "Admin Profit", "Agent Commission", "Agent", "Payment Method", "Status", "Date"];
+    const rows = visibleTransactions.map((row) => [
+      row.reference, row.customer, row.phone, row.network, row.bundle, row.sellingPrice, row.netRevenue, row.actualCost,
+      row.profit, row.agentCommission, row.agent, row.paymentMethod, row.status, row.date,
+    ]);
+    const separator = format === "csv" ? "," : "\t";
+    const escaped = [headers, ...rows].map((row) => row.map((value) => {
+      const text = String(value ?? "");
+      return format === "csv" ? `"${text.replaceAll('"', '""')}"` : text.replaceAll("\t", " ");
+    }).join(separator)).join("\n");
+    const blob = new Blob([`\uFEFF${escaped}`], { type: format === "csv" ? "text/csv;charset=utf-8" : "application/vnd.ms-excel;charset=utf-8" });
+    const anchor = document.createElement("a");
+    anchor.href = URL.createObjectURL(blob);
+    anchor.download = `elite-data-finance-${from}-${to}.${format === "csv" ? "csv" : "xls"}`;
+    anchor.click();
+    URL.revokeObjectURL(anchor.href);
+  }
 
-  // Today's API balance snapshots
-  const todaySnaps = ledger.filter(e => e.type === "snapshot" && toDateKey(new Date(e.recorded_at)) === todayKey);
-  const todayStart = todaySnaps.find(e => e.note?.toLowerCase().includes("start"));
-  const todayEnd   = todaySnaps.find(e => e.note?.toLowerCase().includes("end"));
+  if (!data && loading) return <div className={styles.loading}><span /><strong>Building your finance dashboard…</strong><p>Validating completed orders and calculating performance.</p></div>;
+  if (!data) return <div className={styles.errorState}><strong>Finance dashboard unavailable</strong><p>{error}</p><button onClick={() => void load()}>Try again</button></div>;
 
-  // ── Past-day records (yesterday and before) ──────────────────────────────
-  const dailyRecords = useMemo(() => {
-    const map = new Map<string, {
-      date: string; sales: number; profit: number; agentCommission: number; revenue: number;
-      apiStart: number | null; apiEnd: number | null;
-    }>();
+  const summaryCards = [
+    ["Your Admin Profit", MONEY.format(data.periods.selected.profit), "profit", undefined, "green", "Selected period · after refunds, provider cost and agent commission"],
+    ["Net Revenue", MONEY.format(data.periods.selected.revenue), "revenue", undefined, "blue", "Selected completed orders after refunds"],
+    ["Provider Cost", MONEY.format(data.periods.selected.cost), "wallet", undefined, "amber", "Selected completed-order delivery cost"],
+    ["Direct-Sale Profit", MONEY.format(data.periods.selected.directProfit), "profit", undefined, "violet", "Your profit from orders without an agent"],
+    ["Admin Profit via Agents", MONEY.format(data.periods.selected.agentSaleProfit), "profit", undefined, "cyan", "Your share from agent-linked orders"],
+    ["Agent Commissions", MONEY.format(data.periods.selected.commission), "agents", undefined, "pink", "Secondary · agent earnings on selected orders"],
+    ["Selected Completed", INTEGER.format(data.periods.selected.orders), "completed", undefined, "green", "Completed orders in the selected period"],
+    ["Today's Admin Profit", MONEY.format(data.summary.todayProfit), "profit", data.summary.trends.profit, "green", "Today · after cost and commission"],
+    ["Pending Orders", INTEGER.format(data.summary.pendingOrders), "pending", undefined, "amber", "Awaiting action or delivery"],
+    ["Failed Orders", INTEGER.format(data.summary.failedOrders), "failed", undefined, "red", "Failed and rejected"],
+    ["Total Customers", INTEGER.format(data.summary.totalCustomers), "customers", undefined, "blue", "Unique completed buyers"],
+    ["Wallet Liability", MONEY.format(data.summary.walletBalance), "wallet", undefined, "cyan", "Money held for agent + developer wallets"],
+  ] as const;
 
-    for (const o of orders) {
-      if ((o.status ?? "").toLowerCase() !== "completed") continue;
-      const dk = toDateKey(new Date(o.created_at));
-      if (dk === todayKey) continue;
-      if (!map.has(dk)) map.set(dk, { date: dk, sales: 0, profit: 0, agentCommission: 0, revenue: 0, apiStart: null, apiEnd: null });
-      const row = map.get(dk)!;
-      row.sales++;
-      row.profit          += Number(o.admin_commission) || 0;
-      row.agentCommission += Number(o.agent_commission) || 0;
-      row.revenue         += Number(o.amount) || 0;
-    }
+  const dailyChart = data.charts.daily.map((point) => ({ label: point.label, value: point.revenue, secondary: point.profit }));
+  const weeklyChart = data.charts.weekly.map((point) => ({ label: point.label, value: point.revenue }));
+  const monthlyChart = data.charts.monthly.map((point) => ({ label: point.label, value: point.revenue, secondary: point.profit }));
+  const orderTrend = data.charts.daily.map((point) => ({ label: point.label, value: point.orders }));
+  const customerGrowth = data.charts.customerGrowth.map((point) => ({ label: point.label, value: point.value }));
 
-    for (const e of ledger) {
-      if (e.type !== "snapshot") continue;
-      const dk = toDateKey(new Date(e.recorded_at));
-      if (dk === todayKey) continue;
-      if (!map.has(dk)) map.set(dk, { date: dk, sales: 0, profit: 0, agentCommission: 0, revenue: 0, apiStart: null, apiEnd: null });
-      const snapRow = map.get(dk)!;
-      if (e.note?.toLowerCase().includes("start")) snapRow.apiStart = Number(e.amount);
-      else if (e.note?.toLowerCase().includes("end")) snapRow.apiEnd = Number(e.amount);
-    }
-
-    return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
-  }, [orders, ledger, todayKey]);
-
-  // ── Style helpers ────────────────────────────────────────────────────────
-  const card = { background: "#162032", border: "1px solid #1e3050", borderRadius: 16, overflow: "hidden" as const };
-  const hdr  = { padding: "14px 20px", background: "#0e1928", borderBottom: "1px solid #1e3050" };
-  const th   = { padding: "10px 14px", color: "#475569", fontWeight: 700 as const, fontSize: 10, textTransform: "uppercase" as const, letterSpacing: "0.06em", whiteSpace: "nowrap" as const };
-
-  const epData   = profitPeriods[earningPeriod];
-  const epLabels: Record<string, string> = { day: "Today", week: "This Week", month: "This Month", year: "This Year" };
-  const epColors: Record<string, string> = { day: "#f59e0b", week: "#3b82f6", month: "#8b5cf6", year: "#22c55e" };
-  const epGrads:  Record<string, string> = { day: "linear-gradient(135deg,#78350f,#d97706)", week: "linear-gradient(135deg,#1e3a8a,#3b82f6)", month: "linear-gradient(135deg,#4c1d95,#8b5cf6)", year: "linear-gradient(135deg,#14532d,#22c55e)" };
-  const epIcons:  Record<string, string> = { day: "☀️", week: "📅", month: "🗓️", year: "🏆" };
-
-  return (
-    <div className="admin-section" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-
-      {/* ══════════ EARNINGS BY PERIOD ══════════ */}
-      <div style={{ ...card, overflow: "hidden" }}>
-        <div style={{ ...hdr, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 18 }}>💰</span>
-            <p style={{ color: "#f1f5f9", fontWeight: 800, fontSize: 15, margin: 0 }}>My Earnings</p>
-          </div>
-          {/* Pill tabs */}
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: 5, background: "#0a0f1a", border: "1px solid #1e3050", borderRadius: 999, boxShadow: "0 1px 1px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.6)" }}>
-            {(["day", "week", "month", "year"] as const).map(p => (
-              <button key={p} onClick={() => setEarningPeriod(p)} style={{
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                height: 30, padding: "0 14px", borderRadius: 999, fontSize: 13, fontWeight: 600,
-                border: "none", cursor: "pointer",
-                transition: "background 220ms cubic-bezier(.22,1,.36,1), color 220ms cubic-bezier(.22,1,.36,1), box-shadow 220ms cubic-bezier(.22,1,.36,1)",
-                background: earningPeriod === p ? "white" : "transparent",
-                color: earningPeriod === p ? "#0e1116" : "#64748b",
-                boxShadow: earningPeriod === p ? "0 1px 1px rgba(0,0,0,0.15), 0 4px 12px -4px rgba(0,0,0,0.5)" : "none",
-              }}>
-                {p.charAt(0).toUpperCase() + p.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ padding: "20px 20px 16px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-          <div style={{ width: 56, height: 56, borderRadius: 18, background: epGrads[earningPeriod], display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0, transition: "background .3s" }}>
-            {epIcons[earningPeriod]}
-          </div>
-          <div>
-            <p style={{ color: "#475569", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 4px" }}>{epLabels[earningPeriod]} · Admin Profit</p>
-            <p style={{ color: epColors[earningPeriod], fontWeight: 900, fontSize: 34, fontFamily: "monospace", margin: 0, transition: "color .3s" }}>+{fmt(epData.profit)}</p>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginLeft: "auto" }}>
-            <div style={{ background: "#0e1928", border: "1px solid #1e3050", borderRadius: 12, padding: "10px 16px", minWidth: 110 }}>
-              <p style={{ color: "#475569", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 4px" }}>Revenue</p>
-              <p style={{ color: "#93c5fd", fontFamily: "monospace", fontWeight: 900, fontSize: 16, margin: 0 }}>{fmt(epData.revenue)}</p>
-            </div>
-            <div style={{ background: "#0e1928", border: "1px solid #1e3050", borderRadius: 12, padding: "10px 16px", minWidth: 110 }}>
-              <p style={{ color: "#475569", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 4px" }}>Orders</p>
-              <p style={{ color: "#f1f5f9", fontFamily: "monospace", fontWeight: 900, fontSize: 16, margin: 0 }}>{epData.orders}</p>
-            </div>
-          </div>
-        </div>
+  return <div className={`${styles.finance} ${theme === "light" ? styles.light : ""}`}>
+    <section className={styles.hero}>
+      <div>
+        <span className={styles.eyebrow}>Admin profit center</span>
+        <h2>Your money comes first.</h2>
+        <p>Admin profit is completed-order net revenue minus provider cost and agent commission. Agent figures stay separate and secondary. Updated {DATE.format(new Date(data.generatedAt))}.</p>
       </div>
-
-      {/* ══════════ TODAY ══════════ */}
-      <div style={card}>
-
-        {/* Header */}
-        <div style={{ ...hdr, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 18 }}>📅</span>
-            <p style={{ color: "#f1f5f9", fontWeight: 800, fontSize: 15, margin: 0 }}>
-              Today — {new Date().toLocaleDateString("en-GH", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}
-            </p>
-          </div>
-          {todaySales.length > 0 && (
-            <p style={{ color: "#4ade80", fontWeight: 900, fontFamily: "monospace", fontSize: 18, margin: 0 }}>
-              +{fmt(todayProfit)} profit
-            </p>
-          )}
-        </div>
-
-        {/* API Balance — Start / End */}
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid #1e3050", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-
-          {/* Start of day */}
-          <div style={{ background: "#0e1928", border: "1px solid #1e3050", borderRadius: 12, padding: 14 }}>
-            <p style={{ color: "#475569", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 8px" }}>
-              ☀️ API Balance — Start of Day
-            </p>
-            {todayStart ? (
-              <div>
-                <p style={{ color: "#93c5fd", fontWeight: 900, fontFamily: "monospace", fontSize: 22, margin: "0 0 2px" }}>
-                  {fmt(todayStart.amount)}
-                </p>
-                <p style={{ color: "#334155", fontSize: 10, margin: 0 }}>Recorded at {fmtTime(todayStart.recorded_at)}</p>
-              </div>
-            ) : (
-              <div style={{ display: "flex", gap: 6 }}>
-                <input
-                  type="number" min="0" step="0.01" placeholder="e.g. 250.00"
-                  value={openAmt} onChange={e => setOpenAmt(e.target.value)}
-                  style={{ flex: 1, background: "#162032", border: "1px solid #1e3050", borderRadius: 8, padding: "9px 10px", color: "#f1f5f9", fontSize: 13, fontWeight: 700, outline: "none" }}
-                />
-                <button onClick={() => recordBalance("start")} disabled={saving === "start" || !openAmt}
-                  style={{ padding: "9px 14px", background: "#1d4ed8", border: "none", borderRadius: 8, color: "white", fontWeight: 800, fontSize: 12, cursor: "pointer", opacity: !openAmt ? 0.4 : 1 }}>
-                  {saving === "start" ? "…" : "Save"}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* End of day */}
-          <div style={{ background: "#0e1928", border: "1px solid #1e3050", borderRadius: 12, padding: 14 }}>
-            <p style={{ color: "#475569", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 8px" }}>
-              🌙 API Balance — End of Day
-            </p>
-            {todayEnd ? (
-              <div>
-                <p style={{ color: "#c084fc", fontWeight: 900, fontFamily: "monospace", fontSize: 22, margin: "0 0 2px" }}>
-                  {fmt(todayEnd.amount)}
-                </p>
-                <p style={{ color: "#334155", fontSize: 10, margin: 0 }}>Recorded at {fmtTime(todayEnd.recorded_at)}</p>
-              </div>
-            ) : (
-              <div style={{ display: "flex", gap: 6 }}>
-                <input
-                  type="number" min="0" step="0.01" placeholder="e.g. 190.00"
-                  value={closeAmt} onChange={e => setCloseAmt(e.target.value)}
-                  style={{ flex: 1, background: "#162032", border: "1px solid #1e3050", borderRadius: 8, padding: "9px 10px", color: "#f1f5f9", fontSize: 13, fontWeight: 700, outline: "none" }}
-                />
-                <button onClick={() => recordBalance("end")} disabled={saving === "end" || !closeAmt}
-                  style={{ padding: "9px 14px", background: "#7c3aed", border: "none", borderRadius: 8, color: "white", fontWeight: 800, fontSize: 12, cursor: "pointer", opacity: !closeAmt ? 0.4 : 1 }}>
-                  {saving === "end" ? "…" : "Save"}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Today's stats */}
-        <div style={{ padding: "14px 20px", borderBottom: "1px solid #1e3050", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0 }}>
-          {[
-            { label: "Sales Today",        value: String(todaySales.length),     color: "#f1f5f9" },
-            { label: "Revenue Today",      value: fmt(todayRevenue),              color: "#93c5fd" },
-            { label: "Agent Commissions",  value: `${fmt(todayAgentCommission)}`, color: "#c084fc" },
-            { label: "Your Profit",        value: `+${fmt(todayProfit)}`,         color: "#4ade80" },
-          ].map((s, i) => (
-            <div key={s.label} style={{ padding: "10px 0", paddingLeft: i === 0 ? 0 : 20, borderLeft: i > 0 ? "1px solid #1e3050" : "none", marginLeft: i > 0 ? 20 : 0 }}>
-              <p style={{ fontSize: 10, color: "#475569", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 4px" }}>{s.label}</p>
-              <p style={{ fontSize: 18, fontWeight: 900, color: s.color, fontFamily: "monospace", margin: 0 }}>{s.value}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Today's sales table */}
-        {todaySales.length === 0 ? (
-          <p style={{ padding: "48px 20px", textAlign: "center", color: "#334155", fontSize: 13 }}>
-            No sales yet today — each sale will appear here instantly as it comes in.
-          </p>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: "#0e1928" }}>
-                  <th style={{ ...th, textAlign: "left" as const }}>#</th>
-                  <th style={{ ...th, textAlign: "left" as const }}>Time</th>
-                  <th style={{ ...th, textAlign: "left" as const }}>Phone</th>
-                  <th style={{ ...th, textAlign: "left" as const }}>Bundle</th>
-                  <th style={{ ...th, textAlign: "left" as const }}>Agent</th>
-                  <th style={{ ...th, textAlign: "right" as const }}>Sold For</th>
-                  <th style={{ ...th, textAlign: "right" as const }}>Agent Cut</th>
-                  <th style={{ ...th, textAlign: "right" as const }}>Your Profit</th>
-                  <th style={{ ...th, textAlign: "right" as const }}>Running Profit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {todaySales.map((o, i) => {
-                  const runningProfit = todaySales.slice(0, i + 1).reduce((s, x) => s + (Number(x.admin_commission) || 0), 0);
-                  const net = (o.network ?? "").toLowerCase();
-                  const netColor = NET_COLOR[net] ?? "#3b82f6";
-                  const agentName = o.agent_id ? (agentMap.get(o.agent_id) ?? "Agent") : null;
-                  const agentComm = Number(o.agent_commission) || 0;
-                  return (
-                    <tr key={`${o.created_at}-${o.phone}-${i}`} style={{ borderBottom: "1px solid rgba(30,48,80,0.5)" }}>
-                      <td style={{ padding: "10px 14px", color: "#334155", fontWeight: 700 }}>{i + 1}</td>
-                      <td style={{ padding: "10px 14px", color: "#64748b", fontFamily: "monospace", whiteSpace: "nowrap" as const }}>{fmtTime(o.created_at)}</td>
-                      <td style={{ padding: "10px 14px", color: "#94a3b8", fontFamily: "monospace" }}>{o.phone ?? "—"}</td>
-                      <td style={{ padding: "10px 14px" }}>
-                        <span style={{ padding: "2px 8px", borderRadius: 6, background: `${netColor}22`, color: netColor, fontWeight: 700, fontSize: 11, whiteSpace: "nowrap" as const }}>
-                          {(o.network ?? "").toUpperCase()} {o.bundle_size ?? ""}
-                        </span>
-                      </td>
-                      <td style={{ padding: "10px 14px", whiteSpace: "nowrap" as const }}>
-                        {agentName
-                          ? <span style={{ fontSize: 11, fontWeight: 700, color: "#c084fc", background: "rgba(192,132,252,0.12)", padding: "2px 8px", borderRadius: 6 }}>{agentName}</span>
-                          : <span style={{ fontSize: 11, color: "#334155" }}>Direct</span>}
-                      </td>
-                      <td style={{ padding: "10px 14px", color: "#93c5fd", fontFamily: "monospace", textAlign: "right" as const }}>{fmt(Number(o.amount) || 0)}</td>
-                      <td style={{ padding: "10px 14px", fontFamily: "monospace", textAlign: "right" as const, color: agentComm > 0 ? "#c084fc" : "#334155" }}>
-                        {agentComm > 0 ? `${fmt(agentComm)}` : "—"}
-                      </td>
-                      <td style={{ padding: "10px 14px", color: "#4ade80", fontFamily: "monospace", fontWeight: 700, textAlign: "right" as const }}>+{fmt(Number(o.admin_commission) || 0)}</td>
-                      <td style={{ padding: "10px 14px", color: "#4ade80", fontFamily: "monospace", fontWeight: 900, textAlign: "right" as const }}>{fmt(runningProfit)}</td>
-                    </tr>
-                  );
-                })}
-                <tr style={{ background: "#0e1928", borderTop: "2px solid #1e3050" }}>
-                  <td colSpan={5} style={{ padding: "12px 14px", color: "#f1f5f9", fontWeight: 900, fontSize: 12 }}>
-                    DAY TOTAL — {todaySales.length} sale{todaySales.length !== 1 ? "s" : ""}
-                  </td>
-                  <td style={{ padding: "12px 14px", color: "#93c5fd", fontFamily: "monospace", fontWeight: 900, textAlign: "right" as const }}>{fmt(todayRevenue)}</td>
-                  <td style={{ padding: "12px 14px", color: "#c084fc", fontFamily: "monospace", fontWeight: 900, textAlign: "right" as const }}>{fmt(todayAgentCommission)}</td>
-                  <td style={{ padding: "12px 14px", color: "#4ade80", fontFamily: "monospace", fontWeight: 900, textAlign: "right" as const }}>+{fmt(todayProfit)}</td>
-                  <td />
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
+      <div className={styles.heroActions}>
+        <button className={styles.themeButton} onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")} aria-label="Toggle finance dashboard theme">
+          {theme === "dark" ? "☀" : "◐"} <span>{theme === "dark" ? "Light" : "Dark"}</span>
+        </button>
+        <button className={styles.refreshButton} onClick={() => void load()} disabled={loading}>↻ <span>{loading ? "Refreshing" : "Refresh data"}</span></button>
       </div>
+    </section>
 
-      {/* ══════════ DAILY RECORDS (past days) ══════════ */}
-      <div style={card}>
-        <div style={{ ...hdr, display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 18 }}>📖</span>
-          <p style={{ color: "#f1f5f9", fontWeight: 800, fontSize: 15, margin: 0 }}>Daily Records</p>
-          {dailyRecords.length > 0 && (
-            <span style={{ marginLeft: "auto", color: "#334155", fontSize: 12 }}>
-              {dailyRecords.length} day{dailyRecords.length !== 1 ? "s" : ""} ·
-              Total profit: <span style={{ color: "#4ade80", fontWeight: 700 }}> +{fmt(dailyRecords.reduce((s, r) => s + r.profit, 0))}</span>
-            </span>
-          )}
-        </div>
-
-        {dailyRecords.length === 0 ? (
-          <p style={{ padding: "48px 20px", textAlign: "center", color: "#334155", fontSize: 13 }}>
-            Yesterday&apos;s record will appear here automatically once the day ends at midnight.
-          </p>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: "#0e1928" }}>
-                  <th style={{ ...th, textAlign: "left" as const }}>Date</th>
-                  <th style={{ ...th, textAlign: "right" as const }}>Sales</th>
-                  <th style={{ ...th, textAlign: "right" as const }}>Revenue</th>
-                  <th style={{ ...th, textAlign: "right" as const }}>Agent Cut</th>
-                  <th style={{ ...th, textAlign: "right" as const }}>Your Profit</th>
-                  <th style={{ ...th, textAlign: "right" as const }}>API at 12:00 AM</th>
-                  <th style={{ ...th, textAlign: "right" as const }}>API at 11:59 PM</th>
-                  <th style={{ ...th, textAlign: "right" as const }}>API Spent</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dailyRecords.map(row => {
-                  const apiSpent = row.apiStart !== null && row.apiEnd !== null
-                    ? row.apiStart - row.apiEnd
-                    : null;
-                  return (
-                    <tr key={row.date} style={{ borderBottom: "1px solid rgba(30,48,80,0.5)" }}>
-                      <td style={{ padding: "12px 14px", color: "#f1f5f9", fontWeight: 700, whiteSpace: "nowrap" as const }}>
-                        {fmtDate(row.date)}
-                      </td>
-                      <td style={{ padding: "12px 14px", color: "#f1f5f9", fontWeight: 700, textAlign: "right" as const }}>{row.sales}</td>
-                      <td style={{ padding: "12px 14px", color: "#93c5fd", fontFamily: "monospace", textAlign: "right" as const }}>{fmt(row.revenue)}</td>
-                      <td style={{ padding: "12px 14px", fontFamily: "monospace", textAlign: "right" as const, color: row.agentCommission > 0 ? "#c084fc" : "#334155" }}>
-                        {row.agentCommission > 0 ? fmt(row.agentCommission) : "—"}
-                      </td>
-                      <td style={{ padding: "12px 14px", color: "#4ade80", fontFamily: "monospace", fontWeight: 800, textAlign: "right" as const }}>
-                        +{fmt(row.profit)}
-                      </td>
-                      <td style={{ padding: "12px 14px", fontFamily: "monospace", textAlign: "right" as const, color: row.apiStart !== null ? "#93c5fd" : "#334155" }}>
-                        {row.apiStart !== null ? fmt(row.apiStart) : "—"}
-                      </td>
-                      <td style={{ padding: "12px 14px", fontFamily: "monospace", textAlign: "right" as const, color: row.apiEnd !== null ? "#c084fc" : "#334155" }}>
-                        {row.apiEnd !== null ? fmt(row.apiEnd) : "—"}
-                      </td>
-                      <td style={{ padding: "12px 14px", fontFamily: "monospace", fontWeight: 700, textAlign: "right" as const, color: apiSpent === null ? "#334155" : "#f87171" }}>
-                        {apiSpent !== null ? `− ${fmt(apiSpent)}` : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {/* Grand total row */}
-                {(() => {
-                  const totSales        = dailyRecords.reduce((s, r) => s + r.sales, 0);
-                  const totRevenue      = dailyRecords.reduce((s, r) => s + r.revenue, 0);
-                  const totAgentComm    = dailyRecords.reduce((s, r) => s + r.agentCommission, 0);
-                  const totProfit       = dailyRecords.reduce((s, r) => s + r.profit, 0);
-                  return (
-                    <tr style={{ background: "#0e1928", borderTop: "2px solid #1e3050" }}>
-                      <td style={{ padding: "13px 14px", color: "#f1f5f9", fontWeight: 900, fontSize: 12 }}>
-                        ALL TIME ({dailyRecords.length} days)
-                      </td>
-                      <td style={{ padding: "13px 14px", color: "#f1f5f9", fontWeight: 900, textAlign: "right" as const }}>{totSales}</td>
-                      <td style={{ padding: "13px 14px", color: "#93c5fd", fontFamily: "monospace", fontWeight: 900, textAlign: "right" as const }}>{fmt(totRevenue)}</td>
-                      <td style={{ padding: "13px 14px", color: "#c084fc", fontFamily: "monospace", fontWeight: 900, textAlign: "right" as const }}>{fmt(totAgentComm)}</td>
-                      <td style={{ padding: "13px 14px", color: "#4ade80", fontFamily: "monospace", fontWeight: 900, textAlign: "right" as const }}>+{fmt(totProfit)}</td>
-                      <td colSpan={3} />
-                    </tr>
-                  );
-                })()}
-              </tbody>
-            </table>
-          </div>
-        )}
+    <section className={styles.filterPanel}>
+      <div className={styles.presets}>
+        {([["today", "Today"], ["yesterday", "Yesterday"], ["7d", "7 days"], ["30d", "30 days"], ["month", "This month"], ["lastMonth", "Last month"], ["custom", "Custom"]] as const)
+          .map(([value, label]) => <button key={value} className={preset === value ? styles.activePreset : ""} onClick={() => selectPreset(value)}>{label}</button>)}
       </div>
+      <div className={styles.filterGrid}>
+        <label><span>From</span><input type="date" value={from} onChange={(event) => { setPreset("custom"); setFrom(event.target.value); }} /></label>
+        <label><span>To</span><input type="date" value={to} onChange={(event) => { setPreset("custom"); setTo(event.target.value); }} /></label>
+        <label><span>Agent</span><select value={agent} onChange={(event) => setAgent(event.target.value)}><option value="all">All agents</option>{data.options.agents.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></label>
+        <label><span>Network</span><select value={network} onChange={(event) => setNetwork(event.target.value)}><option value="all">All networks</option>{data.options.networks.map((option) => <option key={option ?? ""}>{option}</option>)}</select></label>
+        <label><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option>{data.options.statuses.map((option) => <option key={option}>{option}</option>)}</select></label>
+        <label><span>Payment</span><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="all">All methods</option>{data.options.paymentMethods.map((option) => <option key={option}>{option}</option>)}</select></label>
+      </div>
+    </section>
 
-    </div>
-  );
+    {error ? <div className={styles.inlineError}>{error}</div> : null}
+    {data.alerts.length ? <section className={styles.alertStrip}>{data.alerts.map((alert) => <article key={alert.title} className={styles[alert.level]}><span>{alert.level === "critical" ? "!" : "↘"}</span><div><strong>{alert.title}</strong><p>{alert.detail}</p></div></article>)}</section> : null}
+
+    <section className={styles.metricGrid}>{summaryCards.map(([label, value, icon, trend, tone, detail]) =>
+      <MetricCard key={label} label={label} value={value} icon={icon} trend={trend} tone={tone} detail={detail} />)}</section>
+
+    <section className={styles.periodSection}>
+      <div className={styles.sectionHeading}><div><span>Admin profit analytics</span><h2>Your earnings across every horizon</h2></div><p>Only completed orders contribute. Refunds, provider cost and agent commission are deducted.</p></div>
+      <div className={styles.periodGrid}>
+        {([
+          ["Today", data.periods.today],
+          ["This week", data.periods.week],
+          ["This month", data.periods.month],
+          ["This year", data.periods.year],
+          ["Lifetime", data.periods.lifetime],
+        ] as const).map(([label, period]) => <article key={label} className={styles.periodCard}>
+          <span>{label}</span><strong>{MONEY.format(period.profit)}</strong><small>Admin profit</small>
+          <div><p><span>Net revenue</span><b>{MONEY.format(period.revenue)}</b></p><p><span>Provider cost</span><b>{MONEY.format(period.cost)}</b></p><p><span>Agent commission</span><b>{MONEY.format(period.commission)}</b></p><p><span>Margin</span><b>{period.margin.toFixed(1)}%</b></p></div>
+        </article>)}
+      </div>
+    </section>
+
+    <section className={styles.chartsGrid}>
+      <LineChart title="Daily revenue & profit" subtitle="30-day financial movement" data={dailyChart} secondaryColor="#34d399" />
+      <LineChart title="Weekly revenue" subtitle="Trailing 12-week performance" data={weeklyChart} color="#00b8d9" />
+      <LineChart title="Monthly revenue & profit" subtitle="Year-long business trajectory" data={monthlyChart} color="#8b5cf6" secondaryColor="#f472b6" />
+      <LineChart title="Orders trend" subtitle="Completed orders by day" data={orderTrend} color="#f59e0b" money={false} />
+      <LineChart title="Customers growth" subtitle="Unique completed buyers by month" data={customerGrowth} color="#22c55e" money={false} />
+      <LineChart title="Profit trend" subtitle="Net profit after cost and commission" data={data.charts.daily.map((point) => ({ label: point.label, value: point.profit }))} color="#34d399" />
+    </section>
+
+    <section className={styles.rankingsGrid}>
+      <BarRanking title="Top selling bundles" subtitle="Products customers choose most" rows={data.charts.topBundles} valueLabel="orders" />
+      <BarRanking title="Top customers" subtitle="Completed customer spend" rows={data.reports.monthly.topCustomers} />
+      <BarRanking title="Agent contribution" subtitle="Secondary view of agent-linked revenue" rows={data.charts.topAgents} />
+    </section>
+
+    <section className={styles.reports}>
+      <div className={styles.sectionHeading}><div><span>Business reports</span><h2>From daily pulse to lifetime value</h2></div></div>
+      <div className={styles.reportTabs}>{(["daily", "weekly", "monthly", "agents", "customers"] as const).map((tab) =>
+        <button key={tab} onClick={() => setReportTab(tab)} className={reportTab === tab ? styles.activeReport : ""}>{tab}</button>)}</div>
+      <div className={styles.reportBody}>
+        {reportTab === "daily" ? <>
+          <ReportMetric label="Revenue" value={MONEY.format(data.reports.daily.revenue)} />
+          <ReportMetric label="Expenses" value={MONEY.format(data.reports.daily.expenses)} />
+          <ReportMetric label="Admin profit" value={MONEY.format(data.reports.daily.profit)} accent />
+          <ReportMetric label="Agent commission" value={MONEY.format(data.reports.daily.commission)} />
+          <ReportMetric label="Average order value" value={MONEY.format(data.reports.daily.averageOrderValue)} />
+          <ReportMetric label="Best selling bundle" value={data.reports.daily.bestSellingBundle} />
+          <ReportMetric label="Most active agent" value={data.reports.daily.mostActiveAgent} />
+          <ReportMetric label="Best customer" value={data.reports.daily.bestCustomer} />
+          <ReportMetric label="Completion rate" value={`${data.reports.daily.completionRate.toFixed(1)}%`} />
+          <ReportMetric label="Success rate" value={`${data.reports.daily.successRate.toFixed(1)}%`} />
+        </> : null}
+        {reportTab === "weekly" ? <>
+          <ReportMetric label="Weekly revenue" value={MONEY.format(data.reports.weekly.revenue)} />
+          <ReportMetric label="Weekly admin profit" value={MONEY.format(data.reports.weekly.profit)} accent />
+          <ReportMetric label="Weekly growth" value={`${data.reports.weekly.growth.toFixed(1)}%`} />
+          <ReportMetric label="Orders completed" value={INTEGER.format(data.reports.weekly.orders)} />
+          <ReportMetric label="Orders failed" value={INTEGER.format(data.reports.weekly.failed)} />
+          <ReportMetric label="Refunds" value={INTEGER.format(data.reports.weekly.refunds)} />
+          <ReportMetric label="Top agent" value={data.reports.weekly.topAgent} />
+          <ReportMetric label="Top customer" value={data.reports.weekly.topCustomer} />
+        </> : null}
+        {reportTab === "monthly" ? <>
+          <ReportMetric label="Revenue" value={MONEY.format(data.reports.monthly.revenue)} />
+          <ReportMetric label="Admin profit" value={MONEY.format(data.reports.monthly.profit)} accent />
+          <ReportMetric label="Growth" value={`${data.reports.monthly.growth.toFixed(1)}%`} />
+          <ReportMetric label="Agent commission" value={MONEY.format(data.reports.monthly.commission)} />
+          <ReportMetric label="Best product" value={data.reports.monthly.bestSellingProducts[0]?.name ?? "No sales"} />
+          <ReportMetric label="Top agent" value={data.reports.monthly.topAgents[0]?.name ?? "No agent sales"} />
+          <ReportMetric label="Top customer" value={data.reports.monthly.topCustomers[0]?.name ?? "No customers"} />
+        </> : null}
+        {reportTab === "agents" ? <>
+          <ReportMetric label="Total agents" value={INTEGER.format(data.agents.total)} />
+          <ReportMetric label="Active agents" value={INTEGER.format(data.agents.active)} />
+          <ReportMetric label="Inactive agents" value={INTEGER.format(data.agents.inactive)} />
+          <ReportMetric label="Highest earning agent" value={data.agents.highestEarning?.name ?? "No agent sales"} />
+          <ReportMetric label="Commission paid" value={MONEY.format(data.agents.commissionPaid)} accent />
+          <ReportMetric label="Top agent orders" value={INTEGER.format(data.agents.rows[0]?.orders ?? 0)} />
+          <ReportMetric label="Top agent revenue" value={MONEY.format(data.agents.rows[0]?.revenue ?? 0)} />
+          <ReportMetric label="Profit generated" value={MONEY.format(data.agents.rows[0]?.profit ?? 0)} />
+        </> : null}
+        {reportTab === "customers" ? <>
+          <ReportMetric label="New customers" value={INTEGER.format(data.customers.newCustomers)} />
+          <ReportMetric label="Returning customers" value={INTEGER.format(data.customers.returningCustomers)} />
+          <ReportMetric label="Orders per customer" value={data.customers.ordersPerCustomer.toFixed(2)} />
+          <ReportMetric label="Highest spending customer" value={data.customers.highestSpending?.name ?? "No customers"} />
+          <ReportMetric label="Highest customer spend" value={MONEY.format(data.customers.highestSpending?.spend ?? 0)} accent />
+          <ReportMetric label="Customer lifetime value" value={MONEY.format(data.customers.lifetimeValue)} />
+        </> : null}
+      </div>
+      {reportTab === "monthly" ? <div className={styles.reportRankings}>
+        <ReportList title="Top 10 agents" rows={data.reports.monthly.topAgents.slice(0, 10)} />
+        <ReportList title="Top customers" rows={data.reports.monthly.topCustomers.slice(0, 10)} />
+        <ReportList title="Best selling products" rows={data.reports.monthly.bestSellingProducts.slice(0, 10)} />
+      </div> : null}
+      {reportTab === "agents" ? <div className={styles.reportRankings}>
+        <ReportList title="Revenue per agent" rows={data.agents.rows.slice(0, 10).map((row) => ({ name: row.name, value: row.revenue }))} />
+        <ReportList title="Profit per agent" rows={data.agents.rows.slice(0, 10).map((row) => ({ name: row.name, value: row.profit }))} />
+        <ReportList title="Orders per agent" rows={data.agents.rows.slice(0, 10).map((row) => ({ name: row.name, value: row.orders }))} money={false} />
+      </div> : null}
+      {reportTab === "customers" ? <div className={styles.reportRankings}>
+        <ReportList title="Top customers by spend" rows={data.reports.monthly.topCustomers.slice(0, 10)} />
+      </div> : null}
+    </section>
+
+    <section className={styles.transactions}>
+      <div className={styles.transactionHeader}><div><span>Admin transaction ledger</span><h2>Every order behind your profit</h2><p>Admin profit is net revenue after refunds minus provider cost and agent commission. Only completed orders count.</p></div>
+        <div className={styles.exportButtons}><button onClick={() => exportTransactions("csv")}>Export CSV</button><button onClick={() => exportTransactions("excel")}>Export Excel</button></div></div>
+      <div className={styles.tableTools}>
+        <label className={styles.searchBox}><span>⌕</span><input type="search" placeholder="Search order, customer, phone, bundle…" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+        <label>Sort by <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)}><option value="date">Date</option><option value="sellingPrice">Selling price</option><option value="actualCost">Actual cost</option><option value="profit">Profit</option><option value="agentCommission">Commission</option></select></label>
+        <button onClick={() => setAscending((current) => !current)}>{ascending ? "Oldest / lowest" : "Newest / highest"} ↕</button>
+      </div>
+      <div className={styles.tableWrap}><table><thead><tr><th>Order ID</th><th>Customer</th><th>Network / bundle</th><th>Gross sale</th><th>Net revenue</th><th>Provider cost</th><th>Admin profit</th><th>Agent commission</th><th>Payment</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody>{visibleTransactions.slice(0, 200).map((row) => <tr key={row.reference}><td><code>{row.reference}</code></td><td><strong>{row.customer}</strong><span>{row.phone}</span></td><td><strong>{row.network}</strong><span>{row.bundle}</span></td><td>{MONEY.format(row.sellingPrice)}</td><td>{MONEY.format(row.netRevenue)}</td><td>{MONEY.format(row.actualCost)}</td><td className={styles.profitCell}>{MONEY.format(row.profit)}</td><td>{MONEY.format(row.agentCommission)}<span>{row.agent}</span></td><td><span className={styles.method}>{row.paymentMethod.replaceAll("_", " ")}</span></td><td><span className={`${styles.status} ${styles[row.status.replaceAll("_", "")] ?? ""}`}>{row.status.replaceAll("_", " ")}</span></td><td>{DATE.format(new Date(row.date))}</td></tr>)}</tbody></table>
+        {!visibleTransactions.length ? <div className={styles.emptyTable}>No transactions match your filters.</div> : null}</div>
+      <footer className={styles.tableFooter}>Showing {Math.min(200, visibleTransactions.length)} of {visibleTransactions.length} filtered transactions</footer>
+    </section>
+  </div>;
 }

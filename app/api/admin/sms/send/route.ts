@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
+import { africasTalkingBaseUrl, africasTalkingUsernames, cleanAfricasTalkingApiKey, isAfricasTalkingAuthError } from "@/lib/sms";
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -24,38 +25,54 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "phones and message are required." }, { status: 400 });
   }
 
-  const apiKey   = process.env.AT_API_KEY;
-  const username = process.env.AT_USERNAME;
-  const senderId = process.env.AT_SENDER_ID ?? "";
+  const apiKey = cleanAfricasTalkingApiKey();
+  const usernames = africasTalkingUsernames();
+  const senderId = process.env.AT_SENDER_ID_ENABLED === "1"
+    ? (process.env.AT_SENDER_ID ?? "")
+    : "";
 
-  if (!apiKey || !username) {
+  if (!apiKey || usernames.length === 0) {
     return Response.json({ error: "SMS not configured. Add AT_API_KEY and AT_USERNAME to environment variables." }, { status: 500 });
   }
 
-  const body = new URLSearchParams({
-    username,
-    to: normalizePhones(phones).join(","),
-    message: message.trim(),
-    ...(senderId ? { from: senderId } : {}),
-  });
-
-  let res: Response;
-  try {
-    res = await fetch("https://api.africastalking.com/version1/messaging", {
-      method: "POST",
-      headers: { apiKey, "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-      body: body.toString(),
+  let username = usernames[0];
+  let res: Response | null = null;
+  let data: Record<string, unknown> = {};
+  let rawText = "";
+  for (const candidate of usernames) {
+    username = candidate;
+    const body = new URLSearchParams({
+      username,
+      to: normalizePhones(phones).join(","),
+      message: message.trim(),
+      ...(senderId ? { from: senderId } : {}),
     });
-  } catch (err) {
-    return Response.json({ error: `Network error: ${String(err)}` }, { status: 500 });
+    try {
+      res = await fetch(`${africasTalkingBaseUrl(username)}/version1/messaging`, {
+        method: "POST",
+        headers: { apiKey: apiKey.trim(), "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+        body: body.toString(),
+      });
+    } catch (err) {
+      return Response.json({ error: `Network error: ${String(err)}` }, { status: 500 });
+    }
+    rawText = await res.text();
+    try { data = JSON.parse(rawText); } catch { data = { raw: rawText }; }
+    const providerMessage = String(
+      (data.SMSMessageData as Record<string, string> | undefined)?.Message ??
+      data.errorMessage ??
+      rawText,
+    );
+    if (isAfricasTalkingAuthError(res.status, providerMessage)) continue;
+    break;
   }
 
-  const rawText = await res.text();
-  let data: Record<string, unknown> = {};
-  try { data = JSON.parse(rawText); } catch { data = { raw: rawText }; }
-
-  if (!res.ok) {
-    return Response.json({ error: (data.SMSMessageData as Record<string, string>)?.Message ?? rawText }, { status: 500 });
+  if (!res?.ok) {
+    return Response.json({
+      error: res?.status === 401
+        ? "Africa's Talking rejected the credentials. Set AT_USERNAME to the exact application username that generated AT_API_KEY; both must come from the same live app."
+        : ((data.SMSMessageData as Record<string, string>)?.Message ?? rawText),
+    }, { status: 500 });
   }
 
   const recipients = (data.SMSMessageData as Record<string, unknown>)?.Recipients as { number: string; status: string; statusCode: number; cost: string }[] ?? [];
@@ -65,5 +82,15 @@ export async function POST(req: NextRequest) {
   // Collect unique non-success statuses so the admin can diagnose delivery issues
   const failReasons = [...new Set(recipients.filter(r => r.status !== "Success").map(r => r.status))];
 
-  return Response.json({ success: true, sent, failed, failReasons, username, isSandbox: username === "sandbox" });
+  return Response.json({
+    success: true,
+    accepted: sent,
+    sent,
+    failed,
+    failReasons,
+    username,
+    isSandbox: username === "sandbox",
+    deliveryPending: sent > 0,
+    senderMode: senderId ? "registered_sender_id" : "provider_default",
+  });
 }

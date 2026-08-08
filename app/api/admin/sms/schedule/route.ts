@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
+import { africasTalkingBaseUrl, cleanAfricasTalkingApiKey } from "@/lib/sms";
 import { NextRequest } from "next/server";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
@@ -50,8 +51,8 @@ export async function PATCH() {
 
   if (!due?.length) return Response.json({ processed: 0 });
 
-  const apiKey   = process.env.AT_API_KEY;
-  const username = process.env.AT_USERNAME;
+  const apiKey = cleanAfricasTalkingApiKey();
+  const username = process.env.AT_USERNAME?.trim();
   if (!apiKey || !username) return Response.json({ error: "SMS not configured" }, { status: 500 });
 
   function normalizePhones(phones: string[]): string {
@@ -66,9 +67,9 @@ export async function PATCH() {
   let processed = 0;
   for (const job of due) {
     const body = new URLSearchParams({ username, to: normalizePhones(job.phones ?? []), message: job.message });
-    const res = await fetch("https://api.africastalking.com/version1/messaging", {
+    const res = await fetch(`${africasTalkingBaseUrl(username)}/version1/messaging`, {
       method: "POST",
-      headers: { apiKey, "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      headers: { apiKey: apiKey.trim(), "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body: body.toString(),
     }).catch(() => null);
     await supabase.from("sms_scheduled").update({ status: res?.ok ? "sent" : "failed" }).eq("id", job.id);

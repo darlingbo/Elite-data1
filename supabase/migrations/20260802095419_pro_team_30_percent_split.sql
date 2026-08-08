@@ -1,0 +1,30 @@
+alter table public.master_commission_ledger
+  add column if not exists admin_rate numeric(5,2) not null default 10,
+  add column if not exists admin_amount numeric(12,2) not null default 0 check (admin_amount >= 0);
+
+create or replace function public.credit_master_agent_commission(p_reference text)
+returns numeric language plpgsql security definer set search_path = public as $$
+declare v_order public.orders%rowtype; v_sub_agent public.agents%rowtype; v_master public.sub_admins%rowtype; v_master_amount numeric(12,2); v_admin_amount numeric(12,2);
+begin
+  select * into v_order from public.orders where reference = p_reference and status in ('processing','completed');
+  if v_order.agent_id is null then return 0; end if;
+  select * into v_sub_agent from public.agents where id = v_order.agent_id;
+  if v_sub_agent.sub_admin_id is null then return 0; end if;
+  select * into v_master from public.sub_admins where id = v_sub_agent.sub_admin_id and status = 'active';
+  if v_master.agent_id is null then return 0; end if;
+  v_master_amount := round(greatest(coalesce(v_order.agent_commission, 0), 0) * 20 / 100, 2);
+  v_admin_amount := round(greatest(coalesce(v_order.agent_commission, 0), 0) * 10 / 100, 2);
+  if v_master_amount + v_admin_amount <= 0 then return 0; end if;
+  insert into public.master_commission_ledger(sub_admin_id, master_agent_id, sub_agent_id, order_reference, rate, amount, admin_rate, admin_amount)
+  values(v_master.id, v_master.agent_id, v_sub_agent.id, p_reference, 20, v_master_amount, 10, v_admin_amount)
+  on conflict(order_reference) do nothing;
+  if found then
+    update public.agents set commission_balance = greatest(coalesce(commission_balance,0) - v_master_amount - v_admin_amount, 0) where id = v_sub_agent.id;
+    update public.agents set commission_balance = coalesce(commission_balance,0) + v_master_amount where id = v_master.agent_id;
+    return v_master_amount;
+  end if;
+  return 0;
+end;
+$$;
+revoke all on function public.credit_master_agent_commission(text) from public, anon, authenticated;
+grant execute on function public.credit_master_agent_commission(text) to service_role;

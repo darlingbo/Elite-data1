@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import type { Bundle } from "@/lib/bundles";
-import CheckoutModal from "@/components/CheckoutModal";
 import VoucherModal from "@/components/VoucherModal";
 
 interface Palette {
@@ -50,6 +50,7 @@ interface Props {
 const MAIN_WHATSAPP = "233509794503";
 
 export default function AgentStorefront({ shopName, agentWhatsapp, agentCode, isPro }: Props) {
+  const router = useRouter();
   // Use agent's own WhatsApp if available, otherwise fall back to main site number
   const supportNumber = agentWhatsapp && agentWhatsapp.length > 5 ? agentWhatsapp : MAIN_WHATSAPP;
   const palette = getShopPalette(shopName);
@@ -57,8 +58,8 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode, is
   const [mashupBundles, setMashupBundles] = useState<MashupBundle[]>([]);
   const [loading, setLoading] = useState(true);
   const [network, setNetwork] = useState<"mtn" | "telecel" | "airteltigo" | "mashup">("mtn");
-  const [selected, setSelected] = useState<Bundle | null>(null);
   const [voucherOpen, setVoucherOpen] = useState(false);
+  const [voucherPrice, setVoucherPrice] = useState(18);
   const [netStatus, setNetStatus] = useState<{ mtn: boolean; telecel: boolean; at: boolean; mashup: boolean }>({ mtn: true, telecel: true, at: true, mashup: true });
 
   useEffect(() => {
@@ -75,9 +76,11 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode, is
     Promise.all([
       fetch(`/api/bundles?agent=${encodeURIComponent(agentCode)}`).then(r => r.json()),
       fetch(`/api/mashup-bundles`).then(r => r.json()),
-    ]).then(([d, m]) => {
+      fetch(`/api/vouchers/prices?agent=${encodeURIComponent(agentCode)}`).then(r => r.json()),
+    ]).then(([d, m, v]) => {
       setBundles(d.bundles ?? []);
       setMashupBundles(m.bundles ?? []);
+      setVoucherPrice(Math.min(Number(v.BECE?.sellPrice ?? 18), Number(v.WASSCE?.sellPrice ?? 18)));
       setLoading(false);
     });
   }, [agentCode]);
@@ -88,6 +91,10 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode, is
 
   const initial = shopName.charAt(0).toUpperCase();
   const gradStyle = { background: `linear-gradient(135deg, ${palette.from}, ${palette.to})` };
+
+  function openCheckout(bundleId: string) {
+    router.push(`/checkout?bundle=${encodeURIComponent(bundleId)}&agent=${encodeURIComponent(agentCode)}`);
+  }
 
   return (
     <div className="min-h-screen" style={{ background: palette.bg }}>
@@ -154,7 +161,7 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode, is
                   validity: "30 days",
                 };
                 return (
-                  <button key={b.id} onClick={() => setSelected(asBundle)}
+                  <button key={b.id} onClick={() => openCheckout(asBundle.id)}
                     className="bg-white rounded-2xl shadow-sm p-4 text-left hover:shadow-md transition-all border border-transparent hover:border-white/80">
                     <div className="text-xs font-black mb-2 px-2 py-0.5 rounded-full inline-block text-white"
                       style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
@@ -179,7 +186,7 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode, is
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {filtered.map((b) => (
-              <button key={b.id} onClick={() => setSelected(b)}
+              <button key={b.id} onClick={() => openCheckout(b.id)}
                 className="bg-white rounded-2xl shadow-sm p-4 text-left hover:shadow-md transition-all border border-transparent hover:border-white/80 group">
                 <div className="text-xs font-black mb-2 px-2 py-0.5 rounded-full inline-block text-white"
                   style={gradStyle}>
@@ -209,7 +216,7 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode, is
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-black text-gray-800 text-sm">BECE &amp; WASSCE Voucher</p>
-                <p className="text-xs text-gray-400">GH₵18 each · Sent via SMS instantly</p>
+                <p className="text-xs text-gray-400">From GH₵{voucherPrice.toFixed(2)} · Sent via SMS after approval</p>
               </div>
               <svg className="w-5 h-5 text-gray-300 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -252,9 +259,6 @@ export default function AgentStorefront({ shopName, agentWhatsapp, agentCode, is
         </p>
       </div>
 
-      {selected && (
-        <CheckoutModal bundle={selected} agentCode={agentCode} onClose={() => setSelected(null)} />
-      )}
       {voucherOpen && (
         <VoucherModal agentCode={agentCode} onClose={() => setVoucherOpen(false)} />
       )}

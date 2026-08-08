@@ -17,6 +17,7 @@ export function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats
   const [switchMsg, setSwitchMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [planModal, setPlanModal] = useState<{ id: string; name: string; currentPlan: "free" | "pro" } | null>(null);
   const [planChanging, setPlanChanging] = useState(false);
+  const [reviewAgent, setReviewAgent] = useState<StatsData["agents"]["all"][number] | null>(null);
 
   async function handleSwitchMode() {
     if (!switchModal || !switchTarget) return;
@@ -97,6 +98,7 @@ export function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats
                 <th className="px-4 py-3 text-left font-semibold">Phone</th>
                 <th className="px-4 py-3 text-left font-semibold">WhatsApp</th>
                 <th className="px-4 py-3 text-left font-semibold">Business</th>
+                <th className="px-4 py-3 text-left font-semibold">AI Review</th>
                 {agentTab === "approved" && <>
                   <th className="px-4 py-3 text-left font-semibold">Plan</th>
                   <th className="px-4 py-3 text-left font-semibold">Type</th>
@@ -116,6 +118,7 @@ export function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats
                   <td className="px-4 py-3.5 font-mono text-xs text-slate-400">{a.phone}</td>
                   <td className="px-4 py-3.5 text-xs">{a.whatsapp ? <a href={`https://wa.me/${a.whatsapp.replace(/^0/, "233")}`} target="_blank" rel="noreferrer" className="text-green-400 hover:text-green-300 font-mono">{a.whatsapp}</a> : <span className="text-slate-600">—</span>}</td>
                   <td className="px-4 py-3.5 text-slate-500 text-xs">{a.business_name || "—"}</td>
+                  <td className="px-4 py-3.5 text-xs">{a.ai_screened_at ? <button onClick={() => setReviewAgent(a)} className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-1 font-bold text-violet-300">{a.ai_screening_score ?? 0}/100 · Details</button> : <span className="text-slate-600">Manual</span>}</td>
                   {agentTab === "approved" && (() => {
                     const isPro = (a as { plan?: string }).plan === "pro";
                     return <>
@@ -161,6 +164,21 @@ export function AgentsView({ stats, onRefresh, defaultTab = "pending" }: { stats
         </div>
       </div>
 
+      {reviewAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/75 px-4 py-8">
+          <div className="w-full max-w-2xl rounded-2xl border p-6 shadow-2xl" style={{ background: CARD, borderColor: BORDER }}>
+            <div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-black text-white">AI Agent Review</h3><p className="text-sm text-slate-400">{reviewAgent.name} · {reviewAgent.email}</p></div><button onClick={() => setReviewAgent(null)} className="text-slate-400">✕</button></div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <div className="rounded-xl bg-slate-950 p-3"><p className="text-[10px] text-slate-500">Score</p><p className="font-black text-white">{reviewAgent.ai_screening_score ?? 0}/100</p></div>
+              <div className="rounded-xl bg-slate-950 p-3"><p className="text-[10px] text-slate-500">Confidence</p><p className="font-black capitalize text-white">{reviewAgent.ai_screening_confidence ?? "unknown"}</p></div>
+              <div className="rounded-xl bg-slate-950 p-3"><p className="text-[10px] text-slate-500">Approved via</p><p className="break-words text-xs font-bold text-white">{reviewAgent.approved_via ?? "manual review"}</p></div>
+            </div>
+            <div className="mt-3 rounded-xl border p-4 text-sm text-slate-300" style={{ borderColor: BORDER }}><p className="mb-1 text-xs font-black text-violet-300">AI REASON</p>{reviewAgent.ai_screening_reason ?? "No reason recorded."}</div>
+            <div className="mt-3 space-y-2">{Object.entries(reviewAgent.application_answers ?? {}).map(([key, value]) => key !== "agreesToRules" && <div key={key} className="rounded-xl bg-slate-950 p-3"><p className="text-[10px] font-black uppercase text-slate-500">{key.replace(/([A-Z])/g, " $1")}</p><p className="mt-1 text-sm text-slate-300">{String(value)}</p></div>)}</div>
+            <p className="mt-4 text-xs text-slate-500">Override this decision using Approve, Decline, or Remove in the agent table.</p>
+          </div>
+        </div>
+      )}
       {agentAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="rounded-2xl shadow-2xl w-full max-w-sm p-6 border" style={{ background: CARD, borderColor: BORDER }}>

@@ -1,0 +1,177 @@
+{
+  "id": "EliteDataWhatsAppAI01",
+  "name": "EliteData WhatsApp AI Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "elitedata-whatsapp-ai",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "7dd4304e-58f3-48a0-ae8e-7ad0310b2a4d",
+      "name": "Whapi Incoming Message",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-720, 120],
+      "webhookId": "elitedata-whatsapp-ai"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "7c9a12fe-f9ac-4db0-a793-b5c090b61ed1",
+              "leftValue": "={{ $json.headers['x-webhook-secret'] || $json.query.secret || '' }}",
+              "rightValue": "={{ $env.WHATSAPP_WEBHOOK_SECRET }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b4b5ea0a-797c-4915-82e7-f05d77b5b57f",
+      "name": "Verify Webhook Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-480, 120]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ELITEDATA_SITE_URL || 'https://www.elitedata1.com' }}/api/webhooks/whatsapp",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WHATSAPP_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($('Whapi Incoming Message').item.json.body) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "8a292d8c-aed1-4cad-b886-8543a8fda1ee",
+      "name": "Run EliteData DeepSeek Assistant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-208, 24],
+      "notes": "The EliteData API performs duplicate protection, sender privacy checks, live bundle lookup, DeepSeek generation, human handoff and the Whapi reply."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "69fa912f-956e-4db0-af69-8158fd5a8c58",
+      "name": "Return Success to Whapi",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [64, 24]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"error\": \"Unauthorized\" }",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "4d1234aa-28c2-4ff3-b0f0-6b6f8c8d71f3",
+      "name": "Reject Invalid Request",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [-208, 232]
+    },
+    {
+      "parameters": {
+        "content": "## EliteData WhatsApp AI\nWhapi sends incoming messages here. n8n verifies the shared secret, then forwards the message to EliteData's protected DeepSeek assistant.\n\nRequired n8n environment variables:\n- `WHATSAPP_WEBHOOK_SECRET`\n- `ELITEDATA_SITE_URL`",
+        "height": 250,
+        "width": 430,
+        "color": 7
+      },
+      "id": "c9733e91-b291-4ecb-879b-87b646c90ac1",
+      "name": "Setup Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-720, -232]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Whapi Incoming Message": {
+      "main": [
+        [
+          {
+            "node": "Verify Webhook Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Webhook Secret": {
+      "main": [
+        [
+          {
+            "node": "Run EliteData DeepSeek Assistant",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject Invalid Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run EliteData DeepSeek Assistant": {
+      "main": [
+        [
+          {
+            "node": "Return Success to Whapi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "d77cf60b-654f-4c47-98e7-051285fc9fea",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

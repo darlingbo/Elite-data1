@@ -14,6 +14,8 @@ type VoucherEntry = typeof VOUCHER_META[number] & {
 };
 
 const D = { bg: "#080d18", card: "#0d1525", border: "#1a2a45", text: "#e2e8f0", muted: "#64748b" };
+const fieldLabelStyle = { color: D.muted, fontSize: 11, fontWeight: 700 } as const;
+const fieldStyle = { width: "100%", marginTop: 7, background: "#050b15", border: `1px solid ${D.border}`, borderRadius: 12, padding: "12px 13px", color: D.text, fontSize: 14, outline: "none", boxSizing: "border-box" } as const;
 
 function usePaystackReady() {
   const [ready, setReady] = useState(() => typeof window !== "undefined" && !!window.PaystackPop);
@@ -53,6 +55,15 @@ export default function VouchersPage() {
   const [selectedId, setSelectedId]   = useState<VoucherID>("BECE");
   const [quantity, setQuantity]       = useState(1);
   const [phone, setPhone]             = useState("");
+  const [serviceMode, setServiceMode] = useState<"voucher_only" | "assisted_result">("voucher_only");
+  const [candidateName, setCandidateName] = useState("");
+  const [candidateType, setCandidateType] = useState<"school" | "private">("school");
+  const [examYear, setExamYear] = useState(String(new Date().getFullYear()));
+  const [indexNumber, setIndexNumber] = useState("");
+  const [confirmIndexNumber, setConfirmIndexNumber] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [consent, setConsent] = useState(false);
   const [promoCode, setPromoCode]     = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoMsg, setPromoMsg]       = useState<{ ok: boolean; text: string } | null>(null);
@@ -61,7 +72,7 @@ export default function VouchersPage() {
   const [phoneError, setPhoneError]   = useState("");
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState("");
-  const [success, setSuccess]         = useState<{ reference: string } | null>(null);
+  const [success, setSuccess]         = useState<{ reference: string; pendingApproval: boolean } | null>(null);
   const [mounted, setMounted]         = useState(false);
   const [phoneFocus, setPhoneFocus]   = useState(false);
   const [flipped, setFlipped]         = useState<VoucherID | null>(null);
@@ -87,15 +98,20 @@ export default function VouchersPage() {
   }, []);
 
   const selected      = vouchers.find(v => v.id === selectedId)!;
-  const isBulk        = quantity > selected.bulkThreshold;
-  const hasDiscount   = isBulk || promoApplied;
+  const isAssisted    = serviceMode === "assisted_result";
+  const isBulk        = !isAssisted && quantity > selected.bulkThreshold;
+  const hasDiscount   = !isAssisted && (isBulk || promoApplied);
   const effectivePrice = hasDiscount ? selected.bulkPrice : selected.price;
-  const subtotal      = parseFloat((effectivePrice * quantity).toFixed(2));
-  const fee           = parseFloat((subtotal * 0.02).toFixed(2));
+  const subtotal      = isAssisted ? 25 : parseFloat((effectivePrice * quantity).toFixed(2));
+  const fee           = isAssisted ? 0 : parseFloat((subtotal * 0.02).toFixed(2));
   const total         = parseFloat((subtotal + fee).toFixed(2));
-  const normalizedPhone = normalizeGhana(phone);
+  const normalizedPhone = normalizeGhana(isAssisted ? whatsapp : phone);
   const phoneValid      = /^0[2-5][0-9]{8}$/.test(normalizedPhone);
-  const canPay          = phoneValid && !phoneError && paystackReady && !loading;
+  const needsDob = (selectedId === "WASSCE" && candidateType === "private") || (selectedId === "BECE" && candidateType === "school");
+  const candidateValid = candidateName.trim().length >= 2 && /^(?:\d[\s-]*){6,14}$/.test(indexNumber.trim()) && indexNumber.trim() === confirmIndexNumber.trim()
+    && /^\d{4}$/.test(examYear) && Number(examYear) >= 1990 && Number(examYear) <= new Date().getFullYear()
+    && (!needsDob || /^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) && consent;
+  const canPay          = phoneValid && !phoneError && (!isAssisted || candidateValid) && paystackReady && !loading;
   const bulkLeft      = selected.bulkThreshold + 1 - quantity;
 
   function changeQty(val: number) {
@@ -135,8 +151,9 @@ export default function VouchersPage() {
 
   function handlePay() {
     setError("");
-    const cleaned = normalizeGhana(phone);
+    const cleaned = normalizeGhana(isAssisted ? whatsapp : phone);
     if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setError("Enter a valid Ghana phone number (e.g. 0241234567 or +233241234567)."); return; }
+    if (isAssisted && !candidateValid) { setError("Complete all candidate details, confirm the index number, and accept the authorization."); return; }
     if (!paystackReady) { setError("Payment loading, try again."); return; }
     const key = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
     if (!key) { setError("Paystack key missing."); return; }
@@ -151,8 +168,12 @@ export default function VouchersPage() {
         metadata: {
           custom_fields: [
             { display_name: "Phone",   variable_name: "phone",   value: cleaned },
+            { display_name: "Purchase", variable_name: "purchase_kind", value: "voucher" },
+            { display_name: "Voucher Type", variable_name: "voucher_type", value: selected.id },
+            { display_name: "Quantity", variable_name: "voucher_quantity", value: String(quantity) },
             { display_name: "Voucher", variable_name: "voucher", value: `${selected.label} x${quantity}` },
-            { display_name: "Promo",   variable_name: "promo",   value: promoApplied ? "yes" : "no" },
+            { display_name: "Promo", variable_name: "promo_code", value: promoApplied ? promoCode.trim().toUpperCase() : "" },
+            { display_name: "Service", variable_name: "service_mode", value: serviceMode },
           ],
         },
         callback: (res: { reference: string }) => {
@@ -161,13 +182,24 @@ export default function VouchersPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               name: "Customer", email, phone: cleaned,
-              voucherType: selected.id, quantity,
+              voucherType: selected.id, quantity: isAssisted ? 1 : quantity,
               paystackRef: res.reference,
-              promoCode: promoApplied ? promoCode.trim() : undefined,
+              promoCode: !isAssisted && promoApplied ? promoCode.trim() : undefined,
+              serviceMode,
+              candidateName: candidateName.trim(), candidateType, examYear,
+              indexNumber: indexNumber.trim(), confirmIndexNumber: confirmIndexNumber.trim(),
+              dateOfBirth: needsDob ? dateOfBirth : undefined, whatsapp: cleaned, consent,
             }),
           })
             .then(r => r.json())
-            .then(data => { setLoading(false); if (data.success) setSuccess({ reference: data.reference }); else setError(data.error || "Something went wrong."); })
+            .then(data => {
+              setLoading(false);
+              if (data.success) {
+                setSuccess({ reference: data.reference, pendingApproval: data.pendingApproval !== false });
+              } else {
+                setError(data.error || "Payment was received but the order could not be confirmed. Contact support with your Paystack reference.");
+              }
+            })
             .catch(() => { setLoading(false); setError("Network error. Contact support on WhatsApp."); });
         },
         onClose: () => setLoading(false),
@@ -196,10 +228,15 @@ export default function VouchersPage() {
               <span key={i} style={{ position: "absolute", top: -8, left: `${10 + i * 18}%`, fontSize: 14, animation: `confettiDrop .8s ease ${i * 0.1}s forwards` }}>{e}</span>
             ))}
           </div>
-          <h2 style={{ color: "#4ade80", fontWeight: 900, fontSize: 24, margin: "0 0 8px", animation: "fadeSlideUp .5s .2s both" }}>Voucher Purchased!</h2>
+          <h2 style={{ color: "#4ade80", fontWeight: 900, fontSize: 24, margin: "0 0 8px", animation: "fadeSlideUp .5s .2s both" }}>
+            {success.pendingApproval ? "Order Received!" : "Voucher Order Sent!"}
+          </h2>
           <p style={{ color: D.muted, fontSize: 13, margin: "0 0 20px", lineHeight: 1.7, animation: "fadeSlideUp .5s .3s both" }}>
-            Your <strong style={{ color: D.text }}>{selected.label} × {quantity}</strong> voucher code{quantity > 1 ? "s have" : " has"} been sent via SMS to{" "}
-            <strong style={{ color: "#60a5fa" }}>{phone}</strong>.
+            Your <strong style={{ color: D.text }}>{isAssisted ? `${selected.label} assisted result check` : `${selected.label} × ${quantity}`}</strong> order has been confirmed.
+            {success.pendingApproval
+              ? (isAssisted ? " It is awaiting approval. We will check the result and send it to WhatsApp after approval." : " It is awaiting approval; the voucher code will be sent by SMS after delivery.")
+              : (isAssisted ? " Result checking is processing and will be sent to WhatsApp." : " Delivery is processing and the voucher code will be sent by SMS shortly.")}{" "}
+            Recipient: <strong style={{ color: "#60a5fa" }}>{normalizedPhone}</strong>.
           </p>
           <div style={{ background: "#050b15", borderRadius: 14, padding: "14px 16px", marginBottom: 20, animation: "fadeSlideUp .5s .4s both" }}>
             <p style={{ color: D.muted, fontSize: 11, margin: "0 0 4px" }}>Order Reference</p>
@@ -253,9 +290,9 @@ export default function VouchersPage() {
         <div style={{ textAlign: "center", marginBottom: 28, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(20px)", transition: "all .6s cubic-bezier(.22,1,.36,1)" }}>
           <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 72, height: 72, borderRadius: 22, background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", fontSize: 34, marginBottom: 16, animation: "floatIcon 3s ease-in-out infinite", boxShadow: "0 8px 32px rgba(139,92,246,0.4)" }}>📋</div>
           <h1 style={{ fontSize: 26, fontWeight: 900, margin: "0 0 6px", background: "linear-gradient(135deg,#60a5fa,#a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-            Result Checker Vouchers
+            Buy BECE &amp; WASSCE Result Checker Vouchers Online in Ghana
           </h1>
-          <p style={{ color: D.muted, fontSize: 13, margin: 0 }}>BECE & WASSCE · Instant SMS delivery · GH₵19 each · Buy 11+ for GH₵18</p>
+          <p style={{ color: D.muted, fontSize: 13, margin: 0 }}>Secure online payment · Available voucher details sent by SMS after approval</p>
         </div>
 
         {/* How to Buy */}
@@ -340,7 +377,32 @@ export default function VouchersPage() {
         </div>
 
         {/* Step 2 — Quantity */}
-        <div style={{ marginBottom: 16, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(24px)", transition: "all .55s .2s cubic-bezier(.22,1,.36,1)" }}>
+        <div style={{ marginBottom: 16, background: D.card, border: `1px solid ${D.border}`, borderRadius: 22, padding: 20 }}>
+          <p style={{ fontSize: 12, fontWeight: 800, color: D.muted, margin: "0 0 12px", textTransform: "uppercase", letterSpacing: 1 }}>Choose a service</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10 }}>
+            {([{ id: "voucher_only", title: "Voucher only", text: `Receive the ${selected.label} voucher by SMS`, price: `GH₵${selected.price.toFixed(2)} each` }, { id: "assisted_result", title: "Check my result for me", text: "We check your result and send it to WhatsApp", price: "GH₵25 total" }] as const).map(option => {
+              const active = serviceMode === option.id;
+              return <button key={option.id} type="button" onClick={() => { setServiceMode(option.id); setError(""); if (option.id === "assisted_result") { setQuantity(1); clearPromo(); } }} style={{ textAlign: "left", padding: 16, borderRadius: 16, cursor: "pointer", background: active ? `${selected.color}18` : "#050b15", border: `1px solid ${active ? selected.color : D.border}`, color: D.text }}><strong style={{ display: "block", fontSize: 14, marginBottom: 5 }}>{active ? "✓ " : ""}{option.title}</strong><span style={{ display: "block", color: D.muted, fontSize: 11, lineHeight: 1.5 }}>{option.text}</span><span style={{ display: "block", color: active ? selected.color : "#94a3b8", fontWeight: 900, fontSize: 14, marginTop: 8 }}>{option.price}</span></button>;
+            })}
+          </div>
+        </div>
+
+        {isAssisted && <div style={{ marginBottom: 16, background: D.card, border: `1px solid ${selected.color}55`, borderRadius: 22, padding: 20 }}>
+          <p style={{ color: D.text, fontWeight: 900, fontSize: 16, margin: "0 0 5px" }}>Candidate details</p>
+          <p style={{ color: D.muted, fontSize: 11, lineHeight: 1.55, margin: "0 0 16px" }}>Enter the information exactly as it appears on the examination record. Your voucher will be sent securely to the admin for checking.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 12 }}>
+            <label style={fieldLabelStyle}>Candidate full name<input value={candidateName} onChange={e => setCandidateName(e.target.value)} placeholder="Full name on exam record" style={fieldStyle} /></label>
+            <label style={fieldLabelStyle}>Candidate type<select value={candidateType} onChange={e => setCandidateType(e.target.value as "school" | "private")} style={fieldStyle}><option value="school">School candidate</option><option value="private">Private candidate</option></select></label>
+            <label style={fieldLabelStyle}>Examination year<input type="number" min="1990" max={new Date().getFullYear()} value={examYear} onChange={e => setExamYear(e.target.value)} style={fieldStyle} /></label>
+            <label style={fieldLabelStyle}>Index number<input inputMode="numeric" value={indexNumber} onChange={e => setIndexNumber(e.target.value.replace(/[^0-9]/g, ""))} placeholder="Candidate index number" style={fieldStyle} /></label>
+            <label style={fieldLabelStyle}>Confirm index number<input inputMode="numeric" value={confirmIndexNumber} onChange={e => setConfirmIndexNumber(e.target.value.replace(/[^0-9]/g, ""))} placeholder="Enter index number again" style={fieldStyle} /></label>
+            {needsDob && <label style={fieldLabelStyle}>Date of birth<input type="date" value={dateOfBirth} onChange={e => setDateOfBirth(e.target.value)} style={fieldStyle} /></label>}
+            <label style={fieldLabelStyle}>WhatsApp number<input type="tel" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="0241234567" style={fieldStyle} /></label>
+          </div>
+          <label style={{ display: "flex", gap: 10, alignItems: "flex-start", color: "#94a3b8", fontSize: 11, lineHeight: 1.55, marginTop: 16, cursor: "pointer" }}><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ marginTop: 3 }} />I authorize Elite Data to use these details and one result-checker voucher only to check my result and send it to my WhatsApp number.</label>
+        </div>}
+
+        {!isAssisted && <div style={{ marginBottom: 16, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(24px)", transition: "all .55s .2s cubic-bezier(.22,1,.36,1)" }}>
           <div style={{ background: D.card, border: `1px solid ${isBulk ? "rgba(245,158,11,0.4)" : D.border}`, borderRadius: 22, padding: 20, transition: "border-color .3s" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
               <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, color: "white", flexShrink: 0 }}>2</div>
@@ -375,10 +437,10 @@ export default function VouchersPage() {
               </p>
             )}
           </div>
-        </div>
+        </div>}
 
         {/* Step 3 — Promo code (optional) */}
-        <div style={{ marginBottom: 16, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(24px)", transition: "all .55s .25s cubic-bezier(.22,1,.36,1)" }}>
+        {!isAssisted && <div style={{ marginBottom: 16, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(24px)", transition: "all .55s .25s cubic-bezier(.22,1,.36,1)" }}>
           <button
             onClick={() => setShowPromo(v => !v)}
             style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: D.card, border: `1px solid ${promoApplied ? "rgba(34,197,94,0.4)" : D.border}`, borderRadius: showPromo ? "18px 18px 0 0" : 18, padding: "14px 20px", cursor: "pointer", color: D.text, fontSize: 13, fontWeight: 700, transition: "all .25s" }}>
@@ -420,10 +482,10 @@ export default function VouchersPage() {
               )}
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Step 4 — Phone */}
-        <div style={{ marginBottom: 16, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(24px)", transition: "all .55s .3s cubic-bezier(.22,1,.36,1)" }}>
+        {!isAssisted && <div style={{ marginBottom: 16, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(24px)", transition: "all .55s .3s cubic-bezier(.22,1,.36,1)" }}>
           <div style={{ background: D.card, border: `1px solid ${phoneFocus ? selected.color : D.border}`, borderRadius: 22, padding: 20, transition: "border-color .25s", boxShadow: phoneFocus ? `0 0 0 3px ${selected.color}20` : "none" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
               <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, color: "white" }}>3</div>
@@ -451,20 +513,20 @@ export default function VouchersPage() {
               <p style={{ color: "#4ade80", fontSize: 12, fontWeight: 600, margin: "8px 0 0" }}>✓ Valid Ghana number</p>
             )}
           </div>
-        </div>
+        </div>}
 
         {/* Order summary */}
         <div style={{ background: `${selected.color}08`, border: `1px solid ${selected.color}30`, borderRadius: 18, padding: "16px 20px", marginBottom: 16, transition: "all .3s", opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(24px)", transitionDelay: ".4s" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <p style={{ color: D.muted, fontSize: 11, margin: "0 0 3px" }}>Order Summary</p>
-              <p style={{ color: D.text, fontWeight: 800, fontSize: 15, margin: 0 }}>{selected.label} × {quantity}</p>
+              <p style={{ color: D.text, fontWeight: 800, fontSize: 15, margin: 0 }}>{isAssisted ? `${selected.label} assisted result check` : `${selected.label} × ${quantity}`}</p>
               {hasDiscount && (
                 <p style={{ color: "#f59e0b", fontSize: 11, fontWeight: 700, margin: "3px 0 0" }}>
                   {isBulk && !promoApplied ? "Bulk discount" : "Discount code"} · save GH₵{((selected.price - effectivePrice) * quantity).toFixed(2)} total
                 </p>
               )}
-              <p style={{ color: D.muted, fontSize: 11, margin: "3px 0 0" }}>incl. 2% processing fee</p>
+              <p style={{ color: D.muted, fontSize: 11, margin: "3px 0 0" }}>{isAssisted ? "Voucher and checking service included — no extra fee" : "incl. 2% processing fee"}</p>
             </div>
             <div style={{ textAlign: "right" }}>
               <p style={{ color: D.muted, fontSize: 11, margin: "0 0 3px" }}>Total</p>

@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { bundles as staticBundles } from "./bundles";
+import { roundCurrency } from "./finance";
 
 export const FREE_AGENT_DISCOUNT = 0.04; // 4% off customer price for custom_price (free plan) agents
 
@@ -34,7 +35,7 @@ export async function getAgentBundleCost(
   }
 
   // Free plan custom_price agents: 4% off admin selling price
-  return parseFloat((customerPrice * (1 - FREE_AGENT_DISCOUNT)).toFixed(2));
+  return roundCurrency(customerPrice * (1 - FREE_AGENT_DISCOUNT));
 }
 
 /**
@@ -87,14 +88,14 @@ export async function getAllAgentBundleCosts(
     const override = dbMap.get(b.id);
     if (override?.active === false) continue;
     const customerPrice = override?.price ?? b.price;
-    result.push({ bundle_id: b.id, price: parseFloat((customerPrice * (1 - discount)).toFixed(2)) });
+    result.push({ bundle_id: b.id, price: roundCurrency(customerPrice * (1 - discount)) });
   }
 
   // Custom bundles (not in the static list) — include if active !== false
   for (const [id, { price, active }] of dbMap) {
     if (defaultIds.has(id)) continue;
     if (active === false) continue;
-    result.push({ bundle_id: id, price: parseFloat((price * (1 - discount)).toFixed(2)) });
+    result.push({ bundle_id: id, price: roundCurrency(price * (1 - discount)) });
   }
 
   return result;

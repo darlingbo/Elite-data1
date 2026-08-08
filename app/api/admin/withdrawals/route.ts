@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendSwiftAlert } from "@/lib/telegram";
+import { sendWithdrawalRequestAlert } from "@/lib/telegram";
 import { isAdmin } from "@/lib/adminAuth";
+import { addCurrency, formatCurrency, roundCurrency } from "@/lib/finance";
 
 export async function GET() {
   if (!(await isAdmin())) {
@@ -30,7 +31,7 @@ export async function GET() {
   const rejected = rows.filter((row) => row.status === "rejected").length;
   const totalGhc = rows
     .filter((row) => row.status === "approved")
-    .reduce((sum, row) => sum + Math.abs(Number(row.amount)), 0);
+    .reduce((sum, row) => addCurrency(sum, Math.abs(Number(row.amount))), 0);
 
   return Response.json({ withdrawals: rows, pending, approved, rejected, totalGhc });
 }
@@ -59,7 +60,7 @@ export async function PATCH(request: NextRequest) {
       return Response.json({ error: "Already processed." }, { status: 400 });
     }
 
-    sendSwiftAlert(
+    sendWithdrawalRequestAlert(
       `❌ WITHDRAWAL REJECTED — reserved funds returned to the agent's original balances.`
     ).catch(() => {});
     return Response.json({ success: true });
@@ -95,10 +96,10 @@ export async function PATCH(request: NextRequest) {
     return Response.json({ error: "Already processed." }, { status: 409 });
   }
 
-  const amount = Math.abs(Number(transaction.amount));
-  sendSwiftAlert(
+  const amount = roundCurrency(Math.abs(Number(transaction.amount)));
+  sendWithdrawalRequestAlert(
     `✅ WITHDRAWAL MARKED AS PAID MANUALLY\n` +
-      `💰 GH₵${amount.toFixed(2)} — ${transaction.description}\n` +
+      `💰 ${formatCurrency(amount)} — ${transaction.description}\n` +
       `No automatic Paystack transfer was initiated.`
   ).catch(() => {});
 

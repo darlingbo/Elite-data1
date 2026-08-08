@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
-import { sendAdminAlert } from "@/lib/telegram";
+import { sendCompletedOrderAlert } from "@/lib/telegram";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 async function isAdmin(): Promise<boolean> {
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     });
   } catch { /* non-critical */ }
 
-  await sendAdminAlert(
+  await sendCompletedOrderAlert(
     `✅ MANUALLY COMPLETED\nRef: ${reference}\nPhone: ${order.phone}\n${(order.network ?? "").toUpperCase()} ${order.bundle_size}\nMarked complete by admin`
   ).catch(() => {});
 

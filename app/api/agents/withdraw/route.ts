@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendSwiftAlert } from "@/lib/telegram";
+import { sendWithdrawalRequestAlert } from "@/lib/telegram";
+import { addCurrency, formatCurrency, roundCurrency } from "@/lib/finance";
 import { requireAgentSession } from "@/lib/agentAuth";
 import { withdrawSchema, parseBody } from "@/lib/validation";
 import { rateLimitDb } from "@/lib/rate-limit";
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Too many withdrawal requests. Try again later." }, { status: 429 });
   }
 
-  const amt = amount;
+  const amt = roundCurrency(amount);
 
   const { data: agent } = await supabase
     .from("agents")
@@ -66,14 +67,14 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: `Minimum withdrawal is GH₵${minWithdraw}.` }, { status: 400 });
   }
 
-  const commissionBal = Number(agent.commission_balance ?? 0);
-  const paystackBal = agentType === "custom_price" ? Number(agent.paystack_wallet_balance ?? 0) : 0;
-  const withdrawable = parseFloat((commissionBal + paystackBal).toFixed(2));
+  const commissionBal = roundCurrency(Number(agent.commission_balance ?? 0));
+  const paystackBal = agentType === "custom_price" ? roundCurrency(Number(agent.paystack_wallet_balance ?? 0)) : 0;
+  const withdrawable = addCurrency(commissionBal, paystackBal);
 
   if (withdrawable < amt) {
     const msg = agent.agent_type === "custom_price"
-      ? `Insufficient balance. Withdrawable: GH₵${withdrawable.toFixed(2)} (Profit: GH₵${commissionBal.toFixed(2)} + Paystack deposits: GH₵${paystackBal.toFixed(2)})`
-      : `Insufficient balance. Available: GH₵${commissionBal.toFixed(2)}`;
+      ? `Insufficient balance. Withdrawable: ${formatCurrency(withdrawable)} (Profit: ${formatCurrency(commissionBal)} + Paystack deposits: ${formatCurrency(paystackBal)})`
+      : `Insufficient balance. Available: ${formatCurrency(commissionBal)}`;
     return Response.json({ error: msg }, { status: 400 });
   }
 
@@ -90,12 +91,12 @@ export async function POST(request: NextRequest) {
   }
 
   // Alert admin on swaftdatagh_bot
-  await sendSwiftAlert(
+  await sendWithdrawalRequestAlert(
     `💰 <b>WITHDRAWAL REQUEST</b>\n\n` +
     `👤 ${name} (${referralCode ?? "—"})\n` +
-    `💵 GH₵${amt.toFixed(2)} via ${method}\n` +
+    `💵 ${formatCurrency(amt)} via ${method}\n` +
     `📞 ${accountNumber} (${accountName})\n` +
-    `💳 Balance: GH₵${withdrawable.toFixed(2)}\n\n` +
+    `💳 Balance before request: ${formatCurrency(withdrawable)}\n\n` +
     `➡️ Go to Admin → Withdrawal Requests to approve or reject.`
   ).catch(() => {});
 

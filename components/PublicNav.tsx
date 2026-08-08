@@ -93,8 +93,6 @@ export default function PublicNav() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
-  useEffect(() => { setOpen(false); }, [pathname]);
-
   useEffect(() => {
     if (open) document.body.style.overflow = "hidden";
     else document.body.style.overflow = "";
@@ -104,11 +102,11 @@ export default function PublicNav() {
   return (
     <>
       {/* Sticky top navbar */}
-      <nav className="sticky top-0 z-40 bg-[#0d1b2e]/95 backdrop-blur border-b border-[#1e3a5f]/60 h-14 flex items-center px-4 gap-3">
+      <nav className="public-nav sticky top-0 z-40 h-[72px] flex items-center px-4 lg:px-8 gap-3">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 shrink-0 mr-2">
-          <Image src="/logo.png" alt="Elite Data" width={36} height={36} className="rounded-lg" priority />
-          <span className="text-white font-black text-base leading-none hidden sm:block">Elite Data</span>
+          <Image src="/logo.png" alt="Elite Data" width={42} height={42} className="rounded-xl shadow-lg" priority />
+          <span className="text-white font-black text-lg tracking-[-0.04em] leading-none hidden sm:block">Elite<span className="text-yellow-400">Data</span></span>
         </Link>
 
         {/* Desktop links */}
@@ -139,7 +137,7 @@ export default function PublicNav() {
         </Link>
         <Link
           href="/buy"
-          className="hidden md:inline-flex items-center gap-1.5 bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-black text-sm px-4 py-1.5 rounded-xl transition-colors"
+            className="hidden md:inline-flex items-center gap-1.5 bg-yellow-400 hover:bg-yellow-300 text-gray-950 font-black text-sm px-5 py-2.5 rounded-xl transition-all hover:-translate-y-0.5 shadow-[0_10px_30px_rgba(251,191,36,.2)]"
         >
           Buy Data ⚡
         </Link>
@@ -167,7 +165,7 @@ export default function PublicNav() {
       )}
 
       {/* Slide-out drawer */}
-      <aside className={`fixed top-0 left-0 bottom-0 z-50 w-72 bg-linear-to-b from-[#0d1b2e] to-[#080f1e] flex flex-col transition-transform duration-300 ${open ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`public-drawer fixed top-0 left-0 bottom-0 z-50 w-[min(88vw,320px)] flex flex-col transition-transform duration-300 ${open ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Header */}
         <div className="px-5 py-5 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -192,6 +190,7 @@ export default function PublicNav() {
               <Link
                 key={link.href}
                 href={link.href}
+                onClick={() => setOpen(false)}
                 className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-all ${active ? "bg-white/15 text-white" : "text-blue-200 hover:bg-white/10 hover:text-white"}`}
               >
                 {link.icon}

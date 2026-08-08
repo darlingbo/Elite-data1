@@ -9,6 +9,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ["/admin", "/api/", "/agent/dashboard"],
       },
     ],
-    sitemap: "https://www.elitedata1.com/sitemap.xml",
+    sitemap: "https://elitedata1.com/sitemap.xml",
   };
 }

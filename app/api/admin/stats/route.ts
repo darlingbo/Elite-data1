@@ -18,7 +18,7 @@ export async function GET() {
       .is("archived_at", null)
       .order("created_at", { ascending: false })
       .limit(200),
-    supabase.from("agents").select("id, name, email, phone, whatsapp, business_name, referral_code, status, agent_type, plan, commission_balance, wallet_balance, total_sales, total_revenue, created_at, registration_ref"),
+    supabase.from("agents").select("id, name, email, phone, whatsapp, business_name, referral_code, status, agent_type, plan, commission_balance, wallet_balance, total_sales, total_revenue, created_at, registration_ref, application_answers, ai_screening_decision, ai_screening_reason, ai_screening_score, ai_screening_confidence, ai_screened_at, approved_via"),
     supabase.rpc("admin_dashboard_order_totals"),
   ]);
 

@@ -1,9 +1,11 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendAgentNotification, sendAdminAlert, orderApprovalKeyboard } from "@/lib/telegram";
+import { sendAgentNotification, sendNewOrderAlert, orderApprovalKeyboard } from "@/lib/telegram";
+import { maybeAutoApprove } from "@/lib/order-approval";
 import { getAgentBundleCost } from "@/lib/agent-pricing";
 import { requireAgentSession } from "@/lib/agentAuth";
 import { walletPurchaseSchema, parseBody } from "@/lib/validation";
+import { roundCurrency } from "@/lib/finance";
 
 export async function POST(request: NextRequest) {
   const parsed = parseBody(walletPurchaseSchema, await request.json().catch(() => null));
@@ -43,12 +45,13 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Bundle not found or no longer active." }, { status: 400 });
   }
 
-  const walletBalance = Number(agent.wallet_balance ?? 0);
-  if (walletBalance < costPrice) {
+  const walletBalance = roundCurrency(Number(agent.wallet_balance ?? 0));
+  const roundedCost = roundCurrency(costPrice);
+  if (walletBalance < roundedCost) {
     return Response.json({
-      error: `Insufficient wallet balance. You need GH₵${costPrice.toFixed(2)} but only have GH₵${walletBalance.toFixed(2)}.`,
+      error: `Insufficient wallet balance. You need GH₵${roundedCost.toFixed(2)} but only have GH₵${walletBalance.toFixed(2)}.`,
       walletBalance,
-      required: costPrice,
+      required: roundedCost,
     }, { status: 400 });
   }
 
@@ -83,7 +86,7 @@ export async function POST(request: NextRequest) {
   // (WHERE wallet_balance >= cost) so two concurrent requests can never both
   // succeed -> no double-spend. Falls back to a best-effort update only if the
   // RPC has not been installed yet (see migration.sql: deduct_agent_wallet).
-  const rpc = await supabase.rpc("deduct_agent_wallet", { p_agent_id: agentId, p_amount: costPrice });
+  const rpc = await supabase.rpc("deduct_agent_wallet", { p_agent_id: agentId, p_amount: roundedCost });
   if (rpc.error && rpc.error.code !== "42883") {
     return Response.json({ error: "Failed to deduct from wallet. Try again." }, { status: 500 });
   }
@@ -116,8 +119,8 @@ export async function POST(request: NextRequest) {
     network,
     bundle_size: label,
     bundle_size_gb: numericSizeGB,
-    amount: costPrice,
-    cost_price: costPrice,
+    amount: roundedCost,
+    cost_price: roundedCost,
     admin_commission: 0,
     agent_commission: 0,
     agent_id: agentId,
@@ -126,22 +129,22 @@ export async function POST(request: NextRequest) {
 
   if (insertError) {
     // Refund wallet if order couldn't be saved (atomic increment, no clobber).
-    const refund = await supabase.rpc("adjust_agent_wallet", { p_agent_id: agentId, p_amount: costPrice });
+    const refund = await supabase.rpc("adjust_agent_wallet", { p_agent_id: agentId, p_amount: roundedCost });
     if (refund.error && refund.error.code === "42883") {
       await supabase.from("agents").update({ wallet_balance: walletBalance }).eq("id", agentId);
     }
     return Response.json({ error: "Order could not be saved. Your wallet has been refunded." }, { status: 500 });
   }
 
-  // Alert admin with Approve / Reject keyboard
-  sendAdminAlert(
+  // Alert admin and the agent-monitor bot with the source clearly identified.
+  const walletOrderText =
     `🟡 <b>WALLET ORDER — APPROVE TO DELIVER</b>\n\n` +
     `👤 ${agent.name} · <code>${referralCode.toUpperCase()}</code>\n` +
+    `🎯 Source: <b>Agent purchase</b>\n` +
     `📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n` +
-    `💰 GH₵${costPrice.toFixed(2)} deducted from wallet\n` +
-    `📎 <code>${reference}</code>`,
-    orderApprovalKeyboard(reference)
-  ).catch(() => {});
+    `💰 GH₵${roundedCost.toFixed(2)} deducted from wallet\n` +
+    `📎 <code>${reference}</code>`;
+  sendNewOrderAlert(walletOrderText, orderApprovalKeyboard(reference)).catch(() => {});
 
   // Notify agent that order is awaiting approval
   if (agent.telegram_chat_id) {
@@ -149,22 +152,24 @@ export async function POST(request: NextRequest) {
       agent.telegram_chat_id,
       `✅ <b>Order Placed!</b>\n\n` +
       `📱 ${network.toUpperCase()} ${label} → <code>${cleaned}</code>\n` +
-      `💰 GH₵${costPrice.toFixed(2)} deducted from wallet\n` +
+      `💰 GH₵${roundedCost.toFixed(2)} deducted from wallet\n` +
       `📎 <code>${reference}</code>\n\n` +
       `Your order is being processed. You will receive an SMS once your bundle is delivered.`
     ).catch(() => {});
   }
 
+  const autoApproval = await maybeAutoApprove(reference);
   return Response.json({
     success: true,
-    pending: true,
-    awaitingApproval: true,
+    pending: !autoApproval.ok,
+    awaitingApproval: !autoApproval.ok,
+    autoApproved: autoApproval.ok,
     reference,
     network,
     bundleSize: label,
     phone: cleaned,
-    costDeducted: costPrice,
-    newWalletBalance: parseFloat((walletBalance - costPrice).toFixed(2)),
+    costDeducted: roundedCost,
+    newWalletBalance: roundCurrency(walletBalance - roundedCost),
     message: "Order placed successfully! Your bundle is being processed. You will receive an SMS once delivered.",
   });
 }

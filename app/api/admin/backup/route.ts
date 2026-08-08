@@ -28,13 +28,20 @@ export async function GET() {
   }
 
   // No snapshot yet — generate live
+  const orders: Record<string, unknown>[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data: page, error } = await supabase.from("orders")
+      .select("reference,status,customer_name,phone,network,bundle_size,amount,cost_price,agent_commission,admin_commission,agent_id,refunded,refund_amount,created_at")
+      .order("created_at", { ascending: false }).range(from, from + 999);
+    if (error) return Response.json({ error: "Could not generate backup." }, { status: 500 });
+    orders.push(...(page ?? []));
+    if ((page ?? []).length < 1000) break;
+  }
   const [
-    { data: orders },
     { data: agents },
     { data: bundles },
     { data: settings },
   ] = await Promise.all([
-    supabase.from("orders").select("reference,status,customer_name,phone,network,bundle_size,amount,created_at").order("created_at", { ascending: false }).limit(1000),
     supabase.from("agents").select("id,name,email,phone,referral_code,status,commission_balance,total_sales,total_revenue,created_at"),
     supabase.from("bundle_prices").select("id,network,size_label,price,cost_price,active"),
     supabase.from("system_settings").select("key,value").not("key", "like", "backup_snapshot_%"),

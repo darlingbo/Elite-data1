@@ -161,7 +161,11 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
         : d.failReasons?.length
         ? `⚠️ Some failed: ${d.failReasons.join(", ")}. Check your AT account balance and sender ID.`
         : undefined;
-      setBulkResult({ ok, text: d.error ?? `✓ Sent to ${d.sent ?? sendPhones.length} ${label} successfully!`, warn });
+      setBulkResult({
+        ok,
+        text: d.error ?? `✓ Accepted and queued for ${d.accepted ?? d.sent ?? sendPhones.length} ${label}.`,
+        warn: warn ?? (d.deliveryPending ? "Delivery is pending confirmation from the mobile networks." : undefined),
+      });
       await logSend({ audience, recipientCount: sendPhones.length, message: bulkMsg, sentCount: d.sent ?? 0, failedCount: d.failed ?? 0, status: ok ? "success" : "failed" });
     } catch (e) {
       setBulkResult({ ok: false, text: String(e) });
@@ -182,7 +186,13 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
         : d.failReasons?.length
         ? `⚠️ AT status: ${d.failReasons.join(", ")}. Check your AT balance / sender ID.`
         : undefined;
-      setTestResult({ ok, text: d.error ?? `✓ Test SMS sent to ${phone}!`, warn });
+      setTestResult({
+        ok,
+        text: d.error ?? `✓ Test SMS accepted and queued for ${phone}.`,
+        warn: warn ?? (d.deliveryPending
+          ? "Queued is not the same as delivered. Allow a few minutes for the Ghana mobile network."
+          : undefined),
+      });
       await logSend({ audience: "individual", recipientCount: 1, message: testMsg, sentCount: ok ? 1 : 0, failedCount: ok ? 0 : 1, status: ok ? "success" : "failed" });
     } catch (e) {
       setTestResult({ ok: false, text: String(e) });
@@ -262,7 +272,7 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
             {!diagResult.configured && (
               <div className="p-3 rounded-xl" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)" }}>
                 <p className="text-sm font-bold text-red-400">❌ {diagResult.error as string}</p>
-                <p className="text-xs text-slate-400 mt-1">Add AT_API_KEY and AT_USERNAME in Vercel → Settings → Environment Variables, then redeploy.</p>
+                <p className="text-xs text-slate-400 mt-1">Add both AT_API_KEY and the exact Africa&apos;s Talking application username as AT_USERNAME in Vercel Production, then redeploy.</p>
               </div>
             )}
 
@@ -309,7 +319,7 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
             {diagResult.error && diagResult.configured && (
               <div className="p-3 rounded-xl" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)" }}>
                 <p className="text-sm font-bold text-red-400">❌ {diagResult.error as string}</p>
-                <p className="text-xs text-slate-400 mt-1">Your AT_API_KEY may be wrong or expired.</p>
+                <p className="text-xs text-slate-400 mt-1">The username is not the app name or email. Copy the application username and API key from the same live Africa&apos;s Talking app, save both for Production in Vercel, then redeploy.</p>
               </div>
             )}
           </div>

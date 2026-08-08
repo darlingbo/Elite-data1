@@ -59,10 +59,6 @@ function constTimeEqual(a: string, b: string): boolean {
 export async function verifyAdminSessionValue(value: string | undefined | null): Promise<boolean> {
   if (!value) return false;
 
-  // Legacy static token (backwards compatible).
-  const legacy = process.env.ADMIN_SESSION_TOKEN ?? "";
-  if (legacy && constTimeEqual(value, legacy)) return true;
-
   // DB-backed random session.
   const storedHash = await getConfig(SESSION_HASH_KEY);
   if (!storedHash) return false;
@@ -104,7 +100,8 @@ export async function clearAdminSession(): Promise<void> {
 // ── Password hashing (bcrypt, with legacy SHA-256 migration) ───────────────────
 
 function legacySha256(password: string): string {
-  const salt = process.env.ADMIN_SESSION_TOKEN ?? "elite-data-salt";
+  const salt = process.env.ADMIN_SESSION_TOKEN ?? "";
+  if (!salt) return "";
   return createHash("sha256").update(salt + password).digest("hex");
 }
 
@@ -143,12 +140,13 @@ export async function setAdminPassword(newPassword: string): Promise<boolean> {
 
 /** Verify the one-time reset token (must equal ADMIN_SESSION_TOKEN — only the real admin knows it). */
 export function verifyResetToken(token: string): boolean {
-  const secret = process.env.ADMIN_SESSION_TOKEN ?? "";
+  const secret = process.env.ADMIN_RESET_TOKEN ?? "";
   return Boolean(secret) && constTimeEqual(String(token).trim(), secret.trim());
 }
 
 /** Signed helper kept for potential future use (not required by current flows). */
 export function signValue(payload: string): string {
-  const secret = process.env.ADMIN_SESSION_TOKEN ?? "elite-admin-secret";
+  const secret = process.env.ADMIN_SESSION_TOKEN ?? "";
+  if (!secret) throw new Error("ADMIN_SESSION_TOKEN is not configured.");
   return createHmac("sha256", secret).update(payload).digest("base64url");
 }

@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
-import { sendAdminAlert } from "@/lib/telegram";
+import { sendStuckOrderAlert } from "@/lib/telegram";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 const networkApiMap: Record<string, string> = {
@@ -158,7 +158,7 @@ export async function POST(request: Request) {
   }
 
   if (retriedOrders.length > 0) {
-    await sendAdminAlert(
+    await sendStuckOrderAlert(
       `🔁 AUTO-RETRY: ${retried} stuck order(s) resent\n\n${retriedOrders.join("\n")}`
     ).catch(() => {});
   }

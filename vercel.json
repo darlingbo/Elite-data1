@@ -22,6 +22,10 @@
   ],
   "crons": [
     {
+      "path": "/api/cron/sync-orders",
+      "schedule": "5 0 * * *"
+    },
+    {
       "path": "/api/cron/snapshot",
       "schedule": "0 6 * * *"
     },
@@ -40,6 +44,14 @@
     {
       "path": "/api/cron/backup",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/security-check",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/security-check",
+      "schedule": "0 20 * * *"
     }
   ]
 }

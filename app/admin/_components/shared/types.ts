@@ -4,7 +4,7 @@ export type Tab =
   | "data-bundles" | "bundle-prices" | "all-agents" | "agent-applications" | "agent-wallets" | "leaderboard"
   | "transactions" | "commissions" | "manual" | "compensate" | "announcements" | "promo" | "apikeys" | "sms" | "settings"
   | "customers" | "mashup-bundles" | "network-providers" | "coupons" | "referrals" | "withdrawals" | "agent-ranks" | "analytics" | "developer-api" | "paystack-split" | "notifications"
-  | "refund-numbers" | "operations" | "reconciliation";
+  | "refund-numbers" | "operations" | "reconciliation" | "ai-hub" | "result-checker";
 
 export type OrderStatus = "ALL" | "COMPLETED" | "PROCESSING" | "PENDING" | "FAILED" | "NOT_ON_LIST" | "PENDING_APPROVAL" | "FRAUD" | "REJECTED";
 
@@ -25,6 +25,9 @@ export interface Agent {
   id: string; name: string; email: string; phone: string; whatsapp?: string; business_name: string;
   referral_code: string; status: string; agent_type?: string; plan?: string | null; commission_balance: number; wallet_balance?: number;
   total_sales: number; total_revenue: number; created_at: string; registration_ref?: string | null;
+  application_answers?: Record<string, string | boolean> | null; ai_screening_decision?: string | null;
+  ai_screening_reason?: string | null; ai_screening_score?: number | null; ai_screening_confidence?: string | null;
+  ai_screened_at?: string | null; approved_via?: string | null;
 }
 
 export interface StatsData {

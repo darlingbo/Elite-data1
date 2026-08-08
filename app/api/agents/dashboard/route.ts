@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { issueAgentSession } from "@/lib/agentAuth";
 import { supabase } from "@/lib/supabase";
 import { rateLimitDb } from "@/lib/rate-limit";
+import { syncProAgentSubAdmin } from "@/lib/pro-subadmin";
 
 type AgentRow = {
   id: string; name: string; email: string; phone?: string | null; referral_code: string | null;
@@ -77,6 +78,10 @@ async function handleAgentResponse(
     if (!ok) {
       return Response.json({ error: "Incorrect password. Please try again." }, { status: 401 });
     }
+  }
+
+  if (agent.plan === "pro" && storedHash) {
+    await syncProAgentSubAdmin({ ...agent, password_hash: storedHash }).catch(() => null);
   }
 
   // Issue a signed, httpOnly session cookie. Password login => "full" (can move

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateApiKey } from "@/lib/apiKeyAuth";
 import { supabase } from "@/lib/supabase";
-import { bundles, networkApiName, type Network } from "@/lib/bundles";
+import { bundles, type Network } from "@/lib/bundles";
+import { orderApprovalKeyboard, sendNewOrderAlert, tgEscape } from "@/lib/telegram";
+import { maybeAutoApprove } from "@/lib/order-approval";
+import { formatCurrency, roundCurrency } from "@/lib/finance";
 
 const NET_MAP: Record<string, Network> = {
   mtn: "mtn", MTN: "mtn",
@@ -66,7 +69,7 @@ export async function POST(request: NextRequest) {
     .eq("active", true)
     .maybeSingle();
 
-  const costPrice = dbBundle?.cost_price ?? staticBundle?.costPrice;
+  const costPrice = roundCurrency(Number(dbBundle?.cost_price ?? staticBundle?.costPrice ?? 0));
   const sizeLabel = dbBundle?.size_label ?? staticBundle?.size ?? `${sizeGB}GB`;
 
   if (!costPrice) {
@@ -85,7 +88,7 @@ export async function POST(request: NextRequest) {
 
   if (!agent) return NextResponse.json({ success: false, error: "Agent account not found." }, { status: 404 });
 
-  const walletBalance = Number(agent.wallet_balance ?? 0);
+  const walletBalance = roundCurrency(Number(agent.wallet_balance ?? 0));
   if (walletBalance < costPrice) {
     return NextResponse.json({
       success: false,
@@ -96,28 +99,31 @@ export async function POST(request: NextRequest) {
   }
 
   // Deduct from agent wallet atomically
-  const newBalance = parseFloat((walletBalance - costPrice).toFixed(2));
-  const { error: deductErr } = await supabase
-    .from("agents")
-    .update({ wallet_balance: newBalance })
-    .eq("id", auth.agentId)
-    .gte("wallet_balance", costPrice);
+  const { error: deductErr } = await supabase.rpc("deduct_agent_wallet", {
+    p_agent_id: auth.agentId,
+    p_amount: costPrice,
+  });
 
   if (deductErr) {
     return NextResponse.json({ success: false, error: "Failed to deduct wallet balance. Try again." }, { status: 500 });
   }
+  const newBalance = roundCurrency(walletBalance - costPrice);
 
   // Log wallet transaction
-  await supabase.from("agent_wallet_transactions").insert({
+  const { error: walletLogError } = await supabase.from("agent_wallet_transactions").insert({
     agent_id: auth.agentId,
     type: "order_debit",
     amount: costPrice,
     description: `${String(rawNetwork).toUpperCase()} ${sizeLabel} → ${String(phone)}`,
     paystack_reference: ref,
   });
+  if (walletLogError) {
+    await supabase.rpc("adjust_agent_wallet", { p_agent_id: auth.agentId, p_amount: costPrice });
+    return NextResponse.json({ success: false, error: "Could not record wallet transaction. Wallet was refunded." }, { status: 500 });
+  }
 
   // Save order
-  await supabase.from("orders").insert({
+  const { error: orderError } = await supabase.from("orders").insert({
     reference: ref,
     customer_name: `Storefront: ${auth.name}`,
     phone: String(phone),
@@ -129,76 +135,34 @@ export async function POST(request: NextRequest) {
     admin_commission: 0,
     agent_commission: 0,
     agent_id: auth.agentId,
-    status: "pending",
+    payment_method: "agent_wallet",
+    status: "pending_approval",
   });
-
-  // Deliver via Inventor
-  let deliveryOk = false;
-  let deliveryStatus = "failed";
-  let inventorError = "";
-
-  try {
-    const invRes = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-      body: JSON.stringify({
-        network: networkApiName[network],
-        Phone: String(phone),
-        Datasize: sizeGB,
-        reference: ref,
-      }),
-      signal: AbortSignal.timeout(20000),
-    });
-
-    const invBody = await invRes.json().catch(() => ({})) as Record<string, unknown>;
-    const invData = (invBody.data as Record<string, unknown>) ?? {};
-    const rawStatus = String(invData.status ?? invBody.status ?? "").toLowerCase();
-
-    const isCompleted = invRes.ok && (
-      rawStatus.includes("complet") || rawStatus.includes("success") ||
-      rawStatus.includes("deliver") || rawStatus === "00" ||
-      invBody.success === true
-    );
-    const isProcessing = rawStatus.includes("process") || rawStatus.includes("progress") ||
-      rawStatus.includes("dispatch") || rawStatus.includes("pending");
-
-    if (isCompleted) { deliveryOk = true; deliveryStatus = "completed"; }
-    else if (isProcessing) { deliveryOk = true; deliveryStatus = "processing"; }
-    else if (!invRes.ok) { inventorError = JSON.stringify(invBody).slice(0, 200); }
-  } catch (e) {
-    inventorError = String(e);
+  if (orderError) {
+    await supabase.rpc("adjust_agent_wallet", { p_agent_id: auth.agentId, p_amount: costPrice });
+    return NextResponse.json({ success: false, error: "Order could not be saved. Wallet was refunded." }, { status: 500 });
   }
 
-  await supabase.from("orders").update({ status: deliveryStatus }).eq("reference", ref);
+  const orderText =
+    `🔌 <b>AGENT API ORDER — APPROVE TO DELIVER</b>\n\n` +
+    `🎯 Source: <b>Agent API page</b>\n` +
+    `👤 Agent: <b>${tgEscape(auth.name)}</b>\n` +
+    `📱 ${String(rawNetwork).toUpperCase()} ${sizeLabel} → <code>${tgEscape(String(phone))}</code>\n` +
+    `💰 Wallet debit: <b>${formatCurrency(costPrice)}</b>\n` +
+    `💳 Wallet after reserve: <b>${formatCurrency(newBalance)}</b>\n` +
+    `📎 Ref: <code>${tgEscape(ref)}</code>`;
+  await sendNewOrderAlert(orderText, orderApprovalKeyboard(ref)).catch(() => {});
 
-  if (!deliveryOk) {
-    // Refund agent wallet on failure
-    await supabase.from("agents").update({ wallet_balance: walletBalance }).eq("id", auth.agentId);
-    await supabase.from("agent_wallet_transactions").insert({
-      agent_id: auth.agentId,
-      type: "refund",
-      amount: costPrice,
-      description: `Refund: delivery failed for ${ref}`,
-      paystack_reference: ref,
-    });
-    await supabase.from("orders").update({ status: "failed" }).eq("reference", ref);
-
-    return NextResponse.json({
-      success: false,
-      reference: ref,
-      status: "failed",
-      error: "Delivery failed. Wallet refunded." + (inventorError ? ` Details: ${inventorError}` : " Try again or contact support."),
-    }, { status: 502 });
-  }
-
+  const autoApproval = await maybeAutoApprove(ref);
   return NextResponse.json({
     success: true,
     reference: ref,
-    status: deliveryStatus,
+    status: autoApproval.ok ? "processing" : "pending_approval",
     network: String(rawNetwork).toUpperCase(),
     phone: String(phone),
     datasize: `${sizeGB}GB`,
     amount_charged: costPrice,
     wallet_balance: newBalance,
+    message: autoApproval.ok ? "Wallet reserved. Order was approved automatically." : "Wallet reserved. Order is awaiting admin approval.",
   });
 }

@@ -18,7 +18,7 @@ export type AgentAuthLevel = "full" | "code";
 const MAX_AGE_SECONDS = 60 * 60 * 12; // 12 hours
 
 function secret(): string {
-  return process.env.AGENT_SESSION_SECRET || process.env.ADMIN_SESSION_TOKEN || "";
+  return process.env.AGENT_SESSION_SECRET || "";
 }
 
 function sign(payload: string): string {

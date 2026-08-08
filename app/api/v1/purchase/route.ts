@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateApiKey } from "@/lib/apiKeyAuth";
 import { supabase } from "@/lib/supabase";
-import { bundles, networkApiName, type Network } from "@/lib/bundles";
+import { bundles, type Network } from "@/lib/bundles";
+import { orderApprovalKeyboard, sendNewOrderAlert, tgEscape } from "@/lib/telegram";
+import { maybeAutoApprove } from "@/lib/order-approval";
+import { formatCurrency, roundCurrency } from "@/lib/finance";
 
 
 const NET_MAP: Record<string, Network> = {
@@ -72,9 +75,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Use admin-set API price; fall back to selling price if not set
-  const price = dbBundle?.api_price
-    ? parseFloat(Number(dbBundle.api_price).toFixed(2))
-    : parseFloat(Number(sellingPrice).toFixed(2));
+  const price = roundCurrency(Number(dbBundle?.api_price ?? sellingPrice));
 
   // Check wallet balance
   if (auth.walletBalance < price) {
@@ -86,31 +87,21 @@ export async function POST(request: NextRequest) {
     }, { status: 402 });
   }
 
-  // Deduct from wallet atomically
-  const newBalance = parseFloat((auth.walletBalance - price).toFixed(2));
-  const { error: deductErr } = await supabase
-    .from("api_keys")
-    .update({ wallet_balance: newBalance })
-    .eq("id", auth.keyId)
-    .gte("wallet_balance", price); // safety: only deduct if still enough
-
-  if (deductErr) {
+  // Reserve the wallet amount and write its ledger entry in one transaction.
+  const { data: reservedBalance, error: deductErr } = await supabase.rpc("reserve_api_wallet_order", {
+    p_api_key_id: auth.keyId,
+    p_reference: ref,
+    p_amount: price,
+    p_description: `${String(rawNetwork).toUpperCase()} ${sizeLabel} → ${String(phone)}`,
+  });
+  if (deductErr || reservedBalance == null) {
     return NextResponse.json({ success: false, error: "Failed to deduct wallet balance. Try again." }, { status: 500 });
   }
-
-  // Log wallet transaction
-  await supabase.from("api_wallet_transactions").insert({
-    api_key_id: auth.keyId,
-    type: "debit",
-    amount: price,
-    description: `${String(rawNetwork).toUpperCase()} ${sizeLabel} → ${String(phone)}`,
-    reference: ref,
-    balance_after: newBalance,
-  });
+  const newBalance = roundCurrency(Number(reservedBalance));
 
   // Save order to DB
-  const profit = parseFloat((price - costPrice).toFixed(2));
-  await supabase.from("orders").insert({
+  const profit = Math.max(0, roundCurrency(price - Number(costPrice)));
+  const { error: orderError } = await supabase.from("orders").insert({
     reference: ref,
     customer_name: `API: ${auth.name}`,
     phone: String(phone),
@@ -121,78 +112,33 @@ export async function POST(request: NextRequest) {
     cost_price: costPrice,
     admin_commission: profit,
     agent_commission: 0,
-    status: "pending",
+    payment_method: "api_wallet",
+    status: "pending_approval",
   });
-
-  // Deliver via Inventor
-  let deliveryOk = false;
-  let deliveryStatus = "failed";
-  let inventorError = "";
-
-  try {
-    const invRes = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-      body: JSON.stringify({
-        network: networkApiName[network],
-        Phone: String(phone),
-        Datasize: sizeGB,
-        reference: ref,
-      }),
-      signal: AbortSignal.timeout(20000),
-    });
-
-    const invBody = await invRes.json().catch(() => ({})) as Record<string, unknown>;
-    const invData = (invBody.data as Record<string, unknown>) ?? {};
-    const rawStatus = String(invData.status ?? invBody.status ?? "").toLowerCase();
-
-    const isCompleted = invRes.ok && (
-      rawStatus.includes("complet") || rawStatus.includes("success") ||
-      rawStatus.includes("deliver") || rawStatus === "00" ||
-      invBody.success === true
-    );
-    const isProcessing = rawStatus.includes("process") || rawStatus.includes("progress") ||
-      rawStatus.includes("dispatch") || rawStatus.includes("pending");
-
-    if (isCompleted) { deliveryOk = true; deliveryStatus = "completed"; }
-    else if (isProcessing) { deliveryOk = true; deliveryStatus = "processing"; }
-    else if (!invRes.ok) { inventorError = JSON.stringify(invBody).slice(0, 200); }
-
-  } catch (e) {
-    inventorError = String(e);
+  if (orderError) {
+    await supabase.rpc("refund_api_wallet_order", { p_reference: ref });
+    return NextResponse.json({ success: false, error: "Order could not be saved. Wallet was refunded." }, { status: 500 });
   }
 
-  await supabase.from("orders").update({ status: deliveryStatus }).eq("reference", ref);
+  const orderText =
+    `🔌 <b>API WALLET ORDER — APPROVE TO DELIVER</b>\n\n` +
+    `🎯 Source: <b>Developer API wallet (${tgEscape(auth.name)})</b>\n` +
+    `📱 ${String(rawNetwork).toUpperCase()} ${sizeLabel} → <code>${tgEscape(String(phone))}</code>\n` +
+    `💰 Charged: <b>${formatCurrency(price)}</b>\n` +
+    `💳 Wallet after reserve: <b>${formatCurrency(newBalance)}</b>\n` +
+    `📎 Ref: <code>${tgEscape(ref)}</code>`;
+  await sendNewOrderAlert(orderText, orderApprovalKeyboard(ref)).catch(() => {});
 
-  if (!deliveryOk) {
-    // Refund wallet on delivery failure
-    await supabase.from("api_keys").update({ wallet_balance: auth.walletBalance }).eq("id", auth.keyId);
-    await supabase.from("api_wallet_transactions").insert({
-      api_key_id: auth.keyId,
-      type: "credit",
-      amount: price,
-      description: `Refund: delivery failed for ${ref}`,
-      reference: ref,
-      balance_after: auth.walletBalance,
-    });
-    await supabase.from("orders").update({ status: "failed" }).eq("reference", ref);
-
-    return NextResponse.json({
-      success: false,
-      reference: ref,
-      status: "failed",
-      error: "Delivery failed. Wallet refunded. " + (inventorError ? `Details: ${inventorError}` : "Try again or contact support."),
-    }, { status: 502 });
-  }
-
+  const autoApproval = await maybeAutoApprove(ref);
   return NextResponse.json({
     success: true,
     reference: ref,
-    status: deliveryStatus,
+    status: autoApproval.ok ? "processing" : "pending_approval",
     network: String(rawNetwork).toUpperCase(),
     phone: String(phone),
     datasize: `${sizeGB}GB`,
     amount_charged: price,
     wallet_balance: newBalance,
+    message: autoApproval.ok ? "Wallet reserved. Order was approved automatically." : "Wallet reserved. Order is awaiting admin approval.",
   });
 }

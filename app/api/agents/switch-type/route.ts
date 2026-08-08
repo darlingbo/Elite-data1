@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const auth = requireAgentSession(request, agentId);
+  const auth = requireAgentSession(request, agentId, { requireFull: true });
   if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
 
   // Verify the caller owns this agent account

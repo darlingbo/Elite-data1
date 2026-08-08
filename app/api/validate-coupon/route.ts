@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { percentageOf, roundCurrency } from "@/lib/finance";
 
 export async function POST(req: NextRequest) {
   const { code, amount } = await req.json() as { code: string; amount: number };
@@ -25,8 +26,8 @@ export async function POST(req: NextRequest) {
 
   const discount =
     data.discount_type === "percent"
-      ? parseFloat(((amount * data.discount_value) / 100).toFixed(2))
-      : Math.min(parseFloat(data.discount_value), amount);
+      ? percentageOf(amount, Number(data.discount_value) / 100)
+      : Math.min(roundCurrency(Number(data.discount_value)), roundCurrency(amount));
 
   return Response.json({
     valid: true,

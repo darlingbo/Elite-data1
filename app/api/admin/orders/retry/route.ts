@@ -30,6 +30,15 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (!order) return Response.json({ error: "Order not found" }, { status: 404 });
+  if (order.status === "duplicate_blocked") {
+    return Response.json(
+      { error: "Duplicate orders are permanently blocked from provider delivery and are not refundable." },
+      { status: 409 },
+    );
+  }
+  if (order.status !== "failed") {
+    return Response.json({ error: `Only failed orders can be retried (current status: ${order.status}).` }, { status: 409 });
+  }
 
   const networkKey = (order.network?.toLowerCase() ??
     (order.bundle_size?.toLowerCase().startsWith("mtn") ? "mtn" :

@@ -101,7 +101,7 @@ function money(value: unknown): number {
 }
 
 function round(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return roundCurrency(value);
 }
 
 export function paymentEvidence(order: ReconciliationOrder): "paystack" | "internal" | "missing" {
@@ -413,3 +413,4 @@ export function reconcileOrders(
 
   return { metrics, issueCounts, issues, issueCount, riskAmount, status };
 }
+import { roundCurrency } from "./finance";

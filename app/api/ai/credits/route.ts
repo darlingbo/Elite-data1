@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { randomBytes } from "crypto";
+import { addCurrency, formatCurrency, percentageOf, toMinorUnits } from "@/lib/finance";
+import { sendFinancialTransactionAlert, tgEscape } from "@/lib/telegram";
 
 const PACKAGES: Record<string, { images: number; price: number; label: string }> = {
   starter:  { images: 5,  price: 5,  label: "Starter (5 images)" },
@@ -28,7 +30,8 @@ export async function POST(request: NextRequest) {
   if (existing) return Response.json({ token: existing.token, credits: existing.credits_remaining });
 
   // Verify Paystack
-  const expectedKobo = Math.round(pkg.price * (1 + PLATFORM_FEE_RATE) * 100);
+  const chargedAmount = addCurrency(pkg.price, percentageOf(pkg.price, PLATFORM_FEE_RATE));
+  const expectedKobo = toMinorUnits(chargedAmount);
   let psData: Record<string, unknown> = {};
   try {
     const psRes = await fetch(
@@ -60,6 +63,16 @@ export async function POST(request: NextRequest) {
   });
 
   if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  await sendFinancialTransactionAlert(
+    `🎨 <b>AI IMAGE CREDIT PURCHASE</b>\n\n` +
+    `👤 Customer: <code>${tgEscape(email)}</code>\n` +
+    `📦 Package: <b>${tgEscape(pkg.label)}</b>\n` +
+    `💵 Amount paid: <b>${formatCurrency(chargedAmount)}</b>\n` +
+    `🔢 Credits added: <b>${pkg.images}</b>\n` +
+    `📎 Paystack ref: <code>${tgEscape(paystackRef)}</code>\n` +
+    `✅ Purpose: AI image generation credits`,
+  ).catch(() => {});
   return Response.json({ token, credits: pkg.images });
 }
 

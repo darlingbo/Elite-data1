@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
-import { sendAdminAlert, sendAdminBotMessage, retryKeyboard } from "@/lib/telegram";
+import { sendStuckOrderAlert, retryKeyboard } from "@/lib/telegram";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
@@ -46,8 +46,7 @@ export async function POST(request: NextRequest) {
     lines +
     `\n\n➡️ After sending each one, mark it completed in the admin panel.`;
 
-  await sendAdminAlert(batchAlert);
-  sendAdminBotMessage(batchAlert, retryKeyboard(orders[0].reference)).catch(() => {});
+  await sendStuckOrderAlert(batchAlert, retryKeyboard(orders[0].reference));
 
   // WhatsApp plain-text version
   const waLines = orders.map(o =>

@@ -1,0 +1,5 @@
+import Link from "next/link";
+
+export default function PolicyPage({ title, effective, sections }: { title: string; effective: string; sections: { heading: string; body: string }[] }) {
+  return <main className="min-h-screen bg-[#070b14] text-slate-200 px-4 py-14"><article className="max-w-3xl mx-auto rounded-3xl border border-slate-800 bg-[#0d1525] p-6 sm:p-10"><Link href="/" className="text-blue-400 text-sm">← Elite Data</Link><h1 className="text-3xl sm:text-4xl font-black text-white mt-5">{title}</h1><p className="text-slate-500 text-sm mt-2">Effective {effective}</p><div className="mt-8 space-y-7">{sections.map(section => <section key={section.heading}><h2 className="text-lg font-black text-white mb-2">{section.heading}</h2><p className="text-slate-400 leading-7 whitespace-pre-line">{section.body}</p></section>)}</div><p className="mt-10 border-t border-slate-800 pt-6 text-sm text-slate-500">Questions or disputes: WhatsApp +233 50 979 4503 or email stephenowusuansah601@gmail.com.</p></article></main>;
+}

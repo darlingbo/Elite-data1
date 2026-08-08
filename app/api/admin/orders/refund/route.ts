@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
+import { formatCurrency, fromMinorUnits, toMinorUnits } from "@/lib/finance";
+import { sendRefundRequestAlert, tgEscape } from "@/lib/telegram";
 
 async function isAdmin() {
   const c = await cookies();
@@ -25,6 +27,12 @@ export async function POST(req: NextRequest) {
   if (order.refunded) return Response.json({ error: "Order has already been refunded" }, { status: 409 });
 
   const s = (order.status ?? "").toLowerCase();
+  if (s === "duplicate_blocked") {
+    return Response.json(
+      { error: "This blocked second order must not be refunded." },
+      { status: 409 },
+    );
+  }
   if (s === "completed") {
     return Response.json({ error: "Cannot refund a completed order — the bundle was already delivered." }, { status: 409 });
   }
@@ -36,7 +44,7 @@ export async function POST(req: NextRequest) {
   }
 
   const paystackRef = order.paystack_reference ?? reference;
-  const refundAmount = amount ? Math.round(amount * 100) : undefined; // Paystack uses kobo (pesewas)
+  const refundAmount = amount ? toMinorUnits(amount) : undefined; // Paystack uses kobo (pesewas)
 
   // Call Paystack Refunds API
   const paystackRes = await fetch("https://api.paystack.co/refund", {
@@ -61,17 +69,33 @@ export async function POST(req: NextRequest) {
   }
 
   // Mark order as refunded in DB
+  const refundedAmount = fromMinorUnits(paystackData.data?.amount ?? 0);
   await supabase.from("orders").update({
     refunded: true,
     refunded_at: new Date().toISOString(),
-    refund_amount: (paystackData.data?.amount ?? 0) / 100,
+    refund_amount: refundedAmount,
     status: "failed",
   }).eq("reference", reference);
+  const { error: reversalError } = await supabase.rpc("reverse_team_commission", {
+    p_reference: reference,
+    p_reason: "paystack_refund",
+  });
+  if (reversalError) {
+    return Response.json({ error: `Refund succeeded, but team commission reversal needs attention: ${reversalError.message}` }, { status: 500 });
+  }
+
+  await sendRefundRequestAlert(
+    `✅ <b>REFUND SUBMITTED TO PAYSTACK</b>\n\n` +
+    `💵 Amount: <b>${formatCurrency(refundedAmount)}</b>\n` +
+    `📎 Order ref: <code>${tgEscape(reference)}</code>\n` +
+    `📎 Paystack ref: <code>${tgEscape(paystackRef)}</code>\n` +
+    `✅ Purpose: Customer order refund`,
+  ).catch(() => {});
 
   return Response.json({
     success: true,
     refundId: paystackData.data?.id,
-    amount: (paystackData.data?.amount ?? 0) / 100,
+    amount: refundedAmount,
     message: paystackData.message,
   });
 }

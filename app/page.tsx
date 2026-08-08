@@ -99,8 +99,8 @@ export default function Home() {
             fontWeight: 900, color: TEXT, lineHeight: 1.1,
             margin: "0 0 18px",
           }}>
-            Buy Cheap Data Bundles<br />
-            <span style={{ color: YELLOW }}>Instantly in Ghana</span>
+            Buy Affordable Data Bundles<br />
+            <span style={{ color: YELLOW }}>Online in Ghana</span>
           </h1>
 
           <p style={{
@@ -109,7 +109,7 @@ export default function Home() {
             margin: "0 auto 36px",
             maxWidth: 460, lineHeight: 1.65,
           }}>
-            MTN, Telecel &amp; AirtelTigo bundles at the lowest prices. Delivered in minutes. No account needed.
+            Buy MTN, Telecel and AirtelTigo data bundles with secure payment and online order tracking. No account needed.
           </p>
 
           <div className="flex flex-col items-center gap-3 mb-10">

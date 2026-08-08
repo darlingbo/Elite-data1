@@ -47,9 +47,19 @@ export default function VoucherModal({ onClose, agentCode }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<{ reference: string } | null>(null);
+  const [agentPrices, setAgentPrices] = useState<Record<string, number>>({});
   const paystackReady = usePaystackReady();
 
-  const totalSell = selected.sellPrice * quantity;
+  useEffect(() => {
+    if (!agentCode) return;
+    fetch(`/api/vouchers/prices?agent=${encodeURIComponent(agentCode)}`)
+      .then(response => response.json())
+      .then(data => setAgentPrices({ BECE: Number(data.BECE?.sellPrice), WASSCE: Number(data.WASSCE?.sellPrice) }))
+      .catch(() => {});
+  }, [agentCode]);
+
+  const unitPrice = Number.isFinite(agentPrices[selected.id]) ? agentPrices[selected.id] : selected.sellPrice;
+  const totalSell = unitPrice * quantity;
   const fee = parseFloat((totalSell * PLATFORM_FEE_RATE).toFixed(2));
   const total = parseFloat((totalSell + fee).toFixed(2));
 
@@ -77,6 +87,9 @@ export default function VoucherModal({ onClose, agentCode }: Props) {
           custom_fields: [
             { display_name: "Phone", variable_name: "phone", value: cleaned },
             { display_name: "Voucher", variable_name: "voucher", value: `${selected.label} x${quantity}` },
+            { display_name: "Voucher Type", variable_name: "voucher_type", value: selected.id },
+            { display_name: "Voucher Quantity", variable_name: "voucher_quantity", value: String(quantity) },
+            { display_name: "Agent", variable_name: "agent_code", value: agentCode ?? "" },
           ],
         },
         callback: (response: { reference: string }) => {
@@ -168,7 +181,7 @@ export default function VoucherModal({ onClose, agentCode }: Props) {
                       <span className="text-2xl block mb-1">{v.emoji}</span>
                       <p className="font-black text-gray-800 text-sm">{v.label}</p>
                       <p className="text-xs text-gray-400 mt-0.5 leading-tight">{v.description}</p>
-                      <p className="font-black mt-2 text-sm" style={{ color: v.color }}>GH₵{v.sellPrice.toFixed(2)}</p>
+                      <p className="font-black mt-2 text-sm" style={{ color: v.color }}>GH₵{(Number.isFinite(agentPrices[v.id]) ? agentPrices[v.id] : v.sellPrice).toFixed(2)}</p>
                     </button>
                   ))}
                 </div>

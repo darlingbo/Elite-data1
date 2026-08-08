@@ -31,6 +31,7 @@ export default function AgentPage() {
   // ── Form ──────────────────────────────────────────────────────────────────
   const [form, setFormState] = useState({
     name: "", email: "", phone: "", whatsapp: "", business_name: "", password: "", confirmPassword: "",
+    experience: "", customers: "", promotionPlan: "", supportPlan: "", expectedSales: "", agreesToRules: false,
   });
   const [showPw, setShowPw]           = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -58,8 +59,21 @@ export default function AgentPage() {
     if (!form.password) return setError("Please create a password.");
     if (form.password.length < 6) return setError("Password must be at least 6 characters.");
     if (form.password !== form.confirmPassword) return setError("Passwords do not match.");
+    if (agentPlan === "free") {
+      const answers = [form.experience, form.customers, form.promotionPlan, form.supportPlan, form.expectedSales];
+      if (answers.some(answer => answer.trim().length < 15)) return setError("Please answer every interview question with enough detail.");
+      if (!form.agreesToRules) return setError("You must agree to the agent rules before applying.");
+    }
 
-    const payload = { name: form.name, email: form.email, phone: form.phone, whatsapp: form.whatsapp, business_name: form.business_name, password: form.password };
+    const payload = {
+      name: form.name, email: form.email, phone: form.phone, whatsapp: form.whatsapp, business_name: form.business_name, password: form.password,
+      masterCode: typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("master") : null,
+      teamTermsAccepted: form.agreesToRules,
+      screeningAnswers: {
+        experience: form.experience, customers: form.customers, promotionPlan: form.promotionPlan,
+        supportPlan: form.supportPlan, expectedSales: form.expectedSales, agreesToRules: form.agreesToRules,
+      },
+    };
 
     // ── Free Plan: direct submit, no payment ──────────────────────────────
     if (agentPlan === "free") {
@@ -67,7 +81,10 @@ export default function AgentPage() {
       try {
         const res  = await fetch("/api/agents/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...payload, plan: "free" }) });
         const data = await res.json();
-        if (data.success) { try { localStorage.setItem("elite_agent_applied", "true"); } catch {} setPending(true); }
+        if (data.success) {
+          try { localStorage.setItem("elite_agent_applied", "true"); } catch {}
+          if (data.autoApproved) setSuccess(true); else setPending(true);
+        }
         else setError(data.error || "Registration failed. Contact support.");
       } catch { setError("Network error. Please try again."); }
       finally { setLoading(false); }
@@ -146,10 +163,10 @@ export default function AgentPage() {
           <div className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
             <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
           </div>
-          <h1 className="text-3xl font-black text-gray-900 mb-2">You&apos;re a Pro Agent! 🎉</h1>
+          <h1 className="text-3xl font-black text-gray-900 mb-2">You&apos;re Approved! 🎉</h1>
           <p className="text-lg font-semibold text-green-600 mb-6">Your account is active — log in and start selling now.</p>
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 px-6 py-6 mb-6 text-left space-y-4">
-            <p className="text-gray-700 text-sm">Welcome <b className="text-gray-900">{form.name}</b>! Your GH₵{PRO_FEE} fee is confirmed and your Pro account is live.</p>
+            <p className="text-gray-700 text-sm">Welcome <b className="text-gray-900">{form.name}</b>! {agentPlan === "pro" ? `Your GH₵${PRO_FEE} fee is confirmed and your Pro account is live.` : "Your AI interview passed and your free agent account is live."}</p>
             <div className="space-y-3">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">What to do next:</p>
               {[
@@ -410,6 +427,31 @@ export default function AgentPage() {
               <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.7 }}>Business Name <span style={{ color: "#94a3b8", fontWeight: 500 }}>(optional)</span></label>
               <input type="text" placeholder="e.g. Kwame's Data Hub" value={form.business_name} onChange={e => setField("business_name", e.target.value)} className={inp} />
             </div>
+
+            {!isPro && (
+              <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 900, color: "#0f172a", margin: "0 0 3px" }}>AI Agent Interview</p>
+                  <p style={{ fontSize: 11, color: "#64748b", margin: 0 }}>Answer honestly. Strong applications may be approved immediately; uncertain ones go to the admin.</p>
+                </div>
+                {[
+                  ["experience", "What selling or customer-service experience do you have?", "Tell us what you have done before…"],
+                  ["customers", "Who will be your customers and how will you reach them?", "Students, workers, community groups…"],
+                  ["promotionPlan", "How will you promote Elite Data honestly?", "WhatsApp status, referrals, social media…"],
+                  ["supportPlan", "What will you do when a customer reports a problem?", "Explain how you will support and escalate…"],
+                  ["expectedSales", "How many bundles do you realistically expect to sell weekly, and why?", "Give a realistic target and reason…"],
+                ].map(([field, label, placeholder]) => (
+                  <div key={field}>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 4 }}>{label} <span style={{ color: "#ef4444" }}>*</span></label>
+                    <textarea value={String(form[field as keyof typeof form])} onChange={event => setField(field, event.target.value)} placeholder={placeholder} rows={3} maxLength={500} className={inp} style={{ resize: "vertical", minHeight: 72 }} />
+                  </div>
+                ))}
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 11, color: "#475569", lineHeight: 1.5, cursor: "pointer" }}>
+                  <input type="checkbox" checked={form.agreesToRules} onChange={event => setFormState(current => ({ ...current, agreesToRules: event.target.checked }))} style={{ marginTop: 2 }} />
+                  I agree to advertise honestly, protect customer information, never request customer OTPs or passwords, follow Elite Data prices and policies, and escalate unresolved problems. If I join through a Pro Agent link, I also accept the 70% selling-agent / 20% Pro sub-admin / 10% platform-admin commission split.
+                </label>
+              </div>
+            )}
 
             <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 12 }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 10 }}>Create Password</p>

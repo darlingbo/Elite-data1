@@ -85,6 +85,9 @@ export default function Footer() {
                   Agent Login
                 </Link>
               </li>
+              <li><Link href="/privacy" style={{ color: TEXT, fontSize: 14, textDecoration: "none" }}>Privacy Policy</Link></li>
+              <li><Link href="/refund-policy" style={{ color: TEXT, fontSize: 14, textDecoration: "none" }}>Refund Policy</Link></li>
+              <li><Link href="/agent-agreement" style={{ color: TEXT, fontSize: 14, textDecoration: "none" }}>Agent Agreement</Link></li>
               <li style={{ color: MUTED, fontSize: 14 }}>stephenowusuansah601@gmail.com</li>
             </ul>
           </div>

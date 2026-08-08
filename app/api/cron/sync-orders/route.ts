@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendAdminAlert } from "@/lib/telegram";
+import { sendCompletedOrderAlert, sendStuckOrderAlert } from "@/lib/telegram";
 import { sendCustomerSMS, orderDeliveredSMS, orderFailedSMS } from "@/lib/sms";
 
 const networkApiMap: Record<string, string> = {
@@ -47,12 +47,12 @@ async function creditAgent(agentId: string, commission: number, revenue: number)
 
 
 export async function GET(request: NextRequest) {
-  // Allow Vercel cron (x-vercel-cron header) OR matching Bearer token OR no auth (external cron-job.org)
+  // Vercel Cron automatically sends `Authorization: Bearer ${CRON_SECRET}`.
+  // Never trust a caller-controlled x-vercel-cron header as authentication.
   const authHeader = request.headers.get("authorization");
-  const isVercelCron = request.headers.get("x-vercel-cron") === "1";
   const cronSecret = process.env.CRON_SECRET;
-  const hasValidAuth = isVercelCron || !cronSecret || authHeader === `Bearer ${cronSecret}`;
-  if (!hasValidAuth) {
+  if (!cronSecret || cronSecret.length < 24) return Response.json({ error: "Cron is not configured" }, { status: 503 });
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -133,17 +133,11 @@ export async function GET(request: NextRequest) {
       const isStuck = order.created_at < stuckCutoff;
       if (isStuck && order.phone && order.network && sizeGb) {
         // All orders — alert admin to deliver manually. Never auto-retry.
-        await sendAdminAlert(
+        await sendStuckOrderAlert(
           `⚠️ <b>STUCK ORDER</b>${isWalletOrder ? " (Agent Wallet)" : ""}\n\n` +
           `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
           `📎 Ref: <code>${order.reference}</code>\n\n` +
-          `This order has been processing for 15+ min. Please deliver manually or retry.`,
-          {
-            inline_keyboard: [[
-              { text: "🔄 Retry Now", callback_data: `retry:${order.reference}` },
-              { text: "✅ Mark Done", callback_data: `skip_retry:${order.reference}` },
-            ]],
-          }
+          `This order has been processing for 15+ min. Please deliver manually or retry.`
         );
         retried++;
         retriedOrders.push(`⚠️ ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (stuck, alerted)`);
@@ -152,13 +146,13 @@ export async function GET(request: NextRequest) {
   }
 
   if (completedOrders.length > 0) {
-    await sendAdminAlert(
+    await sendCompletedOrderAlert(
       `📦 ORDER UPDATE: ${completedOrders.length} order(s) completed\n\n${completedOrders.join("\n")}`
     ).catch(() => {});
   }
 
   if (retriedOrders.length > 0) {
-    await sendAdminAlert(
+    await sendStuckOrderAlert(
       `⚠️ STUCK ORDERS: ${retriedOrders.length} order(s) need manual delivery\n\n${retriedOrders.join("\n")}`
     ).catch(() => {});
   }

@@ -4,7 +4,7 @@ import {
   generateReconciliationSnapshot,
   reconciliationDayRange,
 } from "@/lib/reconciliationServer";
-import { sendAdminAlert, sendSwiftAlert } from "@/lib/telegram";
+import { sendAssistantAlert } from "@/lib/telegram";
 
 function e(text: string): string {
   return String(text ?? "")
@@ -52,8 +52,29 @@ export async function GET(request: NextRequest) {
     .is("archived_at", null)
     .gte("created_at", start)
     .lt("created_at", end);
+  const voucherStockPromise = supabase
+    .from("voucher_inventory")
+    .select("voucher_type,status");
+  const approvedAgentsPromise = supabase
+    .from("agents")
+    .select("id,name")
+    .eq("status", "approved")
+    .limit(10_000);
+  const recentAgentOrdersPromise = supabase
+    .from("orders")
+    .select("agent_id")
+    .not("agent_id", "is", null)
+    .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString())
+    .limit(10_000);
 
-  const [{ data: orders, error: ordersError }, balance, reconciliationResult] = await Promise.all([
+  const [
+    { data: orders, error: ordersError },
+    balance,
+    reconciliationResult,
+    { data: voucherRows },
+    { data: approvedAgents },
+    { data: recentAgentOrders },
+  ] = await Promise.all([
     ordersPromise,
     fetchInventorBalance(),
     reconciliationPromise.then(
@@ -63,6 +84,9 @@ export async function GET(request: NextRequest) {
         error: error instanceof Error ? error.message : "Unknown reconciliation error",
       }),
     ),
+    voucherStockPromise,
+    approvedAgentsPromise,
+    recentAgentOrdersPromise,
   ]);
 
   if (ordersError) {
@@ -77,6 +101,7 @@ export async function GET(request: NextRequest) {
   const failed = rows.filter((order) => order.status === "failed").length;
   const rejected = rows.filter((order) => order.status === "rejected").length;
   const pending = rows.filter((order) => order.status === "pending_approval").length;
+  const failureRate = total > 0 ? (failed / total) * 100 : 0;
   const revenue = completedOrders.reduce((sum, order) => sum + Number(order.amount ?? 0), 0);
   const profit = completedOrders.reduce((sum, order) => {
     if (order.admin_commission !== null) return sum + Number(order.admin_commission);
@@ -95,6 +120,21 @@ export async function GET(request: NextRequest) {
     bundleCounts[key] = (bundleCounts[key] ?? 0) + 1;
   }
   const topBundle = Object.entries(bundleCounts).sort((a, b) => b[1] - a[1])[0] ?? null;
+
+  const voucherStock = { BECE: 0, WASSCE: 0 };
+  for (const voucher of voucherRows ?? []) {
+    const type = String(voucher.voucher_type);
+    if (voucher.status === "available" && (type === "BECE" || type === "WASSCE")) voucherStock[type] += 1;
+  }
+  const beceThreshold = Number(process.env.BECE_LOW_STOCK_THRESHOLD ?? 10);
+  const wassceThreshold = Number(process.env.WASSCE_LOW_STOCK_THRESHOLD ?? 10);
+  const lowVoucherTypes = [
+    voucherStock.BECE <= beceThreshold ? `BECE: ${voucherStock.BECE}` : "",
+    voucherStock.WASSCE <= wassceThreshold ? `WASSCE: ${voucherStock.WASSCE}` : "",
+  ].filter(Boolean);
+
+  const activeAgentIds = new Set((recentAgentOrders ?? []).map(order => String(order.agent_id)));
+  const inactiveAgents = (approvedAgents ?? []).filter(agent => !activeAgentIds.has(String(agent.id)));
 
   const agentEarned: Record<string, number> = {};
   for (const order of completedOrders) {
@@ -134,6 +174,9 @@ export async function GET(request: NextRequest) {
     `<b>Daily Financial Report</b> - ${dateLabel}\n\n` +
     `Total orders: <b>${total}</b>\n` +
     `Delivered: ${completed} | Processing: ${processing} | Failed: ${failed} | Rejected: ${rejected} | Pending approval: ${pending}\n\n` +
+    `Failure rate: <b>${failureRate.toFixed(1)}%</b>${total >= 5 && failureRate >= 10 ? " - HIGH, investigate before retrying anything." : ""}\n` +
+    `Voucher stock: <b>BECE ${voucherStock.BECE}</b> | <b>WASSCE ${voucherStock.WASSCE}</b>${lowVoucherTypes.length ? " - LOW STOCK" : ""}\n` +
+    `Inactive approved agents (30 days): <b>${inactiveAgents.length}</b>\n\n` +
     `Delivered revenue: <b>GHS ${revenue.toFixed(2)}</b>\n` +
     `Recorded admin profit: <b>GHS ${profit.toFixed(2)}</b>\n` +
     `Agent commissions: GHS ${commissions.toFixed(2)}\n` +
@@ -143,13 +186,25 @@ export async function GET(request: NextRequest) {
     `Open Admin &gt; Reconciliation before retrying or refunding flagged orders.\n\n` +
     balanceLine;
 
-  await Promise.all([sendAdminAlert(msg), sendSwiftAlert(msg)]);
+  await sendAssistantAlert(msg);
 
   if (balance !== null && balance < lowBalance) {
-    await sendAdminAlert(
+    await sendAssistantAlert(
       `<b>Inventor balance is critically low.</b>\n\n` +
       `Current: <b>GHS ${balance.toFixed(2)}</b> (threshold: GHS ${lowBalance.toFixed(2)})\n\n` +
       "Top up now to avoid delivery failures.",
+    );
+  }
+
+  if (lowVoucherTypes.length > 0) {
+    await sendAssistantAlert(
+      `<b>Voucher stock warning</b>\n\n${lowVoucherTypes.join(" | ")}\n\nAdd vouchers in Admin &gt; Settings &gt; Voucher Stock. AI has not purchased or changed anything.`,
+    );
+  }
+
+  if (total >= 5 && failureRate >= 10) {
+    await sendAssistantAlert(
+      `<b>High order failure rate detected</b>\n\nYesterday: <b>${failed}/${total} (${failureRate.toFixed(1)}%)</b> failed.\n\nReview provider health and failed orders manually. AI will not retry them.`,
     );
   }
 
@@ -160,11 +215,14 @@ export async function GET(request: NextRequest) {
     completed,
     processing,
     failed,
+    failureRate,
     rejected,
     pending,
     revenue,
     profit,
     balance,
+    voucherStock,
+    inactiveAgents: inactiveAgents.length,
     reconciliation: reconciliationResult.value?.snapshot ?? null,
     reconciliationError: reconciliationResult.error,
   });

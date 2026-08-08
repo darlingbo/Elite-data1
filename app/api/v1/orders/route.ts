@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateApiKey } from "@/lib/apiKeyAuth";
 import { supabase } from "@/lib/supabase";
-import { bundles, networkApiName, type Network } from "@/lib/bundles";
-import { sendAdminAlert } from "@/lib/telegram";
+import { bundles, type Network } from "@/lib/bundles";
+import { fmtOrder, orderApprovalKeyboard, sendNewOrderAlert } from "@/lib/telegram";
+import { addCurrency, percentageOf, roundCurrency, toMinorUnits } from "@/lib/finance";
+import { maybeAutoApprove } from "@/lib/order-approval";
 
 const PLATFORM_FEE_RATE = 0.02;
 
@@ -47,7 +49,8 @@ export async function POST(request: NextRequest) {
   const costPrice = dbBundle?.cost_price ?? staticBundle?.costPrice ?? 0;
 
   // Verify Paystack
-  const expectedKobo = Math.round(price * (1 + PLATFORM_FEE_RATE) * 100);
+  const chargedAmount = addCurrency(Number(price), percentageOf(Number(price), PLATFORM_FEE_RATE));
+  const expectedKobo = toMinorUnits(chargedAmount);
   let psData: Record<string, unknown> = {};
   try {
     const psRes = await fetch(
@@ -65,8 +68,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Payment verification failed. Check paystackRef and amount." }, { status: 400 });
   }
 
-  const chargedAmount = parseFloat((price * (1 + PLATFORM_FEE_RATE)).toFixed(2));
-  const profit = parseFloat((price - costPrice).toFixed(2));
+  const profit = Math.max(0, roundCurrency(Number(price) - Number(costPrice)));
 
   // Save order
   const { error: dbErr } = await supabase.from("orders").insert({
@@ -83,41 +85,29 @@ export async function POST(request: NextRequest) {
     admin_commission: profit,
     agent_commission: 0,
     agent_id: null,
-    status: "pending",
+    status: "pending_approval",
   });
   if (dbErr) return NextResponse.json({ error: `DB error: ${dbErr.message}` }, { status: 500 });
 
-  await sendAdminAlert(`[API KEY] New order\nRef: ${paystackRef}\n${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\nPhone: ${phone}`).catch(() => {});
+  await sendNewOrderAlert(
+    `🔌 <b>API ORDER — APPROVE TO DELIVER</b>\n\n` +
+    fmtOrder({
+      ref: paystackRef,
+      network: bundleMeta.network,
+      size: bundleMeta.size,
+      phone,
+      amount: chargedAmount,
+      profit,
+      sourceLabel: `API customer: ${auth.name}`,
+    }),
+    orderApprovalKeyboard(paystackRef),
+  ).catch(() => {});
 
-  // Deliver via Inventor
-  let inventorBody: Record<string, unknown> = {};
-  let inventorOk = false;
-  try {
-    const invRes = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-      body: JSON.stringify({ network: networkApiName[bundleMeta.network], Phone: phone, Datasize: bundleMeta.sizeGB, reference: paystackRef }),
-    });
-    inventorBody = await invRes.json().catch(() => ({}));
-    inventorOk = invRes.ok || inventorBody.success === true || inventorBody.status === "success" || inventorBody.status === "00";
-  } catch (err) {
-    inventorBody = { error: String(err) };
-  }
-
-  const invData = (inventorBody.data as Record<string, unknown>) ?? {};
-  const rawInvStatus = String(invData.status ?? invData.delivery_status ?? inventorBody.status ?? "").toLowerCase();
-  const isProcessing = rawInvStatus.includes("process") || rawInvStatus.includes("progress") || rawInvStatus.includes("dispatch") || rawInvStatus.includes("pending");
-  if (isProcessing) inventorOk = false;
-
-  if (inventorOk) {
-    await supabase.from("orders").update({ status: "completed" }).eq("reference", paystackRef);
-    return NextResponse.json({ success: true, reference: paystackRef, status: "completed" });
-  }
-  if (isProcessing) {
-    await supabase.from("orders").update({ status: "processing" }).eq("reference", paystackRef);
-    return NextResponse.json({ success: true, reference: paystackRef, status: "processing" });
-  }
-
-  await supabase.from("orders").update({ status: "failed" }).eq("reference", paystackRef);
-  return NextResponse.json({ success: false, reference: paystackRef, status: "failed", error: "Delivery failed. Contact support." }, { status: 502 });
+  const autoApproval = await maybeAutoApprove(paystackRef);
+  return NextResponse.json({
+    success: true,
+    reference: paystackRef,
+    status: autoApproval.ok ? "processing" : "pending_approval",
+    message: autoApproval.ok ? "Payment verified. Order was approved automatically." : "Payment verified. Order is awaiting admin approval.",
+  });
 }
