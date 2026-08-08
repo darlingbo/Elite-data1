@@ -194,9 +194,11 @@ export async function POST(request: NextRequest) {
     return Response.json({ ok: true });
   }
 
-  // Never trust the amount or bundle embedded in webhook metadata. The current
-  // server-side catalog remains the source of truth.
-  if (sellingPrice <= 0 || chargedAmount + 0.01 < sellingPrice * 0.8) {
+  // Never trust the amount or bundle embedded in webhook metadata. Require at
+  // least the complete server-side selling price. Discounted/referral payments
+  // that need recovery are reviewed by the browser callback or an admin rather
+  // than risking an underpaid automatic order here.
+  if (sellingPrice <= 0 || chargedAmount + 0.01 < sellingPrice) {
     await sendAdminAlert(
       `⚠️ <b>Webhook blocked: underpaid order</b>\nRef: <code>${reference}</code>\nPaid: GH₵${chargedAmount.toFixed(2)}\nExpected: GH₵${sellingPrice.toFixed(2)}\n\nNo order was created.`
     ).catch(() => {});

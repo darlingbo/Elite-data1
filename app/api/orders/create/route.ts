@@ -8,6 +8,7 @@ import { sendCustomerSMS, orderReceivedSMS } from "@/lib/sms";
 import { getSurcharge, clearSurcharge } from "@/lib/surcharge";
 import { resolveAgentCommissionRate } from "@/lib/commission";
 import { percentageOf, roundCurrency, subtractCurrency, toMinorUnits } from "@/lib/finance";
+import { calculateExpectedOrderCharge, isSeverelyUnderpaid } from "@/lib/payment-validation";
 
 const PLATFORM_FEE_RATE = 0.02;
 const LOYALTY_WINDOW_HOURS = 7;
@@ -252,7 +253,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { name, email, phone, bundleId, paystackRef, agentCode, applyReferralCredit, referralVia, fastDelivery, refundPhone, refundNetwork, surcharge: clientSurcharge } = body;
+  const { name, email, phone, bundleId, paystackRef, agentCode, applyReferralCredit, referralVia, fastDelivery, refundPhone, refundNetwork, promoCode, surcharge: clientSurcharge } = body;
 
   if (!name || !email || !phone || !bundleId || !paystackRef) {
     return Response.json({ error: "Missing required fields." }, { status: 400 });
@@ -267,7 +268,7 @@ export async function POST(request: NextRequest) {
 
   // ─── OPTIMISATION 3: run idempotency check + agent lookup + referral
   //     credit lookup all at the same time instead of one-by-one ──────────
-  const [existingResult, agentResult, creditResult, commissionGlobalResult] = await Promise.all([
+  const [existingResult, agentResult, creditResult, commissionGlobalResult, promoResult] = await Promise.all([
     // Idempotency — don't process the same Paystack ref twice
     supabase
       .from("orders")
@@ -303,6 +304,15 @@ export async function POST(request: NextRequest) {
       .select("agent_pct")
       .eq("id", "global")
       .maybeSingle(),
+
+    promoCode
+      ? supabase
+          .from("promo_codes")
+          .select("code, discount_type, discount_value, max_uses, used_count, expires_at, active")
+          .eq("code", String(promoCode).trim().toUpperCase())
+          .eq("active", true)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   if (existingResult.data) {
@@ -342,6 +352,7 @@ export async function POST(request: NextRequest) {
   // adminTierPrice = what the agent pays per sale (deducted from wallet for free plan, or used for profit calc)
   // pro plan → custom_tier_prices (or admin price fallback); free plan custom_price → admin price × 0.96
   let adminTierPrice = pricing.costPrice; // fallback
+  let customerSellingPrice = pricing.price;
   if (agentId && agentType === "custom_price") {
     const [tierResult, agentPriceResult, adminPriceResult] = await Promise.all([
       agentPlan === "pro"
@@ -361,6 +372,10 @@ export async function POST(request: NextRequest) {
     const adminSellingPrice = (adminPriceResult.data?.active !== false && adminPriceResult.data?.price != null)
       ? Number(adminPriceResult.data.price)
       : bundles.find(b => b.id === bundleId)?.price ?? pricing.price;
+    const customSellingPrice = Number(agentPriceResult.data?.custom_price);
+    customerSellingPrice = Number.isFinite(customSellingPrice) && customSellingPrice > 0
+      ? customSellingPrice
+      : adminSellingPrice;
 
     if (agentPlan === "pro") {
       // Pro plan: tier price if set, otherwise admin selling price
@@ -399,6 +414,21 @@ export async function POST(request: NextRequest) {
 
   const txnStatus = (psData.data as Record<string, unknown>)?.status;
   const txnAmount = Number((psData.data as Record<string, unknown>)?.amount ?? 0);
+  const txnCurrency = String((psData.data as Record<string, unknown>)?.currency ?? "").toUpperCase();
+
+  const txnMetadata = ((psData.data as Record<string, unknown>)?.metadata ?? {}) as Record<string, unknown>;
+  const txnFields = (txnMetadata.custom_fields ?? []) as Array<Record<string, unknown>>;
+  const txnField = (key: string) => String(txnFields.find(field => field.variable_name === key)?.value ?? "");
+  const paidPhone = txnField("phone").replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0");
+  const paidBundleId = txnField("bundle_id");
+  const requestedPhone = phone.replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0");
+
+  if (paidPhone !== requestedPhone || paidBundleId !== String(bundleId)) {
+    await sendAdminAlert(
+      `PAYMENT METADATA MISMATCH\nRef: ${paystackRef}\nThe paid phone or bundle does not match the submitted order. No order was created.`,
+    ).catch(() => {});
+    return Response.json({ error: "The payment details do not match this order." }, { status: 409 });
+  }
 
   // Hard floor: no bundle can ever cost less than GH₵1.00 — catches zero-priced DB entries
   const ABSOLUTE_MIN_GHC = 1.00;
@@ -420,8 +450,33 @@ export async function POST(request: NextRequest) {
   // If someone paid less than 50% of the bundle price they clearly manipulated
   // the frontend. Let the payment appear to succeed — they see a "success" screen
   // but we save the order as FRAUD, auto-block them, and never deliver the data.
-  const halfPriceKobo = toMinorUnits(percentageOf(pricing.price, 0.5));
-  if (psData.status === true && txnStatus === "success" && txnAmount < halfPriceKobo) {
+  const pendingSurcharge = await getSurcharge(phone);
+  const baseCheckoutAmount = roundCurrency(customerSellingPrice * (1 + PLATFORM_FEE_RATE));
+  const promo = promoResult.data as {
+    discount_type?: string;
+    discount_value?: number;
+    max_uses?: number | null;
+    used_count?: number;
+    expires_at?: string | null;
+    active?: boolean;
+  } | null;
+  const promoIsValid = Boolean(
+    promo?.active !== false &&
+    (!promo?.expires_at || new Date(promo.expires_at) >= new Date()) &&
+    (promo?.max_uses == null || Number(promo.used_count ?? 0) < Number(promo.max_uses)),
+  );
+  const verifiedPromoDiscount = !promoIsValid ? 0 : promo?.discount_type === "percent"
+    ? percentageOf(baseCheckoutAmount, Number(promo.discount_value ?? 0) / 100)
+    : Math.min(roundCurrency(Number(promo?.discount_value ?? 0)), baseCheckoutAmount);
+  const expectedCharge = calculateExpectedOrderCharge({
+    sellingPrice: customerSellingPrice,
+    referralCredit: creditAmount,
+    promoDiscount: verifiedPromoDiscount,
+    surcharge: pendingSurcharge,
+    fastDelivery: fastDelivery === true,
+  });
+  const expectedKobo = toMinorUnits(expectedCharge);
+  if (psData.status === true && txnStatus === "success" && isSeverelyUnderpaid(txnAmount, expectedCharge)) {
     // Auto-block this phone
     const updatedList = [...new Set([...blocklist, normalizedPhone])];
     await supabase.from("system_settings").upsert(
@@ -445,22 +500,19 @@ export async function POST(request: NextRequest) {
       status: "FRAUD",
     });
     await sendAdminAlert(
-      `🕵️ <b>FRAUD TRAP TRIGGERED</b>\nPhone: <code>${phone}</code>\nName: ${name}\nPaid: GH₵${(txnAmount / 100).toFixed(2)} (expected GH₵${pricing.price.toFixed(2)})\nBundle: ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\nRef: <code>${paystackRef}</code>\n✅ Auto-blocked. No data delivered.`
+      `🕵️ <b>FRAUD TRAP TRIGGERED</b>\nPhone: <code>${phone}</code>\nName: ${name}\nPaid: GH₵${(txnAmount / 100).toFixed(2)} (expected GH₵${expectedCharge.toFixed(2)})\nBundle: ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\nRef: <code>${paystackRef}</code>\n✅ Auto-blocked. No data delivered.`
     ).catch(() => {});
     // Return fake success — they think it worked
     return Response.json({ success: true, reference: paystackRef, fraudTrap: true });
   }
 
-  // Floor: customer must pay at least 80% of the selling price + any surcharge.
-  const pendingSurcharge = await getSurcharge(phone);
-  const surchargeKobo = toMinorUnits(pendingSurcharge);
-  const minKobo = Math.max(
-    toMinorUnits(ABSOLUTE_MIN_GHC),
-    toMinorUnits(percentageOf(pricing.price, 0.8))
-  ) + surchargeKobo;
+  // Require the complete server-calculated checkout amount. Paystack, not the
+  // browser, is the source of truth for what was actually paid.
+  const minKobo = Math.max(toMinorUnits(ABSOLUTE_MIN_GHC), expectedKobo);
   const paid =
     psData.status === true &&
     txnStatus === "success" &&
+    txnCurrency === "GHS" &&
     txnAmount >= minKobo;
 
   if (!paid) {
@@ -469,6 +521,8 @@ export async function POST(request: NextRequest) {
         ? `Paystack API error: ${psData.message ?? "unknown"}`
         : txnStatus !== "success"
         ? `Transaction status: ${txnStatus}`
+        : txnCurrency !== "GHS"
+        ? `Currency mismatch: ${txnCurrency || "missing"}`
         : `Amount too low: paid ${txnAmount} pesewas, minimum ${minKobo}`;
 
     // Auto-block numbers that try to pay suspiciously low amounts (under GH₵1.00)
