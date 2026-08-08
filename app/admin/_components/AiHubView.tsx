@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { AiBusinessReport } from "./SettingsView";
+import { AiBusinessReport } from "./AiBusinessReport";
 import AiControlPanel from "./AiControlPanel";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };

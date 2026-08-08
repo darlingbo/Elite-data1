@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import PublicNav from "@/components/PublicNav";
+import MobileBottomNav from "@/components/MobileBottomNav";
 import Footer from "@/components/Footer";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import WelcomePopup from "@/components/WelcomePopup";
@@ -10,6 +11,15 @@ import { supabase } from "@/lib/supabase";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
+import "./mobile.css";
+import "./mobile-header.css";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0d1b2e",
+};
 
 const PAGE_SEO: Record<string, { title: string; description: string; keywords: string[] }> = {
   "/": { title: "Buy Data Bundles & Result Checker Vouchers in Ghana | Elite Data", description: "Buy affordable MTN, Telecel and AirtelTigo data bundles plus BECE and WASSCE result checker vouchers online in Ghana. Secure Paystack payment and order tracking.", keywords: ["buy data bundle Ghana", "cheap data bundles Ghana", "result checker Ghana", "BECE result checker", "WASSCE result checker"] },
@@ -72,17 +82,18 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const pathname = headersList.get("x-pathname") ?? "";
   const nonce = headersList.get("x-nonce") ?? undefined;
   const isAdmin = pathname.startsWith("/admin");
-  const isStandalone = pathname.startsWith("/admin") || pathname.startsWith("/agent/dashboard") || pathname.startsWith("/agent");
+  const isAgent = pathname.startsWith("/agent");
+  const isStandalone = isAdmin || isAgent;
   const helplineEnabled = isStandalone ? false : await getHelplineEnabled();
+  const bodyModeClass = isAdmin ? "admin-site" : isAgent ? "agent-site" : "public-site";
 
   return (
     <html lang="en">
       <head>
-        <meta name="theme-color" content="#3b82f6" />
         <meta name="mobile-web-app-capable" content="yes" />
         <link rel="apple-touch-icon" href="/logo.png" />
       </head>
-      <body className={`min-h-screen flex flex-col ${isStandalone ? "workspace-shell" : "site-shell"}`} data-helpline={helplineEnabled ? "on" : "off"}>
+      <body className={`min-h-screen flex flex-col bg-gray-50 text-gray-900 ${bodyModeClass} ${isStandalone ? "workspace-shell" : "site-shell"}`} data-helpline={helplineEnabled ? "on" : "off"}>
         <script nonce={nonce} type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
           "@context": "https://schema.org",
           "@graph": [
@@ -100,9 +111,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {!isStandalone && helplineEnabled && <WhatsAppButton />}
         {!isStandalone && <WelcomePopup />}
         {!isStandalone && <ChatWidget />}
-        {/* On standalone pages (admin/agent) the nav is absent so we float the toggle */}
-        {isStandalone && !isAdmin && (
-          <div style={{ position: "fixed", top: 14, right: 16, zIndex: 99999 }}>
+        {!isStandalone && <MobileBottomNav />}
+        {isAgent && (
+          <div className="agent-theme-toggle" style={{ position: "fixed", top: 14, right: 16, zIndex: 99999 }}>
             <ThemeToggle />
           </div>
         )}

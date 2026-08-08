@@ -111,16 +111,14 @@ export default function AdminDashboard() {
       if (res.ok) {
         const data = await res.json() as { orders: Order[] };
         setPendingOrders(data.orders ?? []);
-        // Keep the sidebar count in sync
         setStats(prev => prev ? { ...prev, orders: { ...prev.orders, pendingApproval: data.orders?.length ?? 0 } } : prev);
       }
-    } catch { /* silent — next interval will retry */ }
+    } catch { }
   }, []);
 
   useEffect(() => { const t = setTimeout(() => void fetchStats(), 0); return () => clearTimeout(t); }, [fetchStats]);
   useEffect(() => { if (tab === "overview") { setTimeout(() => setAnimated(false), 0); setTimeout(() => setAnimated(true), 60); } }, [tab]);
 
-  // Full stats every 30s; live approval-queue refresh every 8s when on that tab
   useEffect(() => {
     const id = setInterval(() => void fetchStats(), 30_000);
     return () => clearInterval(id);
