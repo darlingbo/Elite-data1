@@ -6,6 +6,7 @@ import { sendCustomerSMS, orderFailedSMS } from "@/lib/sms";
 import { auditLog } from "@/lib/audit";
 import { assessOrderRisk, isOrderGuardEnabled } from "@/lib/order-risk";
 import { deliverVoucherFromInventory } from "@/lib/voucher-inventory";
+import { getOrderReviewSecondsRemaining, orderReviewWaitMessage } from "@/lib/order-review-window";
 
 export type ApprovalChannel = "admin_dashboard" | "telegram" | "auto_approval" | "sms";
 
@@ -27,6 +28,16 @@ export async function approveOrder(
   reference: string,
   channel: ApprovalChannel = "admin_dashboard",
 ): Promise<{ ok: boolean; message: string }> {
+  const { data: reviewOrder } = await supabase
+    .from("orders")
+    .select("created_at, status")
+    .eq("reference", reference)
+    .maybeSingle();
+  if (!reviewOrder) return { ok: false, message: "Order not found" };
+  if (reviewOrder.status !== "pending_approval") return { ok: false, message: `Already ${reviewOrder.status}` };
+  const reviewSeconds = getOrderReviewSecondsRemaining(reviewOrder.created_at);
+  if (reviewSeconds > 0) return { ok: false, message: orderReviewWaitMessage(reviewSeconds) };
+
   const { data: claimResult, error: claimError } = await supabase.rpc(
     "claim_order_for_fulfillment",
     { p_reference: reference, p_channel: channel },

@@ -1,9 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Order, OrderStatus } from "./shared/types";
 import { PAGE_SIZE, BG, CARD, BORDER, BORDER2 } from "./shared/constants";
 import { getNetBadge } from "./shared/utils";
 import { Ic } from "./shared/Icons";
+import { getOrderReviewSecondsRemaining } from "@/lib/order-review-window";
 
 export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVAL" }: { orders: Order[]; onRefresh: () => void; defaultFilter?: OrderStatus }) {
   const [search, setSearch] = useState("");
@@ -25,6 +26,12 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
   const [refunding, setRefunding] = useState<string | null>(null);
   const [refundMenu, setRefundMenu] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // SMS modal
   const [smsModal, setSmsModal] = useState<{ phone: string; name: string; message: string } | null>(null);
@@ -53,6 +60,7 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageOrders = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const isReviewReady = (order: Order) => getOrderReviewSecondsRemaining(order.created_at, now) === 0;
 
   const counts: Record<OrderStatus, number> = {
     PENDING_APPROVAL: orders.filter(o => o.status === "pending_approval").length,
@@ -294,7 +302,7 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
               checked={selectedRefs.size > 0 && selectedRefs.size === pageOrders.filter(o => o.status === "pending_approval").length}
               ref={el => { if (el) el.indeterminate = selectedRefs.size > 0 && selectedRefs.size < pageOrders.filter(o => o.status === "pending_approval").length; }}
               onChange={e => {
-                const approvalOrders = pageOrders.filter(o => o.status === "pending_approval");
+                const approvalOrders = pageOrders.filter(o => o.status === "pending_approval" && isReviewReady(o));
                 setSelectedRefs(e.target.checked ? new Set(approvalOrders.map(o => o.reference)) : new Set());
               }}
               className="w-4 h-4 accent-amber-400 cursor-pointer" />
@@ -322,8 +330,44 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
         </div>
       )}
 
+      {/* Mobile order cards avoid a wide table and keep review details together. */}
+      <div className="space-y-3 sm:hidden">
+        {pageOrders.map((o, idx) => {
+          const waiting = o.status === "pending_approval" ? getOrderReviewSecondsRemaining(o.created_at, now) : 0;
+          const busy = approving.has(o.reference);
+          return (
+            <article key={o.reference ?? idx} className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-bold text-white">{o.customer_name || "Customer"}</p>
+                  <p className="mt-1 font-mono text-sm text-slate-300">{o.phone}</p>
+                </div>
+                <p className="shrink-0 text-lg font-black text-white">GH₵{Number(o.amount).toFixed(2)}</p>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-xl bg-slate-950/60 p-3"><p className="text-[10px] uppercase text-slate-500">Bundle</p><p className="mt-1 font-bold text-slate-200">{(o.network ?? "").toUpperCase()} {o.bundle_size}</p></div>
+                <div className="rounded-xl bg-slate-950/60 p-3"><p className="text-[10px] uppercase text-slate-500">Source</p><p className="mt-1 truncate font-bold text-slate-200">{o.agent_name || "Direct"}</p></div>
+              </div>
+              {o.risk_flags?.length ? <div className="mt-3 flex flex-wrap gap-1">{o.risk_flags.map(flag => <span key={flag} className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] font-semibold text-red-300">{flag}</span>)}</div> : null}
+              <p className="mt-3 break-all font-mono text-[11px] text-blue-400">{o.reference}</p>
+              {o.status === "pending_approval" && (
+                waiting > 0 ? (
+                  <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-center text-sm font-bold text-amber-300">Review order — actions unlock in {waiting}s</div>
+                ) : (
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button onClick={() => { if (window.confirm(`Approve and send data to ${o.phone}?`)) handleApproveOrReject([o.reference], "approve"); }} disabled={busy} className="min-h-11 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 font-bold text-emerald-300 disabled:opacity-50">✅ Approve</button>
+                    <button onClick={() => { if (window.confirm("Reject this order?")) handleApproveOrReject([o.reference], "reject"); }} disabled={busy} className="min-h-11 rounded-xl border border-red-500/40 bg-red-500/15 px-3 font-bold text-red-300 disabled:opacity-50">❌ Reject</button>
+                  </div>
+                )
+              )}
+              {(approveMsg[o.reference] ?? actionMsg[o.reference]) && <p className="mt-3 text-sm font-bold text-slate-200">{(approveMsg[o.reference] ?? actionMsg[o.reference]).text}</p>}
+            </article>
+          );
+        })}
+      </div>
+
       {/* Table */}
-      <div className="rounded-2xl border overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
+      <div className="hidden rounded-2xl border overflow-hidden sm:block" style={{ background: CARD, borderColor: BORDER }}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -356,6 +400,7 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                 const canDelete   = ["failed", "pending", "pending_approval", "processing"].includes(statusLower);
                 const canRefund   = ["failed", "not_on_list", "rejected"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
                 const refundBlocked = ["processing", "completed"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
+                const reviewSeconds = isPendingApproval ? getOrderReviewSecondsRemaining(o.created_at, now) : 0;
 
                 return (
                   <tr key={o.reference ?? idx} className="border-b hover:bg-white/2 transition-colors last:border-0"
@@ -434,7 +479,10 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                         <div className="flex items-center gap-1.5 flex-wrap">
 
                           {/* Approve / Reject */}
-                          {isPendingApproval && o.reference && (
+                          {isPendingApproval && o.reference && reviewSeconds > 0 && (
+                            <span className="text-xs font-bold text-amber-400">Review: {reviewSeconds}s</span>
+                          )}
+                          {isPendingApproval && o.reference && reviewSeconds === 0 && (
                             <>
                               <button onClick={() => { if (window.confirm(`Approve and send data to ${o.phone}?`)) handleApproveOrReject([o.reference], "approve"); }}
                                 disabled={isApprovingThis}

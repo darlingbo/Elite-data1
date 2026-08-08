@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { auditLog } from "@/lib/audit";
 import { sendAgentNotification } from "@/lib/telegram";
+import { getOrderReviewSecondsRemaining, orderReviewWaitMessage } from "@/lib/order-review-window";
 
 export type RejectionChannel = "admin_dashboard" | "telegram" | "sms";
 
@@ -10,7 +11,7 @@ export async function rejectOrder(
 ): Promise<{ ok: boolean; message: string }> {
   const { data: order } = await supabase
     .from("orders")
-    .select("phone, network, bundle_size, amount, status, agent_id")
+    .select("phone, network, bundle_size, amount, status, agent_id, created_at")
     .eq("reference", reference)
     .maybeSingle();
 
@@ -18,6 +19,8 @@ export async function rejectOrder(
   if (order.status !== "pending_approval") {
     return { ok: false, message: `Already ${order.status}` };
   }
+  const reviewSeconds = getOrderReviewSecondsRemaining(order.created_at);
+  if (reviewSeconds > 0) return { ok: false, message: orderReviewWaitMessage(reviewSeconds) };
 
   const { data: walletResult, error: walletRefundError } = await supabase.rpc(
     "reject_reserved_wallet_order",
