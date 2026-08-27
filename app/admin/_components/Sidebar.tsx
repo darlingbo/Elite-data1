@@ -49,7 +49,7 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
       { id: "processing", icon: <Ic.sync />, label: "Processing" },
       { id: "manual", icon: <Ic.edit />, label: "Manual Orders" },
       { id: "result-checker", icon: <Ic.check />, label: "Result Checks" },
-      { id: "refund-numbers", icon: <Ic.wallet />, label: "MoMo Refunds" },
+      { id: "refund-numbers", icon: <Ic.wallet />, label: "Refunds" },
     ] },
     { label: "CONTENT", items: [
       { id: "notifications", icon: <Ic.mega />, label: "Notifications" },

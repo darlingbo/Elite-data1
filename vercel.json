@@ -52,6 +52,18 @@
     {
       "path": "/api/cron/security-check",
       "schedule": "0 20 * * *"
+    },
+    {
+      "path": "/api/cron/auto-approval",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/scheduled-sms",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/not-on-list-followup",
+      "schedule": "0 * * * *"
     }
   ]
 }

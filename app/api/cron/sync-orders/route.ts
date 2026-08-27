@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { sendCompletedOrderAlert, sendStuckOrderAlert } from "@/lib/telegram";
-import { sendCustomerSMS, orderDeliveredSMS, orderFailedSMS } from "@/lib/sms";
+import { sendAdminDeliverySMS, sendCustomerSMS, orderDeliveredSMS, orderFailedSMS } from "@/lib/sms";
 
 const networkApiMap: Record<string, string> = {
   mtn: "MTN",
@@ -59,12 +59,12 @@ export async function GET(request: NextRequest) {
   const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
   const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
-  type OrderRow = { reference: string; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null; cost_price: number | null; customer_name: string | null };
+  type OrderRow = { reference: string; inventor_order_id: string | null; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null; cost_price: number | null; customer_name: string | null };
 
   let orders: OrderRow[] | null = null;
   const { data: full, error: fullErr } = await supabase
     .from("orders")
-    .select("reference, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount, cost_price, customer_name")
+    .select("reference, inventor_order_id, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount, cost_price, customer_name")
     .in("status", ["pending", "processing"])
     .gte("created_at", cutoff48h)
     .neq("network", "voucher");
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
       .in("status", ["pending", "processing"])
       .gte("created_at", cutoff48h)
       .neq("network", "voucher");
-    orders = (basic ?? []).map(o => ({ ...o, bundle_size_gb: null, agent_commission: null, amount: null })) as OrderRow[];
+    orders = (basic ?? []).map(o => ({ ...o, inventor_order_id: null, bundle_size_gb: null, agent_commission: null, amount: null })) as OrderRow[];
   }
 
   if (!orders?.length) return Response.json({ updated: 0, retried: 0, checked: 0 });
@@ -92,13 +92,26 @@ export async function GET(request: NextRequest) {
 
   for (const chunk of chunks) {
     await Promise.all(chunk.map(async (order) => {
-      const invStatus = await checkInventorOrder(order.reference);
+      const invStatus = await checkInventorOrder(order.inventor_order_id || order.reference);
 
       // Wallet purchases are auto-fulfilled — never notify admin, just handle silently
       const isWalletOrder = order.reference.startsWith("AGTWALLET-");
 
       if (invStatus === "completed") {
-        await supabase.from("orders").update({ status: "completed" }).eq("reference", order.reference);
+        const { data: completedOrder } = await supabase
+          .from("orders")
+          .update({ status: "completed", completed_at: new Date().toISOString() })
+          .eq("reference", order.reference)
+          .eq("status", order.status)
+          .select("reference")
+          .maybeSingle();
+        if (!completedOrder) return;
+        sendAdminDeliverySMS({
+          reference: order.reference,
+          phone: order.phone,
+          network: order.network,
+          bundleSize: order.bundle_size,
+        }).catch(() => {});
         // Commission is already credited at approval time — do NOT credit again here
         if (!isWalletOrder) {
           const profit = (order.amount && order.cost_price) ? (Number(order.amount) - Number(order.cost_price)).toFixed(2) : null;

@@ -52,7 +52,7 @@ const pageTitle: Record<Tab, string> = {
   "all-agents": "All Agents", "agent-applications": "Agent Applications", "agent-wallets": "Agent Wallets",
   "leaderboard": "Referrals & Leaderboard", "referrals": "Referrals & Leaderboard",
   "transactions": "Finance Analytics", "commissions": "Commissions", "manual": "Manual Orders",
-  "refund-numbers": "MoMo Refund Numbers", "compensate": "Compensate",
+  "refund-numbers": "Refunds", "compensate": "Compensate",
   "announcements": "Notifications", "notifications": "Notifications", "promo": "Promo Banner",
   "sms": "SMS Messaging", "apikeys": "API Keys", "settings": "Settings",
   "customers": "Customers", "mashup-bundles": "Mashup Bundles", "network-providers": "Network Providers",

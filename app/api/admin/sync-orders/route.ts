@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { sendStuckOrderAlert } from "@/lib/telegram";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
+import { sendAdminDeliverySMS } from "@/lib/sms";
 
 const networkApiMap: Record<string, string> = {
   mtn: "MTN",
@@ -87,12 +88,12 @@ export async function POST(request: Request) {
   const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
   // Try full query with all columns; fall back if newer columns don't exist yet
-  type OrderRow = { reference: string; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null };
+  type OrderRow = { reference: string; inventor_order_id: string | null; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null };
 
   let orders: OrderRow[] | null = null;
   const { data: full, error: fullErr } = await supabase
     .from("orders")
-    .select("reference, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount")
+    .select("reference, inventor_order_id, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount")
     .in("status", ["pending", "processing"])
     .gte("created_at", cutoff48h);
 
@@ -105,7 +106,7 @@ export async function POST(request: Request) {
       .select("reference, status, phone, network, bundle_size, created_at, agent_id")
       .in("status", ["pending", "processing"])
       .gte("created_at", cutoff48h);
-    orders = (basic ?? []).map(o => ({ ...o, bundle_size_gb: null, agent_commission: null, amount: null })) as OrderRow[];
+    orders = (basic ?? []).map(o => ({ ...o, inventor_order_id: null, bundle_size_gb: null, agent_commission: null, amount: null })) as OrderRow[];
   }
 
   if (!orders?.length) return Response.json({ updated: 0, retried: 0, checked: 0 });
@@ -118,10 +119,23 @@ export async function POST(request: Request) {
 
   for (const chunk of chunks) {
     await Promise.all(chunk.map(async (order) => {
-      const invStatus = await checkInventorOrder(order.reference);
+      const invStatus = await checkInventorOrder(order.inventor_order_id || order.reference);
 
       if (invStatus === "completed") {
-        await supabase.from("orders").update({ status: "completed" }).eq("reference", order.reference);
+        const { data: completedOrder } = await supabase
+          .from("orders")
+          .update({ status: "completed", completed_at: new Date().toISOString() })
+          .eq("reference", order.reference)
+          .eq("status", order.status)
+          .select("reference")
+          .maybeSingle();
+        if (!completedOrder) return;
+        sendAdminDeliverySMS({
+          reference: order.reference,
+          phone: order.phone,
+          network: order.network,
+          bundleSize: order.bundle_size,
+        }).catch(() => {});
         // Commission is already credited at approval time — do NOT credit again here
         updated++;
         return;

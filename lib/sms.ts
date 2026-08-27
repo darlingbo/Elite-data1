@@ -119,6 +119,25 @@ export async function sendAdminApprovalSMS(message: string): Promise<void> {
   await sendSms(adminPhone, `${plain.slice(0, 300)}${command}`, process.env.AT_SMS_SHORTCODE);
 }
 
+/** Notify the configured admin only after a provider confirms delivery. */
+export async function sendAdminDeliverySMS(order: {
+  reference: string;
+  phone: string;
+  network: string;
+  bundleSize: string;
+}): Promise<void> {
+  const { adminPhone } = await getSmsApprovalSettings();
+  const destination = adminPhone || process.env.ADMIN_SMS_PHONE?.trim() || "";
+  if (!destination) return;
+
+  const shortRef = order.reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
+  await sendSms(
+    destination,
+    `DELIVERED: ${order.network.toUpperCase()} ${order.bundleSize} data was delivered to ${order.phone}. Ref: ${shortRef}.`,
+    process.env.AT_SMS_SHORTCODE,
+  );
+}
+
 export async function sendAdminCommandReplySMS(phone: string, message: string): Promise<void> {
   await sendSms(phone, message, process.env.AT_SMS_SHORTCODE);
 }
@@ -146,9 +165,39 @@ export function orderFailedSMS(name: string, network: string, size: string, refe
   const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
   return `Hi ${first}, we're sorry — your ${network.toUpperCase()} ${size} data order (Ref: ${shortRef}) could not be delivered. You will receive a full refund within 24 hours. Contact us for help.`;
 }
+
+/**
+ * True when an Inventor error means the recipient number is new / not yet on the
+ * beneficiary list — a delivery delay, NOT a hard failure and NOT a refund case.
+ */
+export function isNotOnListError(message: string): boolean {
+  return /beneficiar|not\s+verified|not\s+added|new\s+to\s+(the\s+)?system|not\s+eligible|not\s+on\s+(the\s+)?list/i.test(
+    message || "",
+  );
+}
+
+/** Sent once when an order lands in `not_on_list` — reassure, no refund, up to 72h. */
+export function orderNotOnListSMS(name: string, network: string, size: string, reference: string): string {
+  const first = (name || "").split(" ")[0] || "Customer";
+  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
+  return `Hi ${first}, your ${network.toUpperCase()} ${size} order (Ref: ${shortRef}) has been received. This number is new to our system or not yet on our beneficiary list, so delivery can take up to 72 hours. No refund is needed — your data will be delivered. Thank you for your patience. — Elite Data`;
+}
+
+/** Sent once if a `not_on_list` order is still undelivered after 72h. No refund. */
+export function orderNotOnListApologySMS(name: string, network: string, size: string, reference: string): string {
+  const first = (name || "").split(" ")[0] || "Customer";
+  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
+  return `Hi ${first}, we sincerely apologise — your ${network.toUpperCase()} ${size} order (Ref: ${shortRef}) is taking longer than expected. Our team is still working to deliver it to your number. Thank you for your patience. — Elite Data`;
+}
 import { supabase } from "@/lib/supabase";
 
 function normaliseGhanaPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   return digits.startsWith("233") ? `+${digits}` : digits.startsWith("0") ? `+233${digits.slice(1)}` : `+${digits}`;
+}
+
+export function orderRefundedSMS(name: string, amount: number, reference: string): string {
+  const first = (name || "").split(" ")[0] || "Customer";
+  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
+  return `Hi ${first}, your GH₵${amount.toFixed(2)} refund for order ${shortRef} has been processed. Please allow your payment provider time to complete settlement. Thank you.`;
 }

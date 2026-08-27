@@ -35,7 +35,8 @@ const STATUS: Record<string, { label: string; color: string; bg: string; icon: s
   processing:       { label: "Processing", color: "#3b82f6", bg: "rgba(59,130,246,0.12)",  icon: "🔄", desc: "Provider is delivering your bundle. Usually 1–5 minutes." },
   completed:        { label: "Delivered",  color: "#22c55e", bg: "rgba(34,197,94,0.12)",   icon: "✅", desc: "Bundle delivered successfully to your phone!" },
   failed:           { label: "Failed",     color: "#ef4444", bg: "rgba(239,68,68,0.12)",   icon: "❌", desc: "Delivery failed. Click below to request your refund." },
-  not_on_list:      { label: "Failed",     color: "#ef4444", bg: "rgba(239,68,68,0.12)",   icon: "❌", desc: "Delivery failed. Click below to request your refund." },
+  not_on_list:      { label: "Processing", color: "#f97316", bg: "rgba(249,115,22,0.12)",  icon: "🕒", desc: "This number is new to our system, so delivery can take up to 72 hours. No refund is needed — your data is on the way." },
+  refunded:         { label: "Refunded",   color: "#22c55e", bg: "rgba(34,197,94,0.12)",   icon: "💸", desc: "Your refund has been processed. Please allow your payment provider time to complete settlement." },
 };
 
 function fmtDate(iso: string) {
@@ -189,7 +190,7 @@ function TrackContent() {
   const st = order ? (STATUS[order.status?.toLowerCase()] ?? STATUS.pending) : null;
   const isActive = order && ["processing", "pending", "pending_approval"].includes(order.status?.toLowerCase());
   const statusKey = order?.status?.toLowerCase() ?? "";
-  const isFailed = statusKey === "failed" || statusKey === "not_on_list";
+  const isFailed = statusKey === "failed";
 
   return (
     <div style={{ background: D.bg, minHeight: "100vh", color: D.text }}>
@@ -254,7 +255,7 @@ function TrackContent() {
             </p>
             {orders.map(o => {
               const s = STATUS[o.status?.toLowerCase()] ?? STATUS.pending;
-              const oFailed = o.status?.toLowerCase() === "failed" || o.status?.toLowerCase() === "not_on_list";
+              const oFailed = o.status?.toLowerCase() === "failed";
               return (
                 <div key={o.reference} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, overflow: "hidden" }}>
                   <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${D.border}` }}>

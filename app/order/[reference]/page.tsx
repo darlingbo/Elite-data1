@@ -31,7 +31,7 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string; ico
   processing:       { label: "Processing", color: "#3b82f6", bg: "rgba(59,130,246,0.12)",  icon: "🔄", desc: "Your bundle is being sent to your phone — usually 1–5 minutes." },
   completed:        { label: "Delivered ✓",color: "#22c55e", bg: "rgba(34,197,94,0.12)",   icon: "✅", desc: "Your bundle has been delivered successfully!" },
   failed:           { label: "Failed",     color: "#ef4444", bg: "rgba(239,68,68,0.12)",   icon: "❌", desc: "Delivery failed. Please contact us on WhatsApp for a refund or retry." },
-  not_on_list:      { label: "Failed",     color: "#ef4444", bg: "rgba(239,68,68,0.12)",   icon: "❌", desc: "Delivery failed. Please contact us on WhatsApp for a refund or retry." },
+  not_on_list:      { label: "Processing", color: "#f97316", bg: "rgba(249,115,22,0.12)",  icon: "🕒", desc: "This number is new to our system, so delivery can take up to 72 hours. No refund is needed — your data is on the way." },
   refunded:         { label: "Refunded",   color: "#22c55e", bg: "rgba(34,197,94,0.12)",   icon: "💸", desc: "Your refund has been processed. Please allow your provider time to settle." },
   rejected:         { label: "Rejected",   color: "#ef4444", bg: "rgba(239,68,68,0.12)",   icon: "🚫", desc: "Your order was rejected. Please contact us on WhatsApp." },
 };
@@ -87,8 +87,8 @@ export default function OrderPage() {
   }, [fetchOrder]);
 
   const st = order ? (STATUS_MAP[order.status] ?? STATUS_MAP["pending"]) : null;
-  const isTerminal = order && ["completed", "failed", "refunded", "rejected", "not_on_list"].includes(order.status);
-  const isFailed   = order && ["failed", "not_on_list", "rejected"].includes(order.status);
+  const isTerminal = order && ["completed", "failed", "refunded", "rejected"].includes(order.status);
+  const isFailed   = order && ["failed", "rejected"].includes(order.status);
 
   return (
     <div style={{ background: BG, minHeight: "100vh", padding: "40px 16px 80px" }}>

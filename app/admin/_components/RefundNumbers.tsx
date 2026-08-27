@@ -11,6 +11,8 @@ interface RefundRow {
   network: string | null;
   bundle_size: string | null;
   amount: number;
+  refunded?: boolean;
+  refund_amount?: number | null;
   status: string;
   created_at: string;
 }
@@ -40,6 +42,7 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   processing: { bg: "rgba(59,130,246,0.1)", color: "#3b82f6" },
   pending: { bg: "rgba(245,158,11,0.1)", color: "#f59e0b" },
   failed: { bg: "rgba(248,113,113,0.1)", color: "#f87171" },
+  refunded: { bg: "rgba(16,185,129,0.1)", color: "#34d399" },
 };
 
 function fmtDate(iso: string) {
@@ -65,7 +68,7 @@ export default function RefundNumbers() {
   const [rows, setRows] = useState<RefundRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [migrationNeeded, setMigrationNeeded] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<"all" | "failed" | "processing" | "pending" | "completed">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "refunded" | "failed" | "processing" | "pending" | "completed">("all");
   const [search, setSearch] = useState("");
   const [copiedAll, setCopiedAll] = useState(false);
 
@@ -111,6 +114,7 @@ export default function RefundNumbers() {
     processing: rows.filter(r => r.status?.toLowerCase() === "processing").length,
     pending: rows.filter(r => r.status?.toLowerCase() === "pending").length,
     completed: rows.filter(r => r.status?.toLowerCase() === "completed").length,
+    refunded: rows.filter(r => r.status?.toLowerCase() === "refunded" || r.refunded).length,
   };
 
   return (
@@ -118,9 +122,9 @@ export default function RefundNumbers() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h2 style={{ fontSize: 20, fontWeight: 900, color: D.text, margin: 0 }}>MoMo Refund Numbers</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 900, color: D.text, margin: 0 }}>Refunds</h2>
           <p style={{ fontSize: 13, color: D.muted, margin: "4px 0 0" }}>
-            Every customer’s MoMo number for instant manual refunds
+            Refund requests and completed Paystack or manual refunds
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -157,6 +161,7 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_network TEXT;`}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {([
           { key: "all", label: `All (${rows.length})`, bg: "#3b82f6" },
+          { key: "refunded", label: `Refunded (${counts.refunded})`, bg: "#34d399" },
           { key: "failed", label: `Failed (${counts.failed})`, bg: "#f87171" },
           { key: "processing", label: `Processing (${counts.processing})`, bg: "#3b82f6" },
           { key: "pending", label: `Pending (${counts.pending})`, bg: "#f59e0b" },
@@ -216,7 +221,7 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_network TEXT;`}
                     <td style={{ padding: "12px 14px", color: D.muted, whiteSpace: "nowrap" }}>
                       {(r.network ?? "").toUpperCase()} {r.bundle_size ?? ""}
                     </td>
-                    <td style={{ padding: "12px 14px", fontWeight: 800, color: D.text }}>GH₵{Number(r.amount).toFixed(2)}</td>
+                    <td style={{ padding: "12px 14px", fontWeight: 800, color: D.text }}>GH₵{Number(r.refund_amount ?? r.amount).toFixed(2)}</td>
                     <td style={{ padding: "12px 14px" }}>
                       <span style={{ background: sc.bg, color: sc.color, padding: "3px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, textTransform: "capitalize" }}>
                         {r.status ?? "—"}

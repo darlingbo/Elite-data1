@@ -20,7 +20,7 @@ function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
-async function draftCustomerSms(chatId: string, phoneInput: string, instruction: string) {
+async function draftCustomerSms(chatId: string, phoneInput: string, instruction: string, scheduledFor?: string) {
   const phone = normaliseGhanaPhone(phoneInput);
   if (!/^\+233\d{9}$/.test(phone)) {
     await send(chatId, "❌ Enter one valid Ghana phone number. Example: <code>/sms 0241234567 Your order is ready</code>");
@@ -45,6 +45,7 @@ async function draftCustomerSms(chatId: string, phoneInput: string, instruction:
     requested_by: chatId,
     phone,
     message,
+    scheduled_for: scheduledFor ?? null,
   }).select("id").single();
   if (error || !draft) {
     await send(chatId, "❌ I could not save the SMS draft. Nothing was sent.");
@@ -52,7 +53,7 @@ async function draftCustomerSms(chatId: string, phoneInput: string, instruction:
   }
 
   await send(chatId,
-    `📱 <b>Confirm customer SMS</b>\n\n<b>To:</b> <code>${escapeHtml(phone)}</code>\n\n<b>Message:</b>\n${escapeHtml(message)}\n\n<i>Nothing has been sent yet. This draft expires in 15 minutes.</i>`,
+    `📱 <b>Confirm ${scheduledFor ? "scheduled " : ""}customer SMS</b>\n\n<b>To:</b> <code>${escapeHtml(phone)}</code>\n${scheduledFor ? `<b>When:</b> ${escapeHtml(new Date(scheduledFor).toLocaleString("en-GH", { timeZone: "Africa/Accra", dateStyle: "medium", timeStyle: "short" }))} Ghana time\n` : ""}\n<b>Message:</b>\n${escapeHtml(message)}\n\n<i>Nothing has been sent yet. This draft expires in 15 minutes.</i>`,
     { inline_keyboard: [[
       { text: "✅ Confirm Send", callback_data: `sms_confirm:${draft.id}` },
       { text: "❌ Cancel", callback_data: `sms_cancel:${draft.id}` },
@@ -67,10 +68,30 @@ async function confirmCustomerSms(chatId: string, draftId: string) {
     .eq("requested_by", chatId)
     .eq("status", "pending")
     .gt("expires_at", new Date().toISOString())
-    .select("id, phone, message")
+    .select("id, phone, message, scheduled_for")
     .maybeSingle();
   if (!draft) {
     await send(chatId, "❌ This SMS draft expired, was cancelled, or was already used. Nothing was sent.");
+    return;
+  }
+
+  if (draft.scheduled_for && new Date(draft.scheduled_for).getTime() > Date.now()) {
+    const { error } = await supabase.from("sms_scheduled").insert({
+      audience: "individual",
+      phones: [draft.phone],
+      message: draft.message,
+      send_at: draft.scheduled_for,
+      requested_by: chatId,
+      status: "pending",
+    });
+    await supabase.from("sms_drafts").update({
+      status: error ? "failed" : "scheduled",
+      provider_message: error?.message?.slice(0, 500) ?? "Scheduled",
+    }).eq("id", draft.id).eq("status", "sending");
+    await send(chatId, error
+      ? `❌ I could not schedule that SMS: ${escapeHtml(error.message.slice(0, 300))}`
+      : `✅ SMS scheduled for ${escapeHtml(new Date(draft.scheduled_for).toLocaleString("en-GH", { timeZone: "Africa/Accra", dateStyle: "medium", timeStyle: "short" }))} Ghana time.`,
+    mainMenu());
     return;
   }
 
@@ -101,6 +122,27 @@ async function answerCb(id: string, text = "", alert = false) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ callback_query_id: id, text, show_alert: alert }),
   });
+}
+
+function parseScheduledSms(raw: string): { phone: string; instruction: string; sendAt: string } | null {
+  const match = raw.match(/^(?:please\s+)?(?:schedule|send)\s+(?:an?\s+)?sms\s+(?:to\s+)?(?:customer\s+)?(\+?233\d{9}|0\d{9})\s+(?:on\s+)?(today|tomorrow|\d{4}-\d{2}-\d{2})\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*[:,-]?\s*(.+)$/i);
+  if (!match) return null;
+  const [, phone, dayInput, hourInput, minuteInput, meridiem, instruction] = match;
+  const date = new Date();
+  if (dayInput.toLowerCase() === "tomorrow") date.setUTCDate(date.getUTCDate() + 1);
+  else if (dayInput.toLowerCase() !== "today") {
+    const parsed = new Date(`${dayInput}T00:00:00Z`);
+    if (!Number.isFinite(parsed.getTime())) return null;
+    date.setUTCFullYear(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate());
+  }
+  let hour = Number(hourInput);
+  const minute = Number(minuteInput ?? 0);
+  if (meridiem?.toLowerCase() === "pm" && hour < 12) hour += 12;
+  if (meridiem?.toLowerCase() === "am" && hour === 12) hour = 0;
+  if (hour > 23 || minute > 59) return null;
+  date.setUTCHours(hour, minute, 0, 0); // Ghana uses UTC year-round.
+  if (date.getTime() <= Date.now()) return null;
+  return { phone, instruction, sendAt: date.toISOString() };
 }
 
 async function refuseAiMutation(chatId: string | number) {
@@ -193,6 +235,10 @@ async function cmdHelp(chatId: string) {
     `<b>💬 Just Type It (Plain English)</b>\n` +
     `These words work without a slash:\n` +
     `<i>status, today, failed, pending, profit, agents, health, fix, clear stuck, sync, bundles, orders, manual, upgrade, help, menu</i>\n\n` +
+    `<b>📱 Customer SMS</b>\n` +
+    `/sms [phone] [message] — Draft an SMS to send now\n` +
+    `/smsat [phone] [YYYY-MM-DD] [HH:MM] [message] — Schedule an SMS in Ghana time\n` +
+    `<i>Or say: send sms to 0241234567 tomorrow at 2pm tell them their refund is ready</i>\n\n` +
 
     `<b>🧠 AI Problem Diagnosis</b>\n` +
     `Describe any problem in plain English and I'll diagnose &amp; fix it automatically:\n` +
@@ -1928,6 +1974,12 @@ export async function POST(request: NextRequest) {
   const arg = parts.slice(1).join(" ");
   const args = parts.slice(1);
 
+  const scheduledSms = parseScheduledSms(raw);
+  if (scheduledSms) {
+    await draftCustomerSms(chatId, scheduledSms.phone, scheduledSms.instruction, scheduledSms.sendAt);
+    return Response.json({ ok: true });
+  }
+
   const naturalSms = raw.match(/^(?:please\s+)?send\s+(?:an?\s+)?sms\s+(?:to\s+)?(?:customer\s+)?(\+?233\d{9}|0\d{9})\s*[:,-]?\s*(.+)$/i);
   if (naturalSms) {
     await draftCustomerSms(chatId, naturalSms[1], naturalSms[2]);
@@ -1977,6 +2029,13 @@ export async function POST(request: NextRequest) {
     case "/sms": {
       const [phone, ...instructionParts] = args;
       await draftCustomerSms(chatId, phone ?? "", instructionParts.join(" "));
+      break;
+    }
+    case "/smsat": {
+      const [phone, date, time, ...instructionParts] = args;
+      const parsed = parseScheduledSms(`send sms to ${phone ?? ""} on ${date ?? ""} at ${time ?? ""} ${instructionParts.join(" ")}`);
+      if (!parsed) await send(chatId, "❌ Usage: <code>/smsat 0241234567 2026-08-10 14:30 Your message</code>. Date and time must be in the future (Ghana time).");
+      else await draftCustomerSms(chatId, parsed.phone, parsed.instruction, parsed.sendAt);
       break;
     }
     case "/retry":

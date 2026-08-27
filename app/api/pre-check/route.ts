@@ -19,7 +19,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 2. Fallback: check our own DB for previously blocked numbers
+  // 2. Fallback: this number already has an order being delivered manually
+  //    (new / not yet on the beneficiary list — can take up to 72 hours).
   const { data } = await supabase
     .from("orders")
     .select("reference, status, network, bundle_size, created_at")
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
     return Response.json({
       blocked: true,
       reason: "not_on_list",
-      message: "This number was previously blocked from receiving data.",
+      message: "You already have a recent order for this number that we're delivering manually (up to 72 hours). Please wait for it to complete before ordering again.",
     });
   }
 

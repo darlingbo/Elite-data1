@@ -124,6 +124,7 @@ export async function POST(request: NextRequest) {
     admin_commission: 0,
     agent_commission: 0,
     agent_id: agentId,
+    payment_method: "agent_wallet",
     status: "pending_approval",
   });
 

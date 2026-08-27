@@ -84,6 +84,29 @@ export async function sendAdminAlert(message: string, markup?: object): Promise<
   }
 }
 
+export async function sendOrderFailedAlert({
+  reference,
+  phone,
+  network,
+  bundleSize,
+  reason,
+}: {
+  reference: string;
+  phone: string;
+  network?: string | null;
+  bundleSize?: string | null;
+  reason: string;
+}): Promise<void> {
+  const bundle = [network?.toUpperCase(), bundleSize].filter(Boolean).join(" ");
+  await sendAdminAlert(
+    `❌ <b>ORDER FAILED</b>\n\n` +
+    (bundle ? `📱 ${tgEscape(bundle)}\n` : "") +
+    `📞 Customer number: <code>${tgEscape(phone)}</code>\n` +
+    `📎 Ref: <code>${tgEscape(reference)}</code>\n` +
+    `⚠️ Reason: ${tgEscape(reason || "No failure reason was provided")}`,
+  );
+}
+
 // ── @SWIFTDATAGH_BOT — stuck order approval alerts only ──────────────────────
 // ── Escape user-supplied content before inserting into Telegram HTML messages ──
 export function tgEscape(text: string): string {

@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
+import { processAutoApprovalQueue } from "@/lib/order-approval";
+
+export const maxDuration = 300;
 
 async function isAdmin() {
   const s = await cookies();
@@ -96,7 +99,10 @@ export async function PATCH(req: NextRequest) {
       tasks.push(upsert("sms_admin_phone", phone));
     }
     await Promise.all(tasks);
-    return Response.json({ success: true });
+    const autoApproval = body.autoApprove === true
+      ? await processAutoApprovalQueue()
+      : undefined;
+    return Response.json({ success: true, autoApproval });
   } catch (e) {
     return Response.json({ success: false, error: (e as Error).message }, { status: 500 });
   }

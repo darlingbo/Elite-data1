@@ -23,7 +23,7 @@ export async function GET() {
   // ── Source 2: orders table (for orders column data like amount/status) ────
   const { data: orders, error } = await supabase
     .from("orders")
-    .select("reference, customer_name, phone, refund_phone, refund_network, network, bundle_size, amount, status, created_at")
+    .select("reference, customer_name, phone, refund_phone, refund_network, network, bundle_size, amount, status, refunded, refunded_at, refund_amount, created_at")
     .order("created_at", { ascending: false })
     .limit(1000);
 
@@ -54,14 +54,16 @@ export async function GET() {
       bundle_size: order?.bundle_size ?? entry.bundle_size ?? null,
       amount: order?.amount ?? null,
       status: order?.status ?? null,
-      created_at: entry.saved_at ?? order?.created_at ?? null,
+      refunded: order?.refunded ?? false,
+      refund_amount: order?.refund_amount ?? null,
+      created_at: order?.refunded_at ?? entry.saved_at ?? order?.created_at ?? null,
     });
   }
 
   // Also pick up any orders with refund_phone that aren't in the log (legacy)
   if (!error) {
     for (const o of orders ?? []) {
-      if (!o.refund_phone || seen.has(o.reference)) continue;
+      if ((!o.refund_phone && !o.refunded) || seen.has(o.reference)) continue;
       seen.add(o.reference);
       rows.push({
         reference: o.reference,
@@ -74,7 +76,9 @@ export async function GET() {
         bundle_size: o.bundle_size,
         amount: o.amount,
         status: o.status,
-        created_at: o.created_at,
+        refunded: o.refunded,
+        refund_amount: o.refund_amount,
+        created_at: o.refunded_at ?? o.created_at,
       });
     }
   }

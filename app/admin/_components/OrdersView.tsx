@@ -72,6 +72,7 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
     NOT_ON_LIST:      orders.filter(o => o.status.toUpperCase() === "NOT_ON_LIST").length,
     FRAUD:            orders.filter(o => o.status.toUpperCase() === "FRAUD").length,
     REJECTED:         orders.filter(o => o.status.toUpperCase() === "REJECTED").length,
+    REFUNDED:         orders.filter(o => o.status.toUpperCase() === "REFUNDED").length,
   };
 
   // Tab order: Awaiting → All → Completed → Processing → Failed → Pending → Not On List → Fraud
@@ -82,7 +83,7 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
     { key: "PROCESSING",       color: "#3b82f6", label: "Processing" },
     { key: "FAILED",           color: "#f87171", label: "Failed" },
     { key: "PENDING",          color: "#94a3b8", label: "Pending" },
-    { key: "NOT_ON_LIST",      color: "#f97316", label: "Not on List" },
+    { key: "NOT_ON_LIST",      color: "#f97316", label: "New Number · Manual (72h)" },
     { key: "FRAUD",            color: "#dc2626", label: "🕵️ Fraud" },
   ];
 
@@ -94,6 +95,7 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
     FAILED:           { bg: "rgba(248,113,113,0.1)", color: "#f87171" },
     NOT_ON_LIST:      { bg: "rgba(249,115,22,0.15)", color: "#f97316" },
     REJECTED:         { bg: "rgba(239,68,68,0.08)",  color: "#ef4444" },
+    REFUNDED:         { bg: "rgba(16,185,129,0.1)",  color: "#34d399" },
     FRAUD:            { bg: "rgba(220,38,38,0.12)",  color: "#dc2626" },
   };
 
@@ -192,7 +194,7 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
     try {
       const res = await fetch("/api/admin/orders/refund", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference }) });
       const d = await res.json();
-      if (d.success) { flashMsg(reference, true, "✓ Refunded via Paystack"); onRefresh(); }
+      if (d.success) { flashMsg(reference, true, d.method === "agent_wallet" ? "✓ Credited back to agent wallet" : "✓ Refunded via Paystack"); onRefresh(); }
       else flashMsg(reference, false, d.error ?? "Refund failed");
     } catch { flashMsg(reference, false, "Network error"); }
     finally { setRefunding(null); setRefundMenu(null); }
@@ -335,6 +337,11 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
         {pageOrders.map((o, idx) => {
           const waiting = o.status === "pending_approval" ? getOrderReviewSecondsRemaining(o.created_at, now) : 0;
           const busy = approving.has(o.reference);
+          const statusLower = (o.status ?? "").toLowerCase();
+          const canComplete = ["processing", "pending", "pending_approval", "failed", "not_on_list"].includes(statusLower);
+          const canDelete = ["failed", "pending", "pending_approval", "processing"].includes(statusLower);
+          const canRefund = ["failed", "rejected"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
+          const refundBlocked = ["processing", "completed"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
           return (
             <article key={o.reference ?? idx} className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
               <div className="flex items-start justify-between gap-3">
@@ -360,6 +367,62 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                   </div>
                 )
               )}
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                {statusLower === "pending_approval" && (
+                  <button onClick={() => handleMoveToProcessing(o.reference)} disabled={movingToProcessing === o.reference}
+                    className="min-h-11 rounded-xl border border-blue-500/30 bg-blue-500/15 px-3 text-sm font-bold text-blue-300 disabled:opacity-50">
+                    {movingToProcessing === o.reference ? "Processing…" : "Move to Processing"}
+                  </button>
+                )}
+                {["pending", "processing", "failed", "not_on_list"].includes(statusLower) && (
+                  <button onClick={() => handleRetry(o.reference)} disabled={retrying === o.reference}
+                    className="min-h-11 rounded-xl border border-orange-500/30 bg-orange-500/15 px-3 text-sm font-bold text-orange-300 disabled:opacity-50">
+                    {retrying === o.reference ? "Retrying…" : "Retry"}
+                  </button>
+                )}
+                {canComplete && (
+                  <button onClick={() => handleForceComplete(o.reference)} disabled={completing === o.reference}
+                    className="min-h-11 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-3 text-sm font-bold text-emerald-300 disabled:opacity-50">
+                    {completing === o.reference ? "Saving…" : "Mark Done"}
+                  </button>
+                )}
+                {canRefund && (
+                  refundMenu === o.reference ? (
+                    <div className="col-span-2 grid grid-cols-2 gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-2">
+                      <button onClick={() => handlePaystackRefund(o.reference, Number(o.amount))} disabled={refunding === o.reference}
+                        className="min-h-11 rounded-lg border border-amber-500/30 bg-amber-500/15 px-2 text-sm font-bold text-amber-300 disabled:opacity-50">
+                        {refunding === o.reference ? "Refunding…" : "Via Paystack"}
+                      </button>
+                      <button onClick={() => handleMarkRefunded(o.reference)} disabled={refunding === o.reference}
+                        className="min-h-11 rounded-lg border border-slate-500/30 bg-slate-500/15 px-2 text-sm font-bold text-slate-300 disabled:opacity-50">
+                        {refunding === o.reference ? "Saving…" : "Already Sent"}
+                      </button>
+                      <button onClick={() => setRefundMenu(null)} className="col-span-2 min-h-10 text-sm font-bold text-slate-400">Cancel</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setRefundMenu(o.reference)}
+                      className="min-h-11 rounded-xl border border-amber-500/30 bg-amber-500/15 px-3 text-sm font-bold text-amber-300">
+                      Refund
+                    </button>
+                  )
+                )}
+                {o.refunded && <div className="flex min-h-11 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 text-sm font-bold text-emerald-300">Refunded</div>}
+                {refundBlocked && <div className="flex min-h-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-900/60 px-3 text-center text-xs font-bold text-slate-500">{statusLower === "processing" ? "Still processing" : "Delivered"}</div>}
+                {canDelete && (
+                  <button onClick={() => handleDeleteOne(o.reference, statusLower)} disabled={deletingOne === o.reference}
+                    className="min-h-11 rounded-xl border border-red-500/25 bg-red-500/10 px-3 text-sm font-bold text-red-300 disabled:opacity-50">
+                    {deletingOne === o.reference ? "Archiving…" : "Archive"}
+                  </button>
+                )}
+                <button onClick={() => {
+                  const firstName = (o.customer_name ?? "Customer").split(" ")[0];
+                  const shortRef = o.reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
+                  setSmsModal({ phone: o.phone ?? "", name: firstName, message: `Hi ${firstName}! Your ${(o.network ?? "").toUpperCase()} ${o.bundle_size ?? ""} order (Ref: ${shortRef}) has been processed. Thank you for choosing Elite Data!` });
+                  setSmsResult(null);
+                }} className="min-h-11 rounded-xl border border-green-500/30 bg-green-500/10 px-3 text-sm font-bold text-green-300">
+                  Send SMS
+                </button>
+              </div>
               {(approveMsg[o.reference] ?? actionMsg[o.reference]) && <p className="mt-3 text-sm font-bold text-slate-200">{(approveMsg[o.reference] ?? actionMsg[o.reference]).text}</p>}
             </article>
           );
@@ -398,7 +461,7 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                 const statusLower = (o.status ?? "").toLowerCase();
                 const canComplete = ["processing", "pending", "pending_approval", "failed", "not_on_list"].includes(statusLower);
                 const canDelete   = ["failed", "pending", "pending_approval", "processing"].includes(statusLower);
-                const canRefund   = ["failed", "not_on_list", "rejected"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
+                const canRefund   = ["failed", "rejected"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
                 const refundBlocked = ["processing", "completed"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
                 const reviewSeconds = isPendingApproval ? getOrderReviewSecondsRemaining(o.created_at, now) : 0;
 
@@ -459,7 +522,7 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                       <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: st.bg, color: st.color }}>
                         <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.color }} />
                         {isPendingApproval ? "Awaiting Approval"
-                          : statusLower === "not_on_list" ? "Not On List"
+                          : statusLower === "not_on_list" ? "New Number (72h)"
                           : statusLower === "rejected" ? "Rejected"
                           : (o.status ?? "").charAt(0).toUpperCase() + (o.status ?? "").slice(1).toLowerCase()}
                       </span>

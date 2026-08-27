@@ -17,6 +17,7 @@ function authHeader(): Record<string, string> {
 export interface PurchaseResult {
   ok: boolean;
   balance: number | null;
+  reference: string | null;
   body: Record<string, unknown>;
 }
 
@@ -41,12 +42,19 @@ export async function inventorPurchase(
       signal: AbortSignal.timeout(timeoutMs),
     });
     const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-    const ok = body.success === true;
+    const ok = res.ok && body.success === true;
     const data = (body.data as Record<string, unknown>) ?? {};
+    const order = (data.order as Record<string, unknown>) ?? {};
     const balance = data.currentBalance !== undefined ? Number(data.currentBalance) : null;
-    return { ok, balance, body };
+    const providerReference = order.reference ?? data.reference;
+    return {
+      ok,
+      balance: balance !== null && Number.isFinite(balance) ? balance : null,
+      reference: typeof providerReference === "string" && providerReference ? providerReference : null,
+      body,
+    };
   } catch (err) {
-    return { ok: false, balance: null, body: { error: String(err) } };
+    return { ok: false, balance: null, reference: null, body: { error: String(err) } };
   }
 }
 
@@ -65,7 +73,7 @@ export async function inventorVoucher(
       signal: AbortSignal.timeout(timeoutMs),
     });
     const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-    return { ok: body.success === true, body };
+    return { ok: res.ok && body.success === true, body };
   } catch (err) {
     return { ok: false, body: { error: String(err) } };
   }
@@ -101,8 +109,8 @@ export async function inventorVerifyNumber(phone: string): Promise<{ verified: b
     if (res.status === 503) return { verified: true }; // service down — let purchase decide
     const data = await res.json().catch(() => ({})) as Record<string, unknown>;
     const d = (data.data as Record<string, unknown>) ?? {};
-    if (data.success && d.exists) return { verified: true };
-    return { verified: false, error: String(d.message ?? data.error ?? "Not on beneficiary list") };
+    if (res.ok && data.success === true && d.exists === true) return { verified: true };
+    return { verified: false, error: String(data.message ?? d.message ?? data.error ?? "Not on beneficiary list") };
   } catch {
     return { verified: true }; // network error — allow through
   }

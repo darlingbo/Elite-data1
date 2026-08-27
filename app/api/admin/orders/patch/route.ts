@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
+import { orderRefundedSMS, sendCustomerSMS } from "@/lib/sms";
 
 async function isAdmin() {
   const c = await cookies();
@@ -41,15 +42,26 @@ export async function POST(req: NextRequest) {
   if (status !== undefined)           patch.status = status;
   if (body.refunded !== undefined) {
     patch.refunded = body.refunded;
-    if (body.refunded) patch.refunded_at = new Date().toISOString();
+    if (body.refunded) {
+      patch.refunded_at = new Date().toISOString();
+      patch.status = "refunded";
+    }
   }
 
   if (Object.keys(patch).length === 0) return Response.json({ error: "No fields to update" }, { status: 400 });
 
-  const { data: before } = await supabase.from("orders").select(Object.keys(patch).join(",")).eq("reference", reference).maybeSingle();
+  const { data: before } = await supabase.from("orders")
+    .select("status,amount,customer_name,phone,refunded,refunded_at,refund_amount")
+    .eq("reference", reference).maybeSingle();
+  if (!before) return Response.json({ error: "Order not found" }, { status: 404 });
+  if (body.refunded) patch.refund_amount = Number(before.amount ?? 0);
   const { error } = await supabase.from("orders").update(patch).eq("reference", reference);
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (body.refunded) {
+    sendCustomerSMS(
+      String(before.phone ?? ""),
+      orderRefundedSMS(String(before.customer_name ?? "Customer"), Number(before.amount ?? 0), reference),
+    ).catch(() => {});
     const { error: reversalError } = await supabase.rpc("reverse_team_commission", {
       p_reference: reference,
       p_reason: "manual_refund",

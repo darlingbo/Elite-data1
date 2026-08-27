@@ -580,7 +580,13 @@ export function SettingsView({ onChangePassword }: { onChangePassword: () => voi
       body: JSON.stringify({ autoApprove: value }),
     }).then(response => response.json());
     setNetSaving(null);
-    if (r.success) showToast(`Automatic approval ${value ? "enabled" : "disabled"}`);
+    if (r.success) {
+      const processed = Number(r.autoApproval?.approved ?? 0);
+      const held = Number(r.autoApproval?.held ?? 0);
+      showToast(value
+        ? `Automatic approval enabled · ${processed} queued order${processed === 1 ? "" : "s"} approved${held ? ` · ${held} held by safety checks` : ""}`
+        : "Automatic approval disabled · new orders require your approval");
+    }
     else {
       showToast(r.error ?? "Save failed", false);
       setNet(prev => prev ? { ...prev, autoApprove: !value } : prev);
@@ -683,14 +689,14 @@ export function SettingsView({ onChangePassword }: { onChangePassword: () => voi
                 </span>
               </div>
               <p className="mt-1 text-xs leading-5 text-slate-400">
-                When on, verified paid orders are approved and sent to the provider automatically.
-                Turn it off anytime to return to the approval queue.
+                When on, existing queued orders and new verified paid orders are approved automatically.
+                Turn it off and new orders remain in the queue until you approve them.
               </p>
             </div>
             <SettingToggle checked={net.autoApprove} saving={netSaving === "autoApprove"} onChange={toggleAutoApprove} />
           </div>
           <div className="mt-4 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-slate-300">
-            Safety: every order is saved first, duplicate delivery is blocked, and Mashup orders still require manual approval.
+            Safety: every order is saved first and duplicate delivery is blocked. Mashup approval is automatic, but delivery remains manual.
           </div>
         </div>
       )}

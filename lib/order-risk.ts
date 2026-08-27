@@ -4,7 +4,10 @@ import { auditLog } from "@/lib/audit";
 import { sendAdminAlert } from "@/lib/telegram";
 
 export type OrderRiskDecision = {
+  /** false = a human should look before this is delivered. */
   allow: boolean;
+  /** true = never auto-deliver (unpaid / invalid), regardless of auto-approval. */
+  mustHold: boolean;
   level: "low" | "medium" | "high";
   reasons: string[];
   source: "rules" | "rules+ai";
@@ -32,19 +35,28 @@ export async function assessOrderRisk(reference: string): Promise<OrderRiskDecis
     .eq("reference", reference)
     .maybeSingle();
 
-  if (!order) return { allow: false, level: "high", reasons: ["Order not found"], source: "rules" };
+  if (!order) {
+    return { allow: false, mustHold: true, level: "high", reasons: ["Order not found"], source: "rules" };
+  }
 
-  const reasons: string[] = [];
   const phone = String(order.phone ?? "").replace(/\D/g, "");
   const amount = Number(order.amount);
   const cost = Number(order.cost_price ?? 0);
   const commission = Number(order.agent_commission ?? 0);
 
-  if (!/^(?:233|0)?[235]\d{8}$/.test(phone)) reasons.push("Invalid Ghana recipient number");
-  if (!Number.isFinite(amount) || amount <= 0) reasons.push("Invalid selling amount");
-  if (!Number.isFinite(cost) || cost < 0) reasons.push("Invalid cost price");
-  if (cost + commission > amount) reasons.push("Order would create a negative margin");
-  if (!order.paystack_reference && !isWalletReference(reference)) reasons.push("Verified payment reference is missing");
+  // Hard blocks — never auto-deliver these, even with automatic approval on.
+  const hardReasons: string[] = [];
+  if (!Number.isFinite(amount) || amount <= 0) hardReasons.push("Invalid selling amount");
+  if (!order.paystack_reference && !isWalletReference(reference)) {
+    hardReasons.push("Verified payment reference is missing");
+  }
+
+  // Advisory flags — worth a glance, but not fraud on their own. With automatic
+  // approval on these alert the admin and the order still goes through.
+  const softReasons: string[] = [];
+  if (!/^(?:233|0)?[235]\d{8}$/.test(phone)) softReasons.push("Recipient number looks unusual");
+  if (!Number.isFinite(cost) || cost < 0) softReasons.push("Invalid cost price");
+  if (cost + commission > amount) softReasons.push("Order margin is negative");
 
   const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const { data: recent } = await supabase
@@ -60,14 +72,21 @@ export async function assessOrderRisk(reference: string): Promise<OrderRiskDecis
     candidate.bundle_size === order.bundle_size &&
     Number(candidate.amount) === amount,
   );
-  if (duplicates.length >= 2) reasons.push("Repeated matching orders within 10 minutes");
+  if (duplicates.length >= 2) softReasons.push("Repeated matching orders within 10 minutes");
 
-  if (reasons.length > 0) {
-    const decision: OrderRiskDecision = { allow: false, level: "high", reasons, source: "rules" };
+  if (hardReasons.length > 0) {
+    const reasons = [...hardReasons, ...softReasons];
+    const decision: OrderRiskDecision = { allow: false, mustHold: true, level: "high", reasons, source: "rules" };
     await auditLog("ai_order_guard_hold", { reference, ...decision });
     sendAdminAlert(
       `🛡️ <b>ORDER HELD BY AI GUARD</b>\n<code>${reference}</code>\nReason: ${reasons.join("; ")}\nReview it in the approval queue.`,
     ).catch(() => {});
+    return decision;
+  }
+
+  if (softReasons.length > 0) {
+    const decision: OrderRiskDecision = { allow: false, mustHold: false, level: "medium", reasons: softReasons, source: "rules" };
+    await auditLog("ai_order_guard_flag", { reference, ...decision });
     return decision;
   }
 
@@ -96,16 +115,15 @@ export async function assessOrderRisk(reference: string): Promise<OrderRiskDecis
       ]);
       if (/^HOLD\b/i.test(reply)) {
         const reason = reply.split(":").slice(1).join(":").trim() || "AI detected an unusual order pattern";
-        const decision: OrderRiskDecision = { allow: false, level: "medium", reasons: [reason], source: "rules+ai" };
-        await auditLog("ai_order_guard_hold", { reference, ...decision });
-        sendAdminAlert(`🤖 <b>AI REVIEW REQUIRED</b>\n<code>${reference}</code>\n${reason}`).catch(() => {});
+        const decision: OrderRiskDecision = { allow: false, mustHold: false, level: "medium", reasons: [reason], source: "rules+ai" };
+        await auditLog("ai_order_guard_flag", { reference, ...decision });
         return decision;
       }
-      return { allow: true, level: "low", reasons: [], source: "rules+ai" };
+      return { allow: true, mustHold: false, level: "low", reasons: [], source: "rules+ai" };
     } catch {
       // AI outages must not change deterministic payment and safety controls.
     }
   }
 
-  return { allow: true, level: "low", reasons: [], source: "rules" };
+  return { allow: true, mustHold: false, level: "low", reasons: [], source: "rules" };
 }

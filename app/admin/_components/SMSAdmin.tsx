@@ -656,7 +656,7 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
 
           <div className="rounded-xl border p-4" style={{ background: "#0e1928", borderColor: "#1e3050" }}>
             <p className="text-xs font-bold text-blue-400 mb-1">ℹ️ How scheduling works</p>
-            <p className="text-xs text-slate-400 leading-relaxed">Messages are stored and fire when you click <strong className="text-white">Process Due Now</strong> or visit this page. For fully automatic sending, set up a cron job calling <code className="text-blue-300 bg-slate-800 px-1 rounded">/api/admin/sms/schedule</code> with PATCH method.</p>
+            <p className="text-xs text-slate-400 leading-relaxed">Messages are stored securely and the scheduled worker checks every minute. You can still use <strong className="text-white">Process Due Now</strong> for an immediate manual check.</p>
           </div>
         </div>
       )}
