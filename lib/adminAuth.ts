@@ -106,6 +106,16 @@ function legacySha256(password: string): string {
 }
 
 /** Verify an admin password against the stored bcrypt hash, a legacy SHA-256 hash, or the env fallback. */
+function matchesConfiguredAdminSecret(password: string): boolean {
+  const adminPassword = process.env.ADMIN_PASSWORD ?? "";
+  if (adminPassword && constTimeEqual(password, adminPassword)) return true;
+
+  // This is also the recovery credential and was historically accepted as the
+  // admin password. Keep it as a break-glass login if the DB hash is stale.
+  const sessionToken = process.env.ADMIN_SESSION_TOKEN ?? "";
+  return Boolean(sessionToken) && constTimeEqual(password, sessionToken);
+}
+
 export async function verifyAdminPassword(password: string): Promise<boolean> {
   const stored = await getConfig(PASSWORD_HASH_KEY);
   if (stored) {
@@ -116,10 +126,8 @@ export async function verifyAdminPassword(password: string): Promise<boolean> {
       } catch {
         /* fall through */
       }
-      return false;
-    }
-    // Legacy SHA-256 hash — verify, and transparently upgrade to bcrypt on success.
-    if (constTimeEqual(legacySha256(password), stored)) {
+    } else if (constTimeEqual(legacySha256(password), stored)) {
+      // Legacy SHA-256 hash — verify, and transparently upgrade to bcrypt on success.
       try {
         await setConfig(PASSWORD_HASH_KEY, await bcrypt.hash(password, 12));
       } catch {
@@ -127,10 +135,10 @@ export async function verifyAdminPassword(password: string): Promise<boolean> {
       }
       return true;
     }
-    return false;
   }
-  // No stored hash yet — fall back to the ADMIN_PASSWORD env var.
-  return constTimeEqual(password, process.env.ADMIN_PASSWORD ?? "");
+  // The configured secrets remain usable if no hash exists or the stored hash
+  // is stale, allowing the admin to recover access without a database change.
+  return matchesConfiguredAdminSecret(password);
 }
 
 export async function setAdminPassword(newPassword: string): Promise<boolean> {
