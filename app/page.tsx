@@ -2,7 +2,6 @@ import Link from "next/link";
 import AgentAwareSection from "@/components/AgentAwareSection";
 import PopularBundlesSection from "@/components/PopularBundlesSection";
 import SocialProofTicker from "@/components/SocialProofTicker";
-import MascotBanner from "@/components/MascotBanner";
 
 const BG     = "#080f1e";
 const CARD   = "#0d1b2e";
@@ -60,7 +59,6 @@ const faqs = [
 export default function Home() {
   return (
     <div style={{ background: BG }}>
-      <MascotBanner />
       <SocialProofTicker />
 
       {/* ── HERO ──────────────────────────────────────────────────── */}
