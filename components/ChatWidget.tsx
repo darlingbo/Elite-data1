@@ -13,6 +13,15 @@ interface Message {
 const now = () => new Date().toLocaleTimeString("en-GH", { hour: "2-digit", minute: "2-digit" });
 
 const ADMIN_WA = "233509794503";
+const WA_HANDOFF_TEXT = "Hi Elite Data, I was chatting with your AI assistant and I'd like to talk to a human.";
+
+// Free-text ways a customer asks to reach a real person (the "Talk to human" quick
+// reply is matched exactly; this catches everything typed in the input box).
+const WANTS_HUMAN = /\b(talk|speak|chat|connect|transfer)\b.{0,20}\b(human|person|agent|someone|admin|support|rep(resentative)?|staff)\b|\b(real|live)\s+(human|person|agent)\b|\bhuman\s+(support|help|agent|being)\b|\bcustomer\s+(care|service|support)\b/i;
+
+function openWhatsApp() {
+  window.open(`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent(WA_HANDOFF_TEXT)}`, "_blank");
+}
 
 const FAQ: Array<{ patterns: RegExp[]; answer: string; quickReplies?: string[] }> = [
   {
@@ -163,15 +172,16 @@ export default function ChatWidget() {
 
     // Special quick replies
     if (text === "Open WhatsApp") {
-      window.open(`https://wa.me/${ADMIN_WA}`, "_blank");
+      openWhatsApp();
       addBot("Opening WhatsApp... Our team will reply shortly! 😊");
       return;
     }
-    if (text === "Talk to human") {
+    if (text === "Talk to human" || WANTS_HUMAN.test(text)) {
       const summary = [...messages, userMsg].slice(-6).map(message => `${message.from}: ${message.text.replace(/<[^>]+>/g, "")}`).join("\n");
       void fetch("/api/ai/escalate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: sessionId.current, summary }) });
+      openWhatsApp();
       addBot(
-        "I have sent this conversation to our human support team. You can also open WhatsApp now:",
+        "Connecting you to our human support team on WhatsApp now. If it didn't open, tap the button below 👇",
         ["Open WhatsApp"]
       );
       return;
@@ -228,6 +238,7 @@ export default function ChatWidget() {
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    if (window.innerWidth <= 767) return;
     dragging.current = false;
     const rect = bubbleRef.current!.getBoundingClientRect();
     dragStart.current = { mx: e.clientX, my: e.clientY, bx: rect.left, by: rect.top };
@@ -255,6 +266,7 @@ export default function ChatWidget() {
         ref={bubbleRef}
         onPointerDown={onPointerDown}
         onClick={() => { if (!dragging.current) setOpen((o) => !o); }}
+        className="ai-helpline-launcher"
         style={{ ...bubbleStyle, zIndex: 50, width: 56, height: 56, borderRadius: "50%", background: "#2563eb", color: "#fff", border: "none", cursor: "grab", boxShadow: "0 8px 32px rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", touchAction: "none" }}
         aria-label="Chat support"
       >
@@ -267,6 +279,11 @@ export default function ChatWidget() {
             <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
           </svg>
         )}
+        <span className="ai-helpline-launcher__copy">
+          <strong>AI Helpline</strong>
+          <small>Need help? Chat with our AI assistant.</small>
+        </span>
+        <span className="ai-helpline-launcher__action">Chat Now</span>
         {!open && unread > 0 && (
           <span style={{ position: "absolute", top: -4, right: -4, width: 20, height: 20, background: "#ef4444", borderRadius: "50%", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
             {unread}
@@ -276,7 +293,7 @@ export default function ChatWidget() {
 
       {/* Chat window — appears above bubble */}
       {open && (
-        <div className="fixed z-50 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col overflow-hidden"
+        <div className="ai-helpline-window fixed z-50 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col overflow-hidden"
           style={{ maxHeight: "70vh", bottom: pos ? "auto" : 96, left: pos ? Math.min(pos.x, window.innerWidth - 384) : 24, top: pos ? Math.max(pos.y - Math.min(window.innerHeight * 0.7, 480) - 8, 8) : "auto" }}>
           {/* Header */}
           <div className="bg-blue-600 px-4 py-3 flex items-center gap-3">
