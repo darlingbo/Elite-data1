@@ -43,8 +43,7 @@ type PendingApprovalState = {
 };
 
 type PaymentMethod = "mobile_money" | "card" | "bank";
-type MomoProvider = "mtn" | "vod" | "atl";
-type CheckoutStep = "details" | "confirm" | "method" | "momo";
+type CheckoutStep = "details" | "confirm" | "method";
 
 const PAYMENT_METHODS: Array<{
   id: PaymentMethod;
@@ -179,13 +178,6 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
   const [saveLabel, setSaveLabel] = useState("");
   const [beneficiarySaved, setBeneficiarySaved] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("mobile_money");
-  const [momoProvider, setMomoProvider] = useState<MomoProvider>("mtn");
-  const [momoPhone, setMomoPhone] = useState("");
-  const [momoMessage, setMomoMessage] = useState("");
-  const [momoOtpRef, setMomoOtpRef] = useState<string | null>(null);
-  const [momoOtp, setMomoOtp] = useState("");
-  const [momoOtpPrompt, setMomoOtpPrompt] = useState("");
-  const [otpSubmitting, setOtpSubmitting] = useState(false);
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("details");
   const paystackReady = usePaystackReady();
   const { list: beneficiaries, save: saveBeneficiary, remove: removeBeneficiary } = useBeneficiaries();
@@ -280,7 +272,6 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
     });
     const data = await response.json();
     setLoading(false);
-    setMomoMessage("");
     if (!data.success) {
       setError(data.error || "Something went wrong. Please contact support.");
       return;
@@ -301,84 +292,15 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
     }
   }
 
-  async function pollMomoVerification(reference: string) {
-    for (let attempt = 0; attempt < 30; attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 4_000));
-      const verifyResponse = await fetch(`/api/payments/mobile-money?reference=${encodeURIComponent(reference)}`, { cache: "no-store" });
-      const verification = await verifyResponse.json() as { status?: string };
-      if (verification.status === "success") {
-        await completePaidOrder(reference);
-        return;
-      }
-      if (["failed", "abandoned", "reversed"].includes(verification.status ?? "")) {
-        setLoading(false);
-        setMomoMessage("");
-        setError("The Mobile Money payment was not completed. Please try again.");
-        return;
-      }
-    }
-    setLoading(false);
-    setMomoMessage("");
-    setError("Payment confirmation is taking longer than expected. If you approved it, your order will still be recovered automatically.");
-  }
-
-  async function submitMomoOtp() {
-    const otp = momoOtp.replace(/\D/g, "");
-    if (!momoOtpRef || otp.length < 4) return setError("Enter the code sent to your phone.");
-    setOtpSubmitting(true);
-    setError("");
-    try {
-      const response = await fetch("/api/payments/mobile-money/otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reference: momoOtpRef, otp }),
-      });
-      const data = await response.json() as { success?: boolean; status?: string; error?: string };
-      if (!response.ok || !data.success) {
-        setOtpSubmitting(false);
-        setError(data.error ?? "That code could not be verified. Please try again.");
-        return;
-      }
-      if (data.status === "send_otp") {
-        setOtpSubmitting(false);
-        setError("That code was not accepted. Check the SMS and enter it again.");
-        return;
-      }
-      if (["failed", "abandoned", "reversed"].includes(data.status ?? "")) {
-        setOtpSubmitting(false);
-        setMomoOtpRef(null);
-        setError("The Mobile Money payment was not completed. Please try again.");
-        return;
-      }
-      const reference = momoOtpRef;
-      setMomoOtpRef(null);
-      setMomoOtp("");
-      setOtpSubmitting(false);
-      setLoading(true);
-      if (data.status === "success") {
-        await completePaidOrder(reference);
-        return;
-      }
-      setMomoMessage("Confirming your payment…");
-      await pollMomoVerification(reference);
-    } catch {
-      setOtpSubmitting(false);
-      setError("Could not submit the code. Please try again.");
-    }
-  }
-
   async function handlePay() {
     setError("");
     if (!name.trim()) return setError("Please enter your name.");
     if (!validatePhone(phone)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
-    if (paymentMethod !== "mobile_money" && !paystackReady) return setError("Payment is still loading. Please try again in a moment.");
-    if (paymentMethod === "mobile_money" && !validatePhone(momoPhone || phone)) {
-      return setError("Enter a valid Mobile Money number.");
-    }
+    if (!paystackReady) return setError("Payment is still loading. Please try again in a moment.");
 
     const key = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
-    if (paymentMethod !== "mobile_money" && !key) {
-      setError("Secure card payment is temporarily unavailable. Please choose Mobile Money or try again later.");
+    if (!key) {
+      setError("Secure payment is temporarily unavailable. Please try again later.");
       return;
     }
 
@@ -448,52 +370,9 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
     const autoEmail = `${phone.replace(/\s/g, "")}@elitedata1.com`;
     const selectedPaymentMethod = PAYMENT_METHODS.find(method => method.id === paymentMethod) ?? PAYMENT_METHODS[0];
 
-    if (paymentMethod === "mobile_money") {
-      try {
-        const chargeResponse = await fetch("/api/payments/mobile-money", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name,
-            phone,
-            paymentPhone: momoPhone || phone,
-            provider: momoProvider,
-            amount: totalAmount,
-            bundleId: bundle.id,
-            agentCode: agentCode ?? null,
-            applyReferralCredit: referralCredit > 0,
-            fastDelivery,
-            promoCode: promoResult?.code ?? null,
-          }),
-        });
-        const charge = await chargeResponse.json() as { success?: boolean; reference?: string; status?: string; message?: string; error?: string };
-        if (!chargeResponse.ok || !charge.success || !charge.reference) {
-          setLoading(false);
-          setError(charge.error ?? "Mobile Money payment could not be started.");
-          return;
-        }
-
-        // Telecel Cash (and some MTN flows) require the customer to enter a code
-        // Paystack texts them, rather than approving a prompt on the phone.
-        if (charge.status === "send_otp") {
-          setLoading(false);
-          setMomoMessage("");
-          setMomoOtp("");
-          setMomoOtpPrompt(charge.message || "Enter the code Paystack sent you by SMS to authorize this payment.");
-          setMomoOtpRef(charge.reference);
-          return;
-        }
-
-        setMomoMessage(charge.message ?? "Approve the payment prompt on your phone.");
-        await pollMomoVerification(charge.reference);
-      } catch {
-        setLoading(false);
-        setMomoMessage("");
-        setError("Could not start the Mobile Money payment. Please try again.");
-      }
-      return;
-    }
-
+    // Mobile Money, card and bank all go through Paystack's own popup. For Mobile
+    // Money the popup collects the number and handles every verification step
+    // Paystack requires — OTP for new customers, PIN, and the on-phone prompt.
     try {
       const handler = window.PaystackPop.setup({
         key,
@@ -844,8 +723,8 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
         {/* Form */}
         <div className="checkout-flow px-4 py-5 space-y-4 sm:px-6">
           <div className="flex items-center gap-2" aria-label={`Checkout step ${checkoutStep}`}>
-            {["confirm", "method", "momo"].map((step, index) => {
-              const activeIndex = checkoutStep === "details" ? 0 : checkoutStep === "confirm" ? 0 : checkoutStep === "method" ? 1 : 2;
+            {["details", "confirm", "method"].map((step, index) => {
+              const activeIndex = checkoutStep === "details" ? 0 : checkoutStep === "confirm" ? 1 : 2;
               return <span key={step} className={`h-1.5 flex-1 rounded-full ${index <= activeIndex ? "bg-amber-400" : "bg-gray-200"}`} />;
             })}
           </div>
@@ -1030,69 +909,14 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
               <span aria-hidden="true">🔒</span> Payments are securely processed. Sensitive credentials are never stored by EliteData1.
             </p>
             <button
-              onClick={() => paymentMethod === "mobile_money" ? setCheckoutStep("momo") : void handlePay()}
-              disabled={loading || (paymentMethod !== "mobile_money" && !paystackReady)}
+              onClick={() => void handlePay()}
+              disabled={loading || !paystackReady}
               className="mt-4 w-full rounded-xl bg-amber-400 py-3 font-black text-slate-950 disabled:opacity-60"
             >
-              {loading ? "Opening secure payment…" : paymentMethod === "mobile_money" ? "Continue" : `Continue with ${PAYMENT_METHODS.find(method => method.id === paymentMethod)?.label}`}
+              {loading ? "Opening secure payment…" : !paystackReady ? "Loading secure payment…" : `Pay GHS ${totalAmount.toFixed(2)}`}
             </button>
             <button onClick={() => setCheckoutStep("confirm")} className="mt-2 w-full py-2 text-sm font-bold text-slate-500">← Back</button>
           </fieldset>)}
-
-          {checkoutStep === "momo" && momoOtpRef && (
-            <section className="space-y-4" aria-labelledby="momo-otp-title">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[.18em] text-amber-500">Almost done</p>
-                <h3 id="momo-otp-title" className="mt-1 text-2xl font-black text-slate-900">Enter payment code</h3>
-                <p className="mt-1 text-sm text-slate-500">{momoOtpPrompt}</p>
-              </div>
-              <input
-                type="tel"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={8}
-                placeholder="e.g. 085217"
-                value={momoOtp}
-                onChange={event => setMomoOtp(event.target.value.replace(/\D/g, ""))}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-lg font-black tracking-[0.3em] text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="rounded-xl bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">Check your SMS for a message from PAYSTACK with the code. Keep this page open.</p>
-              <button onClick={() => void submitMomoOtp()} disabled={otpSubmitting || momoOtp.length < 4} className="w-full rounded-xl bg-amber-400 py-3 font-black text-slate-950 disabled:opacity-60">
-                {otpSubmitting ? "Verifying code…" : `Pay GHS ${totalAmount.toFixed(2)}`}
-              </button>
-              <button onClick={() => { setMomoOtpRef(null); setMomoOtp(""); setError(""); }} disabled={otpSubmitting} className="w-full py-2 text-sm font-bold text-slate-500">← Start over</button>
-            </section>
-          )}
-
-          {checkoutStep === "momo" && !momoOtpRef && (
-            <section className="space-y-4" aria-labelledby="momo-title">
-              <div className="flex items-start justify-between gap-4">
-                <div><p className="text-xs font-black uppercase tracking-[.18em] text-amber-500">Step 3</p><h3 id="momo-title" className="text-2xl font-black text-slate-900">Mobile Money</h3></div>
-                <div className="text-right"><p className="text-xs text-slate-500">Amount</p><p className="text-lg font-black text-slate-900">GHS {totalAmount.toFixed(2)}</p></div>
-              </div>
-              <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3">
-                <label className="mb-2 block text-xs font-black text-gray-700">Select Network</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {([{ id: "mtn", label: "MTN", color: "border-amber-400 bg-amber-100 text-amber-900" }, { id: "vod", label: "Telecel", color: "border-red-400 bg-red-50 text-red-700" }, { id: "atl", label: "AirtelTigo", color: "border-blue-400 bg-blue-50 text-blue-700" }] as const).map(provider => (
-                    <button key={provider.id} type="button" onClick={() => setMomoProvider(provider.id)} className={`rounded-lg border-2 px-1 py-2 text-[11px] font-black ${momoProvider === provider.id ? provider.color : "border-gray-200 bg-white text-gray-500"}`}>{provider.label}</button>
-                  ))}
-                </div>
-                <label className="mb-1 mt-3 block text-xs font-semibold text-gray-600">Mobile Money Number</label>
-                <input type="tel" inputMode="numeric" autoComplete="tel" placeholder="055 123 4567" value={momoPhone} onChange={event => setMomoPhone(event.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-gray-900" />
-              </div>
-              <p className="rounded-xl bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">You will receive a payment authorization prompt on your phone.</p>
-              <button onClick={() => void handlePay()} disabled={loading} className="w-full rounded-xl bg-amber-400 py-3 font-black text-slate-950 disabled:opacity-60">{loading ? "Waiting for phone approval…" : `Pay GHS ${totalAmount.toFixed(2)}`}</button>
-              <button onClick={() => { setMomoOtpRef(null); setMomoOtp(""); setCheckoutStep("method"); }} disabled={loading} className="w-full py-2 text-sm font-bold text-slate-500">← Change method</button>
-            </section>
-          )}
-
-          {momoMessage && (
-            <div role="status" className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-              <p className="font-black">Check your phone</p>
-              <p className="mt-1 text-xs leading-5">{momoMessage}</p>
-              <p className="mt-1 text-xs">Keep this page open while we confirm your payment.</p>
-            </div>
-          )}
 
           <button onClick={onClose} className="w-full text-gray-500 hover:text-gray-700 text-sm py-1 transition-colors">
             Cancel
