@@ -276,8 +276,8 @@ export async function POST(request: NextRequest) {
   const smsPromise = sendCustomerSMS(
     normalizedPhone,
     isAssisted
-      ? `Hi ${firstName}! Your ${label} result-checking request (Ref: ${shortRef}) has been received. After approval, your result will be sent to your WhatsApp number.`
-      : `Hi ${firstName}! Your ${label} x${qty} order (Ref: ${shortRef}) has been received. Your voucher codes will be sent to you shortly. Thank you for choosing Elite Data!`
+      ? `Hi ${firstName}! ${label} request received (Ref ${shortRef}). After approval, your result goes to your WhatsApp. - Elite Data`
+      : `Hi ${firstName}! ${label} x${qty} order received (Ref ${shortRef}). Your voucher code${qty > 1 ? "s" : ""} will be sent shortly. - Elite Data`
   ).catch(() => {});
 
   await Promise.allSettled([alertPromise, smsPromise]);

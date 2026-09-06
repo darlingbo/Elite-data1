@@ -44,6 +44,60 @@ export async function sendCustomerSMS(phone: string, message: string): Promise<S
   return sendSms(phone, message, sender);
 }
 
+function stableVoucherSmsIdempotencyKey(reference: string): string {
+  const hex = createHash("sha256").update(`elite-voucher-sms:${reference}`).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+/** Send voucher codes only through MessagePilot's dedicated Sender ID. */
+export async function sendVoucherSMS(
+  phone: string,
+  message: string,
+  orderReference: string,
+): Promise<SmsSendResult> {
+  const apiKey = process.env.MESSAGEPILOT_API_KEY?.trim();
+  const senderIdId = process.env.MESSAGEPILOT_VOUCHER_SENDER_ID?.trim();
+  if (!apiKey || !senderIdId) {
+    return {
+      ok: false,
+      status: 503,
+      message: "MessagePilot voucher SMS is not configured.",
+      recipients: [],
+    };
+  }
+
+  const recipient = normaliseGhanaPhone(phone);
+  try {
+    const response = await fetch("https://api.messagepilot.online/v1/sms/send", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": stableVoucherSmsIdempotencyKey(orderReference),
+      },
+      body: JSON.stringify({ senderIdId, recipients: [recipient], body: message }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const raw = await response.text();
+    let payload: Record<string, unknown> = {};
+    try { payload = JSON.parse(raw) as Record<string, unknown>; } catch { payload = {}; }
+    const providerMessage = String(payload.message ?? payload.error ?? (response.ok ? "Voucher SMS accepted." : `HTTP ${response.status}`));
+    return {
+      ok: response.ok,
+      status: response.status,
+      message: providerMessage,
+      recipients: response.ok ? [{ number: recipient, status: "Success" }] : [],
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 502,
+      message: error instanceof Error ? error.message : "MessagePilot request failed.",
+      recipients: [],
+    };
+  }
+}
+
 async function sendSms(phone: string, message: string, sender?: string): Promise<SmsSendResult> {
   const apiKey = cleanAfricasTalkingApiKey();
   const usernames = africasTalkingUsernames();
@@ -201,3 +255,4 @@ export function orderRefundedSMS(name: string, amount: number, reference: string
   const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
   return `Hi ${first}, your GH₵${amount.toFixed(2)} refund for order ${shortRef} has been processed. Please allow your payment provider time to complete settlement. Thank you.`;
 }
+import { createHash } from "node:crypto";

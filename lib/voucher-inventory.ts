@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { sendCustomerSMS } from "@/lib/sms";
+import { sendCustomerSMS, sendVoucherSMS } from "@/lib/sms";
 import { sendAdminAlert, tgEscape } from "@/lib/telegram";
 
 type VoucherRow = { id: number; code: string };
@@ -49,13 +49,14 @@ export async function deliverVoucherFromInventory(order: {
     await Promise.all([
       supabase.from("result_checker_requests").update({ status: "awaiting_result" }).eq("order_reference", order.reference),
       supabase.from("voucher_inventory").update({ status: "sent", sent_at: new Date().toISOString() }).in("id", vouchers.map(voucher => voucher.id)).eq("order_reference", order.reference),
-      sendCustomerSMS(order.phone, `Hi ${firstName}, your ${assisted.exam_type} result-checking request (Ref: ${shortReference}) is ready for processing. Your result will be sent to your WhatsApp number.`),
+      sendCustomerSMS(order.phone, `Hi ${firstName}, your ${assisted.exam_type} result check (Ref ${shortReference}) is being processed. The result goes to your WhatsApp. - Elite Data`),
     ]);
     return { ok: true, message: `${assisted.exam_type} voucher and candidate details sent securely to admin for manual result checking`, fallbackToInventor: false };
   }
-  const sms = await sendCustomerSMS(
+  const sms = await sendVoucherSMS(
     order.phone,
-    `Hi ${firstName}, your ${type} voucher${quantity > 1 ? "s are" : " is"}:\n${codes}\nRef: ${shortReference}. Keep this SMS safe.`,
+    `${type} voucher${quantity > 1 ? "s" : ""} (Ref ${shortReference}):\n${codes}\nKeep this SMS safe. - Elite Data`,
+    order.reference,
   );
   if (!sms.ok) {
     return { ok: false, message: `Vouchers reserved, but SMS failed: ${sms.message}`, fallbackToInventor: false };
