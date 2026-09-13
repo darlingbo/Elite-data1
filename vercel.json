@@ -52,10 +52,6 @@
     {
       "path": "/api/cron/security-check",
       "schedule": "0 20 * * *"
-    },
-    {
-      "path": "/api/cron/not-on-list-followup",
-      "schedule": "0 * * * *"
     }
   ]
 }
