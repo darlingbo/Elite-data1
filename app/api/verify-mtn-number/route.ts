@@ -12,12 +12,17 @@ async function isMtnVerificationEnabled(): Promise<boolean> {
 }
 
 export async function POST(request: NextRequest) {
-  const { phone } = await request.json().catch(() => ({}));
+  const { phone, force } = await request.json().catch(() => ({}));
   if (!phone) return Response.json({ verified: false, error: "Phone number required." }, { status: 400 });
 
-  // Admin can disable verification — skip entirely and allow all MTN orders through
-  const verifyEnabled = await isMtnVerificationEnabled();
-  if (!verifyEnabled) return Response.json({ verified: true, skipped: true });
+  // Admin can disable verification site-wide — skip entirely and allow all MTN
+  // orders through. `force: true` (used by trusted server-to-server callers,
+  // e.g. Silent Echo, who want a stricter check than our own storefront runs)
+  // bypasses that toggle without changing it for us.
+  if (!force) {
+    const verifyEnabled = await isMtnVerificationEnabled();
+    if (!verifyEnabled) return Response.json({ verified: true, skipped: true });
+  }
 
   // If Inventor isn't configured, allow through — purchase will handle it
   if (!process.env.INVENTOR_API_KEY || !process.env.INVENTOR_API_BASE_URL) {
