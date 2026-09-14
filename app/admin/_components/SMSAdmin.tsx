@@ -55,6 +55,8 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
   const [testMsg, setTestMsg] = useState("");
   const [testSending, setTestSending] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; text: string; warn?: string } | null>(null);
+  const [voucherTestSending, setVoucherTestSending] = useState(false);
+  const [voucherTestResult, setVoucherTestResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Templates
   const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
@@ -197,6 +199,29 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
     } catch (e) {
       setTestResult({ ok: false, text: String(e) });
     } finally { setTestSending(false); }
+  }
+
+  async function sendVoucherTest() {
+    const phone = testPhone.trim().replace(/\s/g, "");
+    if (!phone) return;
+    setVoucherTestSending(true);
+    setVoucherTestResult(null);
+    try {
+      const response = await fetch("/api/admin/sms/voucher-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await response.json();
+      setVoucherTestResult({
+        ok: response.ok && data.success === true,
+        text: data.error ?? `${data.message} Check ${phone} for the message from ${data.sender ?? "the voucher sender"}.`,
+      });
+    } catch (error) {
+      setVoucherTestResult({ ok: false, text: String(error) });
+    } finally {
+      setVoucherTestSending(false);
+    }
   }
 
   function saveTemplate() {
@@ -511,6 +536,20 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
                     )}
                   </div>
                 )}
+                <div className="border-t pt-4" style={{ borderColor: BORDER }}>
+                  <p className="text-sm font-black text-white">Voucher Sender Test</p>
+                  <p className="mt-1 text-xs text-slate-500">Sends one fixed test through MessagePilot using ELITEVCHIR. No order or voucher stock is created.</p>
+                  <button onClick={sendVoucherTest} disabled={voucherTestSending || !testPhone.trim()}
+                    className="mt-3 w-full rounded-xl py-3 text-sm font-black text-white disabled:opacity-50"
+                    style={{ background: "linear-gradient(90deg,#d97706,#f59e0b)" }}>
+                    {voucherTestSending ? "Sending Voucher Test…" : "Send Voucher Test SMS"}
+                  </button>
+                  {voucherTestResult && (
+                    <div className="mt-3 rounded-xl p-3" style={{ background: voucherTestResult.ok ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)", border: `1px solid ${voucherTestResult.ok ? "rgba(74,222,128,0.3)" : "rgba(248,113,113,0.3)"}` }}>
+                      <p className="text-sm font-bold" style={{ color: voucherTestResult.ok ? "#4ade80" : "#f87171" }}>{voucherTestResult.text}</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

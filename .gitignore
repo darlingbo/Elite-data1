@@ -56,3 +56,6 @@ run-migration.mjs
 # Local n8n runtime and encrypted instance data
 /.tools/
 /node-v22.*-win-x64.zip
+
+# Supabase CLI local cache (project ref, pooler URL, etc.)
+/supabase/.temp/

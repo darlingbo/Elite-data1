@@ -56,18 +56,25 @@ BECE/WASSCE exam vouchers in Ghana. Customers pay via Paystack (card or Mobile M
 
 ### Core Order Flow (CRITICAL — do not break this)
 1. Customer pays via Paystack
-2. Order saved to Supabase `orders` table with `status: "pending_approval"`
-3. Admin receives Telegram notification with ✅ Approve / ❌ Reject inline buttons
-4. Admin can ALSO approve/reject from the admin dashboard Approval Queue tab
-5. On approval → Inventor API called → data delivered → customer gets SMS
-6. On rejection → order marked `rejected` → customer gets SMS
-7. Agent commission is credited **only at approval time**, not at order creation
+2. Order is saved as `pending_approval`
+3. If `auto_approve_orders` is enabled, the system approves it automatically
+4. Otherwise, it waits for Telegram/dashboard approval
+5. After approval, Inventor is called and commission is credited
+
+Notes:
+- Auto-approval and manual approval run through the **same shared approval function** — auto-approval only changes *what triggers* approval, never *what approval does*.
+- `auto_approve_orders` is an administrator-controlled setting in `system_settings`. When disabled, every order waits for a human (Telegram ✅/❌ buttons or the dashboard Approval Queue tab).
+- On approval → Inventor API called → data delivered → customer gets SMS.
+- On rejection → order marked `rejected` → customer gets SMS.
+- Agent commission is credited **only at approval time**, not at order creation.
 
 ### Order statuses
 `pending_approval` → `processing` (approved, Inventor called) → `completed`
-`pending_approval` → `rejected` (admin rejected)
+`pending_approval` → `rejected` (rejected by admin)
 `pending_approval` → `failed` (approved but Inventor API failed)
 `pending` = legacy status (pre-approval-gate orders)
+
+Approval can be initiated by an administrator (Telegram / dashboard) or automatically by the system when `auto_approve_orders` is enabled. Either path calls the same shared approval function.
 
 ---
 
@@ -140,7 +147,7 @@ SITE_URL                          — https://elitedata1.com
 
 ## Coding Rules (Non-Negotiable)
 
-1. **Never break the approval gate** — all orders MUST go through `pending_approval` before the Inventor API is called. Do not reintroduce direct delivery.
+1. **Never break the approval gate** — every order must first be saved as `pending_approval`. The Inventor API may only be called through the shared approval function. Approval may be initiated manually by an administrator or automatically when the administrator-controlled `auto_approve_orders` setting is enabled. Do not add any code path that calls Inventor directly from order creation, bypassing the shared approval function.
 2. **Never log or echo `INVENTOR_API_KEY`** — treat it like a password.
 3. **Admin API routes must check the cookie** — call `isAdmin()` at the top of every admin route.
 4. **Telegram webhook must verify both** — `WEBHOOK_SECRET` header AND `from.id === ADMIN_CHAT_ID` before acting on any callback.

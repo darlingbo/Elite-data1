@@ -4,7 +4,6 @@ import { rateLimitDb } from "@/lib/rate-limit";
 import { bundles, sizeLabel, type Network } from "@/lib/bundles";
 import { sendAdminAlert, sendNewOrderAlert, fmtOrder, orderApprovalKeyboard } from "@/lib/telegram";
 import { maybeAutoApprove } from "@/lib/order-approval";
-import { sendCustomerSMS, orderReceivedSMS } from "@/lib/sms";
 import { getSurcharge, clearSurcharge } from "@/lib/surcharge";
 import { resolveAgentCommissionRate } from "@/lib/commission";
 import { percentageOf, roundCurrency, subtractCurrency, toMinorUnits } from "@/lib/finance";
@@ -653,9 +652,6 @@ export async function POST(request: NextRequest) {
     fmtOrder({ ref: paystackRef, network: bundleMeta.network, size: bundleMeta.size, phone, amount: chargedAmount, profit, agentName, sourceLabel });
 
   await sendNewOrderAlert(orderText, orderApprovalKeyboard(paystackRef)).catch(() => {});
-
-  // Await so Vercel doesn't terminate the function before the SMS fetch completes
-  await sendCustomerSMS(phone, orderReceivedSMS(name, bundleMeta.network, bundleMeta.size, phone, paystackRef));
 
   // Mark referral credit as used — MUST be awaited so the same credit can't be reused
   if (referralCreditId) {

@@ -574,22 +574,22 @@ export function SettingsView({ onChangePassword }: { onChangePassword: () => voi
     if (!net) return;
     setNet(prev => prev ? { ...prev, autoApprove: value } : prev);
     setNetSaving("autoApprove");
-    const r = await fetch("/api/admin/network-settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ autoApprove: value }),
-    }).then(response => response.json());
-    setNetSaving(null);
-    if (r.success) {
-      const processed = Number(r.autoApproval?.approved ?? 0);
-      const held = Number(r.autoApproval?.held ?? 0);
+    try {
+      const response = await fetch("/api/admin/network-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ autoApprove: value }),
+      });
+      const r = await response.json().catch(() => ({}));
+      if (!response.ok || !r.success) throw new Error(r.error ?? "Save failed");
       showToast(value
-        ? `Automatic approval enabled · ${processed} queued order${processed === 1 ? "" : "s"} approved${held ? ` · ${held} held by safety checks` : ""}`
+        ? "Automatic approval enabled · queued orders will process within one minute"
         : "Automatic approval disabled · new orders require your approval");
-    }
-    else {
-      showToast(r.error ?? "Save failed", false);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not save automatic approval", false);
       setNet(prev => prev ? { ...prev, autoApprove: !value } : prev);
+    } finally {
+      setNetSaving(null);
     }
   }
 

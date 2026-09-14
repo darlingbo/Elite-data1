@@ -46,8 +46,8 @@ function CheckoutContent() {
   const buyHref = `/buy${agentCode ? `?agent=${encodeURIComponent(agentCode)}` : ""}`;
 
   if (error) return (
-    <main className="min-h-screen bg-[#070d19] px-5 py-16 text-white">
-      <div className="mx-auto max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 text-center shadow-2xl">
+    <main className="min-h-screen bg-[#070d19] px-4 py-10 text-white sm:px-5 sm:py-16">
+      <div className="mx-auto max-w-md rounded-3xl border border-white/10 bg-white/5 p-6 text-center shadow-2xl sm:p-8">
         <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-red-500/15 text-2xl">!</div>
         <h1 className="text-2xl font-black">Checkout unavailable</h1>
         <p className="mt-3 text-sm leading-6 text-slate-400">{error}</p>
@@ -65,23 +65,23 @@ function CheckoutContent() {
   return (
     <main className="checkout-page min-h-screen bg-[#070d19] text-slate-100">
       <header className="border-b border-white/10 bg-[#070d19]/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-5">
           <Link href="/" className="flex items-center gap-3 text-white no-underline">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 font-black">E</span>
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-linear-to-br from-blue-500 to-violet-600 font-black">E</span>
             <span><b className="block text-sm">Elite Data</b><small className="text-[10px] uppercase tracking-[.2em] text-slate-500">Secure checkout</small></span>
           </Link>
-          <Link href={buyHref} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-bold text-slate-300 hover:bg-white/5">← Change bundle</Link>
+          <Link href={buyHref} className="shrink-0 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-white/5 sm:px-4">← Change</Link>
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-6xl gap-8 px-5 py-8 lg:grid-cols-[minmax(0,1fr)_480px] lg:py-14">
-        <section className="order-last lg:order-none">
+      <div className="mx-auto grid max-w-6xl gap-7 px-4 py-6 sm:px-5 sm:py-8 lg:grid-cols-[minmax(0,1fr)_480px] lg:py-14">
+        <section className="order-last lg:order-0">
           <p className="text-xs font-black uppercase tracking-[.22em] text-blue-400">Complete your purchase</p>
           <h1 className="mt-3 max-w-xl text-3xl font-black tracking-tight sm:text-5xl">Fast data, clear pricing, secure payment.</h1>
-          <p className="mt-4 max-w-xl text-sm leading-7 text-slate-400">Review your bundle and enter the receiving number. Payment is processed securely by Paystack and your order enters our monitored approval queue.</p>
+          <p className="mt-4 max-w-xl text-sm leading-7 text-slate-400">Review your bundle and enter the receiving number. Payment is verified securely and your order enters our monitored delivery queue.</p>
 
-          <div className="mt-8 rounded-3xl border border-white/10 bg-gradient-to-br from-[#14223a] to-[#0d1728] p-6 shadow-2xl shadow-black/25 sm:p-8">
-            <div className="flex items-start justify-between gap-5">
+          <div className="mt-8 rounded-3xl border border-white/10 bg-linear-to-br from-[#14223a] to-[#0d1728] p-6 shadow-2xl shadow-black/25 sm:p-8">
+            <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:gap-5">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[.18em] text-blue-300">Selected bundle</p>
                 <h2 className="mt-2 text-4xl font-black text-white">{bundle.size}</h2>
@@ -93,7 +93,7 @@ function CheckoutContent() {
               </div>
             </div>
             <div className="mt-7 grid gap-3 sm:grid-cols-3">
-              {[['🔒','Secure payment','Paystack protected'],['✓','Verified order','Payment checked'],['💬','Customer support','Help when needed']].map(([icon,title,copy]) => (
+              {[['🔒','Secure payment','Protected checkout'],['✓','Verified order','Payment checked'],['💬','Customer support','Help when needed']].map(([icon,title,copy]) => (
                 <div key={title} className="rounded-2xl border border-white/8 bg-white/[.035] p-4">
                   <span className="text-lg">{icon}</span><b className="mt-2 block text-xs text-white">{title}</b><small className="mt-1 block text-[11px] text-slate-500">{copy}</small>
                 </div>
@@ -106,7 +106,7 @@ function CheckoutContent() {
           </div>
         </section>
 
-        <section className="order-first overflow-hidden rounded-3xl bg-white text-slate-900 shadow-[0_30px_100px_rgba(0,0,0,.35)] lg:order-none">
+        <section className="order-first overflow-hidden rounded-3xl bg-white text-slate-900 shadow-[0_30px_100px_rgba(0,0,0,.35)] lg:order-0">
           <div className="border-b border-slate-100 px-6 py-5">
             <p className="text-[10px] font-black uppercase tracking-[.2em] text-blue-600">Customer details</p>
             <h2 className="mt-1 text-xl font-black text-slate-900">Where should we send the bundle?</h2>

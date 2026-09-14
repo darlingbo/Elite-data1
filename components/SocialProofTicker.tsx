@@ -93,19 +93,8 @@ export default function SocialProofTicker() {
         }
       `}</style>
 
-      <div
-        style={{
-          position: "fixed",
-          top: 14,
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 9999,
-          pointerEvents: "none",
-          width: "calc(100% - 32px)",
-          maxWidth: 400,
-        }}
-      >
-        {visible && (
+      <div className={`social-proof-slot${visible ? " is-visible" : ""}`} aria-live="polite">
+        <div className="social-proof-slot__inner">
           <div
             key={animKey}
             className={visible ? "ticker-enter" : "ticker-exit"}
@@ -145,7 +134,7 @@ export default function SocialProofTicker() {
               </p>
             </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* ping animation */}

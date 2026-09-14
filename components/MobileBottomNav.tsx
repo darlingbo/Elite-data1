@@ -20,6 +20,11 @@ const items = [
     icon: "M9 5H7a2 2 0 0 0-2 2v12h14V7a2 2 0 0 0-2-2h-2M9 5a3 3 0 0 1 6 0M9 12h6M9 16h4",
   },
   {
+    href: "/vouchers",
+    label: "Voucher",
+    icon: "M5 4h14v16H5V4Zm3 4h8M8 12h8M8 16h5M5 8a2 2 0 0 0 0 4M19 8a2 2 0 0 1 0 4",
+  },
+  {
     href: "/prices",
     label: "Prices",
     icon: "M4 7V4h3l11 11-5 5L2 9l2-2Zm3 0h.01",

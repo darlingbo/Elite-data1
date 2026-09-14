@@ -10,6 +10,7 @@ import type {
   AuthenticatorTransportFuture,
   CredentialDeviceType,
 } from "@simplewebauthn/server";
+import { issueAdminSession, verifyAdminSessionValue } from "@/lib/adminAuth";
 
 const RP_NAME = "Elite Data Admin";
 const RP_ID = "elitedata1.com";
@@ -18,7 +19,9 @@ const ADMIN_USER_ID = new TextEncoder().encode("elite-admin");
 const CHALLENGE_TTL = 5 * 60 * 1000;
 
 // ── All storage uses httpOnly cookies — no Supabase dependency ───────────────
-// This avoids RLS / anon-key write failures on system_settings.
+// Credentials are intentionally stored in the browser's secure, httpOnly
+// cookie. A passkey is device-bound, so this prevents a credential registered
+// on one device from being offered as a login method on another.
 
 type StoredCredential = {
   credentialId: string;
@@ -64,11 +67,9 @@ async function saveCredentials(creds: StoredCredential[]): Promise<void> {
   });
 }
 
-function requireAdminSession(request: NextRequest): boolean {
+async function requireAdminSession(request: NextRequest): Promise<boolean> {
   const session = request.cookies.get("admin_session")?.value;
-  const token = process.env.ADMIN_SESSION_TOKEN;
-  if (!token) return false;
-  return session === token;
+  return verifyAdminSessionValue(session);
 }
 
 // Never reflect the request Origin — only trust hardcoded domains
@@ -81,7 +82,7 @@ export async function GET(request: NextRequest) {
   const action = request.nextUrl.searchParams.get("action");
 
   if (action === "registration-options") {
-    if (!requireAdminSession(request))
+    if (!(await requireAdminSession(request)))
       return Response.json({ error: "Unauthorized — please log in first" }, { status: 401 });
 
     const existingCreds = await getCredentials();
@@ -121,7 +122,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (action === "list") {
-    if (!requireAdminSession(request)) return Response.json({ error: "Unauthorized" }, { status: 401 });
+    if (!(await requireAdminSession(request))) return Response.json({ error: "Unauthorized" }, { status: 401 });
     const creds = await getCredentials();
     return Response.json({ credentials: creds.map(c => ({ id: c.credentialId.slice(0, 12) + "…", createdAt: c.createdAt })) });
   }
@@ -134,7 +135,7 @@ export async function POST(request: NextRequest) {
   const action = request.nextUrl.searchParams.get("action");
 
   if (action === "registration-verify") {
-    if (!requireAdminSession(request)) return Response.json({ error: "Unauthorized" }, { status: 401 });
+    if (!(await requireAdminSession(request))) return Response.json({ error: "Unauthorized" }, { status: 401 });
     const body = await request.json();
     const expectedChallenge = await getAndClearChallenge();
     if (!expectedChallenge) return Response.json({ error: "Challenge expired — tap the button again" }, { status: 400 });
@@ -207,18 +208,15 @@ export async function POST(request: NextRequest) {
         : c
     ));
 
-    const token = process.env.ADMIN_SESSION_TOKEN;
-    if (!token) return Response.json({ error: "ADMIN_SESSION_TOKEN not set" }, { status: 500 });
-    const jar = await cookies();
-    jar.set("admin_session", token, {
-      httpOnly: true, secure: process.env.NODE_ENV === "production",
-      sameSite: "lax", path: "/", maxAge: 60 * 60 * 5,
-    });
+    // Use the same random, revocable session format as password login.
+    // Previously this wrote the legacy static token, which every modern admin
+    // API rejected after the biometric check had succeeded.
+    await issueAdminSession();
     return Response.json({ success: true });
   }
 
   if (action === "remove") {
-    if (!requireAdminSession(request)) return Response.json({ error: "Unauthorized" }, { status: 401 });
+    if (!(await requireAdminSession(request))) return Response.json({ error: "Unauthorized" }, { status: 401 });
     await saveCredentials([]);
     return Response.json({ success: true });
   }

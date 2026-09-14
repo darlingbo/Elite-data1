@@ -33,7 +33,7 @@ export default function WelcomePopup() {
         position: "fixed", inset: 0, zIndex: 9999,
         background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 20, animation: "fadeIn .25s ease",
+        padding: 12, animation: "fadeIn .25s ease", overflowY: "auto",
       }}
     >
       <style>{`
@@ -45,7 +45,7 @@ export default function WelcomePopup() {
         className="welcome-popup-card"
         onClick={e => e.stopPropagation()}
         style={{
-          background: "#0d1b2e", borderRadius: 24, padding: "32px 28px 28px",
+          background: "#0d1b2e", borderRadius: 24, padding: "28px 20px 24px",
           maxWidth: 360, width: "100%", textAlign: "center", position: "relative",
           border: "1px solid #1e3a5f",
           boxShadow: "0 24px 80px rgba(0,0,0,0.6)",

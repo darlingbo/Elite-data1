@@ -862,7 +862,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
                 ].map(([label, value]) => (
                   <div key={label} className="flex items-start justify-between gap-4 py-3">
                     <dt className="text-xs font-semibold text-slate-500">{label}</dt>
-                    <dd className="max-w-[58%] text-right text-sm font-black text-slate-900 break-words">{value}</dd>
+                    <dd className="max-w-[58%] text-right text-sm font-black text-slate-900 wrap-break-word">{value}</dd>
                   </div>
                 ))}
               </dl>

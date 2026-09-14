@@ -1,14 +1,7 @@
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
-import { sendStuckOrderAlert } from "@/lib/telegram";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
 import { sendAdminDeliverySMS } from "@/lib/sms";
-
-const networkApiMap: Record<string, string> = {
-  mtn: "MTN",
-  telecel: "TELECEL",
-  airteltigo: "AT ISHARE",
-};
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -51,33 +44,6 @@ async function creditAgent(agentId: string, commission: number, revenue: number)
   }).eq("id", agentId);
 }
 
-async function retryDelivery(order: {
-  reference: string;
-  phone: string;
-  network: string;
-  bundle_size_gb: number;
-  bundle_size: string;
-}): Promise<boolean> {
-  try {
-    const retryRef = `${order.reference}-rs`;
-    const res = await fetch(`${process.env.INVENTOR_API_BASE_URL}/api/developer/purchase`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-      body: JSON.stringify({
-        network: networkApiMap[order.network] ?? order.network.toUpperCase(),
-        Phone: order.phone,
-        Datasize: order.bundle_size_gb,
-        reference: retryRef,
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-    return res.ok || body.success === true || body.status === "success" || body.status === "00";
-  } catch {
-    return false;
-  }
-}
-
 export async function POST(request: Request) {
   const isCron = request.headers.get("x-cron-sync") === process.env.CRON_SECRET;
   if (!isCron && !(await isAdmin())) {
@@ -85,7 +51,6 @@ export async function POST(request: Request) {
   }
 
   const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-  const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
   // Try full query with all columns; fall back if newer columns don't exist yet
   type OrderRow = { reference: string; inventor_order_id: string | null; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null };
@@ -114,8 +79,7 @@ export async function POST(request: Request) {
   const chunks: OrderRow[][] = [];
   for (let i = 0; i < orders.length; i += 10) chunks.push(orders.slice(i, i + 10));
 
-  let updated = 0, retried = 0;
-  const retriedOrders: string[] = [];
+  let updated = 0;
 
   for (const chunk of chunks) {
     await Promise.all(chunk.map(async (order) => {
@@ -147,35 +111,10 @@ export async function POST(request: Request) {
         return;
       }
 
-      // Still unresolved — retry if stuck >15 min
-      const sizeGb = order.bundle_size_gb ?? (() => {
-        const m = (order.bundle_size ?? "").match(/(\d+(?:\.\d+)?)\s*gb/i);
-        return m ? parseFloat(m[1]) : 1;
-      })();
-
-      const isStuck = order.created_at < stuckCutoff;
-      if (isStuck && order.phone && order.network && sizeGb) {
-        const success = await retryDelivery({
-          reference: order.reference,
-          phone: order.phone,
-          network: order.network,
-          bundle_size_gb: Number(sizeGb),
-          bundle_size: order.bundle_size,
-        });
-        if (success) {
-          await supabase.from("orders").update({ status: "processing" }).eq("reference", order.reference);
-          retried++;
-          retriedOrders.push(`📱 ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size}`);
-        }
-      }
+      // Unresolved orders stay untouched. Sync only reconciles provider status;
+      // an explicit admin action is required to retry delivery.
     }));
   }
 
-  if (retriedOrders.length > 0) {
-    await sendStuckOrderAlert(
-      `🔁 AUTO-RETRY: ${retried} stuck order(s) resent\n\n${retriedOrders.join("\n")}`
-    ).catch(() => {});
-  }
-
-  return Response.json({ updated, retried, checked: orders.length });
+  return Response.json({ updated, retried: 0, checked: orders.length });
 }

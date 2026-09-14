@@ -1,13 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { sendCompletedOrderAlert, sendStuckOrderAlert } from "@/lib/telegram";
+import { sendCompletedOrderAlert } from "@/lib/telegram";
 import { sendAdminDeliverySMS, sendCustomerSMS, orderDeliveredSMS, orderFailedSMS } from "@/lib/sms";
-
-const networkApiMap: Record<string, string> = {
-  mtn: "MTN",
-  telecel: "TELECEL",
-  airteltigo: "AT ISHARE",
-};
 
 async function checkInventorOrder(reference: string): Promise<"completed" | "processing" | "failed" | null> {
   try {
@@ -57,7 +51,6 @@ export async function GET(request: NextRequest) {
   }
 
   const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-  const stuckCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
   type OrderRow = { reference: string; inventor_order_id: string | null; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null; cost_price: number | null; customer_name: string | null };
 
@@ -86,8 +79,7 @@ export async function GET(request: NextRequest) {
   const chunks: OrderRow[][] = [];
   for (let i = 0; i < orders.length; i += 10) chunks.push(orders.slice(i, i + 10));
 
-  let updated = 0, retried = 0;
-  const retriedOrders: string[] = [];
+  let updated = 0;
   const completedOrders: string[] = [];
 
   for (const chunk of chunks) {
@@ -138,23 +130,8 @@ export async function GET(request: NextRequest) {
         return;
       }
 
-      const sizeGb = order.bundle_size_gb ?? (() => {
-        const m = (order.bundle_size ?? "").match(/(\d+(?:\.\d+)?)\s*gb/i);
-        return m ? parseFloat(m[1]) : 1;
-      })();
-
-      const isStuck = order.created_at < stuckCutoff;
-      if (isStuck && order.phone && order.network && sizeGb) {
-        // All orders — alert admin to deliver manually. Never auto-retry.
-        await sendStuckOrderAlert(
-          `⚠️ <b>STUCK ORDER</b>${isWalletOrder ? " (Agent Wallet)" : ""}\n\n` +
-          `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>\n` +
-          `📎 Ref: <code>${order.reference}</code>\n\n` +
-          `This order has been processing for 15+ min. Please deliver manually or retry.`
-        );
-        retried++;
-        retriedOrders.push(`⚠️ ${order.phone} — ${(order.network ?? "").toUpperCase()} ${order.bundle_size} (stuck, alerted)`);
-      }
+      // Unresolved orders stay untouched. A provider timeout is ambiguous and
+      // must never trigger another purchase automatically.
     }));
   }
 
@@ -164,11 +141,5 @@ export async function GET(request: NextRequest) {
     ).catch(() => {});
   }
 
-  if (retriedOrders.length > 0) {
-    await sendStuckOrderAlert(
-      `⚠️ STUCK ORDERS: ${retriedOrders.length} order(s) need manual delivery\n\n${retriedOrders.join("\n")}`
-    ).catch(() => {});
-  }
-
-  return Response.json({ updated, retried, checked: orders.length });
+  return Response.json({ updated, retried: 0, checked: orders.length });
 }

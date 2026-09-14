@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
-import { processAutoApprovalQueue } from "@/lib/order-approval";
 
 export const maxDuration = 300;
 
@@ -99,10 +98,28 @@ export async function PATCH(req: NextRequest) {
       tasks.push(upsert("sms_admin_phone", phone));
     }
     await Promise.all(tasks);
-    const autoApproval = body.autoApprove === true
-      ? await processAutoApprovalQueue()
-      : undefined;
-    return Response.json({ success: true, autoApproval });
+
+    // Persist and confirm the switch before returning. Draining the complete
+    // queue here can keep the browser request open for minutes because each
+    // approval may call Inventor. The existing one-minute cron handles queued
+    // orders, while new orders read this setting and auto-approve immediately.
+    if ("autoApprove" in body) {
+      const savedValue = await getSetting("auto_approve_orders", "0");
+      const expectedValue = body.autoApprove ? "1" : "0";
+      if (savedValue !== expectedValue) {
+        throw new Error("Automatic approval setting was not saved. Please try again.");
+      }
+      console.info("[admin/network-settings] automatic approval updated", {
+        enabled: savedValue === "1",
+      });
+    }
+
+    return Response.json({
+      success: true,
+      autoApproval: body.autoApprove === true
+        ? { scheduled: true, message: "Queued orders will process within one minute" }
+        : undefined,
+    });
   } catch (e) {
     return Response.json({ success: false, error: (e as Error).message }, { status: 500 });
   }

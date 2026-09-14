@@ -135,7 +135,7 @@ export default function PricesPage() {
             <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
           {shown.map(b => {
             const isBest = b.id === bestValueId;
             const isPopular = b.popular;
@@ -242,7 +242,7 @@ export default function PricesPage() {
         </div>
 
         {/* Data Usage Calculator */}
-        <div className="mt-14 rounded-2xl p-8" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+        <div className="mt-14 rounded-2xl p-4 sm:p-8" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
           <div className="text-center mb-8">
             <span className="text-3xl">🧮</span>
             <h2 className="text-2xl font-black mt-2 mb-1" style={{ color: TEXT }}>Data Usage Calculator</h2>

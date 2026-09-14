@@ -144,7 +144,7 @@ function BuyContent() {
         </a>
 
         {/* Quick links */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 28 }}>
+        <div className="grid grid-cols-1 min-[380px]:grid-cols-3" style={{ gap: 10, marginBottom: 28 }}>
           {[
             { label: "Track Order",     sub: "Check delivery status",  icon: "📦", href: "/track",    color: "#22c55e" },
             { label: "Result Checker",  sub: "BECE & WASSCE",          icon: "📗", href: "/vouchers", color: "#a855f7" },
@@ -159,7 +159,7 @@ function BuyContent() {
         </div>
 
         {/* Network selector — icon style */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+        <div className="grid grid-cols-2 min-[480px]:grid-cols-4" style={{ gap: 10, marginBottom: 20 }}>
           {visibleNets.map(n => (
             <button key={n.id} onClick={() => setActiveNet(n.id)} style={{ flex: 1, padding: "14px 8px", borderRadius: 16, border: `2px solid ${activeNet === n.id ? n.color : D.border}`, background: activeNet === n.id ? `${n.color}15` : D.card, cursor: "pointer", transition: "all .2s" }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: activeNet === n.id ? n.color : `${n.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13, color: activeNet === n.id ? n.text : n.color, margin: "0 auto 6px" }}>
@@ -187,7 +187,7 @@ function BuyContent() {
               <p style={{ fontSize: 14 }}>No Mashup bundles available right now.</p>
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="grid grid-cols-1 min-[360px]:grid-cols-2" style={{ gap: 12 }}>
               {mashupBundles.map(b => {
                 const asBundle: Bundle = {
                   id: b.id, network: "mtn",
@@ -213,7 +213,7 @@ function BuyContent() {
             </div>
           )
         ) : bundles.length === 0 ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="grid grid-cols-1 min-[360px]:grid-cols-2" style={{ gap: 12 }}>
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} style={{ background: D.card, borderRadius: 18, height: 160, border: `1px solid ${D.border}` }} className="animate-pulse" />
             ))}
@@ -224,7 +224,7 @@ function BuyContent() {
             <p style={{ fontSize: 14 }}>No bundles available for {net.label} right now.</p>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="grid grid-cols-1 min-[360px]:grid-cols-2" style={{ gap: 12 }}>
             {filtered.map(b => (
               <button key={b.id} onClick={() => openCheckout(b.id)} style={{ background: D.card, border: `2px solid ${b.id === bestId ? net.color : D.border}`, borderRadius: 18, padding: 18, cursor: "pointer", textAlign: "left", position: "relative", boxShadow: b.id === bestId ? `0 0 24px ${net.color}20` : "none", transition: "all .15s" }}>
                 {b.id === bestId && (

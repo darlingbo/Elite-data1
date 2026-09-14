@@ -275,8 +275,6 @@ export async function POST(request: NextRequest) {
     });
   await sendNewOrderAlert(orderText, orderApprovalKeyboard(reference)).catch(() => {});
 
-  sendCustomerSMS(phone, orderReceivedSMS(name, network, bundleSize, phone, reference)).catch(() => {});
-
   await maybeAutoApprove(reference);
   return Response.json({ ok: true });
 }

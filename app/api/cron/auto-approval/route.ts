@@ -10,7 +10,9 @@ export async function GET(request: Request) {
   }
 
   try {
-    return Response.json(await processAutoApprovalQueue());
+    const result = await processAutoApprovalQueue();
+    if (result.found > 0) console.info("[cron/auto-approval] queue processed", result);
+    return Response.json(result);
   } catch (error) {
     console.error("[cron/auto-approval] failed", {
       error: error instanceof Error ? error.message : String(error),
