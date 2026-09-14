@@ -79,8 +79,8 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
   const [processing, setProcessing] = useState(false);
   const [diagnosing, setDiagnosing] = useState(false);
   const [diagResult, setDiagResult] = useState<{
-    configured: boolean; username?: string; isSandbox?: boolean;
-    senderId?: string | null; balance?: string | null; error?: string;
+    configured: boolean;
+    senderId?: string | null; error?: string;
   } | null>(null);
 
   const approvedAgents = useMemo(() => agents.filter(a => a.status === "approved"), [agents]);
@@ -158,10 +158,8 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
       const d = await res.json();
       const ok = res.ok && !d.error;
       const label = audience === "customers" ? "customers" : "agents";
-      const warn = d.isSandbox
-        ? "⚠️ AT_USERNAME is set to 'sandbox' — messages never deliver to real phones. Change it to your live Africa's Talking username."
-        : d.failReasons?.length
-        ? `⚠️ Some failed: ${d.failReasons.join(", ")}. Check your AT account balance and sender ID.`
+      const warn = d.failReasons?.length
+        ? `⚠️ Some failed: ${d.failReasons.join(", ")}. Check your MessagePilot account and sender ID.`
         : undefined;
       setBulkResult({
         ok,
@@ -183,10 +181,8 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
       const res = await fetch("/api/admin/sms/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phones: [phone], message: resolvedMsg }) });
       const d = await res.json();
       const ok = res.ok && !d.error;
-      const warn = d.isSandbox
-        ? "⚠️ AT_USERNAME is 'sandbox' — this never delivers to a real phone. Use your live AT username."
-        : d.failReasons?.length
-        ? `⚠️ AT status: ${d.failReasons.join(", ")}. Check your AT balance / sender ID.`
+      const warn = d.failReasons?.length
+        ? `⚠️ MessagePilot status: ${d.failReasons.join(", ")}. Check your MessagePilot account / sender ID.`
         : undefined;
       setTestResult({
         ok,
@@ -268,7 +264,7 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-black text-white">SMS Broadcast</h1>
-          <p className="text-sm text-slate-500">Send messages to agents and customers via Africa&apos;s Talking</p>
+          <p className="text-sm text-slate-500">Send messages to agents and customers via MessagePilot</p>
         </div>
         {/* Quick Send All button */}
         <button onClick={() => { setMode("bulk"); setAudience("all"); setActiveTab("compose"); }}
@@ -283,7 +279,7 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <p className="font-bold text-white text-sm">Account Diagnostics</p>
-            <p className="text-xs text-slate-500">Check your Africa&apos;s Talking credentials and balance</p>
+            <p className="text-xs text-slate-500">Check your MessagePilot credentials</p>
           </div>
           <button onClick={runDiagnose} disabled={diagnosing}
             className="px-4 py-2 rounded-xl text-sm font-bold border text-blue-400 disabled:opacity-50"
@@ -297,54 +293,25 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
             {!diagResult.configured && (
               <div className="p-3 rounded-xl" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)" }}>
                 <p className="text-sm font-bold text-red-400">❌ {diagResult.error as string}</p>
-                <p className="text-xs text-slate-400 mt-1">Add both AT_API_KEY and the exact Africa&apos;s Talking application username as AT_USERNAME in Vercel Production, then redeploy.</p>
+                <p className="text-xs text-slate-400 mt-1">Add MESSAGEPILOT_API_KEY in Vercel Production, then redeploy. (Sender ID defaults to ELITEGHA — override with MESSAGEPILOT_SENDER_ID if it changes.)</p>
               </div>
             )}
 
             {diagResult.configured && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-xl p-3" style={{ background: BG }}>
-                  <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Username</p>
-                  <p className="text-sm font-black" style={{ color: diagResult.isSandbox ? "#f87171" : "#4ade80" }}>
-                    {diagResult.username as string}
-                    {diagResult.isSandbox && <span className="text-xs text-red-400 ml-1">(SANDBOX — won&apos;t deliver!)</span>}
-                  </p>
-                </div>
-                <div className="rounded-xl p-3" style={{ background: BG }}>
-                  <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Balance</p>
-                  <p className="text-sm font-black" style={{ color: diagResult.balance ? "#4ade80" : "#f87171" }}>
-                    {diagResult.balance as string ?? "Could not fetch — check API key"}
-                  </p>
-                </div>
-                <div className="rounded-xl p-3" style={{ background: BG }}>
-                  <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Sender ID</p>
-                  <p className="text-sm font-black text-white">
-                    {diagResult.senderId ? diagResult.senderId as string : <span className="text-slate-500">None set (AT default)</span>}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {diagResult.configured && diagResult.isSandbox && (
-              <div className="p-3 rounded-xl" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)" }}>
-                <p className="text-sm font-bold text-red-400">❌ You are in SANDBOX mode</p>
-                <p className="text-xs text-slate-400 mt-1">Change AT_USERNAME in Vercel env vars to your real Africa&apos;s Talking username, then redeploy.</p>
-              </div>
-            )}
-
-            {diagResult.configured && !diagResult.isSandbox && diagResult.balance && (
-              <div className="p-3 rounded-xl" style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)" }}>
-                <p className="text-sm font-bold text-green-400">✅ Account looks good</p>
-                <p className="text-xs text-slate-400 mt-1">
-                  If SMS still doesn&apos;t deliver: make sure your Sender ID (<strong className="text-white">{diagResult.senderId as string || "AFRICASTALKING"}</strong>) is registered with MTN Ghana / Telecel. Unregistered sender IDs get silently dropped by Ghana networks. Remove AT_SENDER_ID from env vars to use the default, or register it at africastalking.com.
+              <div className="rounded-xl p-3" style={{ background: BG }}>
+                <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Sender ID</p>
+                <p className="text-sm font-black text-white">
+                  {diagResult.senderId ? diagResult.senderId as string : <span className="text-slate-500">None set</span>}
                 </p>
               </div>
             )}
 
-            {diagResult.error && diagResult.configured && (
-              <div className="p-3 rounded-xl" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)" }}>
-                <p className="text-sm font-bold text-red-400">❌ {diagResult.error as string}</p>
-                <p className="text-xs text-slate-400 mt-1">The username is not the app name or email. Copy the application username and API key from the same live Africa&apos;s Talking app, save both for Production in Vercel, then redeploy.</p>
+            {diagResult.configured && (
+              <div className="p-3 rounded-xl" style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)" }}>
+                <p className="text-sm font-bold text-green-400">✅ MESSAGEPILOT_API_KEY is set</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  This only confirms the key is present, not that it&apos;s valid or that the Sender ID (<strong className="text-white">{diagResult.senderId as string || "ELITEGHA"}</strong>) is approved — send a Test SMS below to confirm end-to-end. Unapproved sender IDs get silently rejected by Ghana networks.
+                </p>
               </div>
             )}
           </div>

@@ -41,13 +41,13 @@ export async function GET() {
     datacity: datacity === "1", datify: datify === "1", slowDelivery: slowDelivery === "1",
     autoApprove: autoApprove === "1", smsApproval: smsApproval === "1", smsAdminPhone,
     smsWebhookReady: Boolean(process.env.SMS_WEBHOOK_SECRET && process.env.SMS_WEBHOOK_SECRET.length >= 24),
-    smsTwoWayReady: Boolean(process.env.AT_SMS_SHORTCODE),
+    smsTwoWayReady: Boolean(process.env.MESSAGEPILOT_API_KEY),
     aiOrderGuard: aiOrderGuard !== "0",
     whatsappAi: whatsappAi !== "0",
     deepseekReady: Boolean(process.env.GEMINI_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN),
     whatsappReady: Boolean(process.env.WHATSAPP_API_KEY && process.env.WHATSAPP_WEBHOOK_SECRET),
     smsCallbackUrl: process.env.SMS_WEBHOOK_SECRET && process.env.SMS_WEBHOOK_SECRET.length >= 24
-      ? `${process.env.SITE_URL ?? "https://www.elitedata1.com"}/api/webhooks/africastalking?secret=${encodeURIComponent(process.env.SMS_WEBHOOK_SECRET)}`
+      ? `${process.env.SITE_URL ?? "https://www.elitedata1.com"}/api/webhooks/messagepilot?secret=${encodeURIComponent(process.env.SMS_WEBHOOK_SECRET)}`
       : "",
   });
 }
@@ -71,8 +71,8 @@ export async function PATCH(req: NextRequest) {
       if (!process.env.SMS_WEBHOOK_SECRET || process.env.SMS_WEBHOOK_SECRET.length < 24) {
         return Response.json({ success: false, error: "The secure SMS webhook key is not configured yet." }, { status: 400 });
       }
-      if (!process.env.AT_SMS_SHORTCODE) {
-        return Response.json({ success: false, error: "Your Africa's Talking two-way shortcode is not configured yet." }, { status: 400 });
+      if (!process.env.MESSAGEPILOT_API_KEY) {
+        return Response.json({ success: false, error: "MESSAGEPILOT_API_KEY is not configured yet." }, { status: 400 });
       }
     }
     if ("mtn" in body) tasks.push(upsert("network_mtn_active", body.mtn ? "1" : "0"));

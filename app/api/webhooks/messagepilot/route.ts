@@ -6,18 +6,50 @@ import { approveOrder } from "@/lib/order-approval";
 import { rejectOrder } from "@/lib/order-rejection";
 import { getSmsApprovalSettings, normaliseGhanaPhone, sendAdminCommandReplySMS } from "@/lib/sms";
 
+/**
+ * Inbound SMS webhook — was Africa's Talking, now MessagePilot.
+ *
+ * NOT VERIFIED against a live MessagePilot inbound callback yet. AT's
+ * incoming-message callback posted form-encoded `from`/`text`/`to`/`date`
+ * fields, which this still parses (plus a JSON fallback) — MessagePilot's
+ * actual inbound-SMS webhook payload shape hasn't been confirmed (their docs
+ * cover outbound send clearly; the two-way/incoming-message callback shape
+ * needs checking against your dashboard once it's registered there). If
+ * replies stop reaching this route after switching, that's the first thing
+ * to check — adjust the field names below to whatever MessagePilot actually
+ * posts.
+ *
+ * This is only ONE of several approval channels (Telegram and WhatsApp
+ * alerts also fire on every inbound message below) — SMS-reply approval
+ * still works without this being exactly right, it just won't get the
+ * "APPROVE/REJECT via SMS" shortcut until confirmed.
+ */
+
 export async function GET() {
   return new Response("OK", { status: 200 });
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // Africa's Talking sends form-encoded POST
-    const form = await request.formData();
-    const from = String(form.get("from") ?? "").trim();
-    const text = String(form.get("text") ?? "").trim();
-    const to   = String(form.get("to")   ?? "").trim();
-    const date = String(form.get("date") ?? "").trim();
+    let from = "";
+    let text = "";
+    let to = "";
+    let date = "";
+
+    const contentType = request.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const body = await request.json().catch(() => ({}) as Record<string, unknown>);
+      from = String(body.from ?? body.sender ?? body.source ?? "").trim();
+      text = String(body.text ?? body.message ?? "").trim();
+      to = String(body.to ?? body.destination ?? "").trim();
+      date = String(body.date ?? body.timestamp ?? "").trim();
+    } else {
+      const form = await request.formData();
+      from = String(form.get("from") ?? form.get("sender") ?? "").trim();
+      text = String(form.get("text") ?? form.get("message") ?? "").trim();
+      to   = String(form.get("to")   ?? "").trim();
+      date = String(form.get("date") ?? "").trim();
+    }
 
     if (!from || !text) return new Response("OK", { status: 200 });
 

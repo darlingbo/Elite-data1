@@ -645,7 +645,12 @@ export function SettingsView({ onChangePassword }: { onChangePassword: () => voi
       const d = await fetch("/api/admin/inventor-balance").then(r => r.json());
       results["Inventor API"] = d.balance !== null ? { value: `✓ Balance: GH₵${Number(d.balance).toFixed(2)}`, ok: true } : { value: "✗ Unreachable", ok: false };
     } catch { results["Inventor API"] = { value: "✗ Error", ok: false }; }
-    results["Africa's Talking SMS"] = { value: "Check Vercel env: AT_API_KEY + AT_USERNAME", ok: false };
+    try {
+      const s = await fetch("/api/admin/sms/check").then(r => r.json());
+      results["MessagePilot SMS"] = s.configured && !s.error
+        ? { value: `✓ Configured — Sender ID: ${s.senderId ?? "unknown"}`, ok: true }
+        : { value: s.error ? `✗ ${s.error}` : "✗ Not configured — set MESSAGEPILOT_API_KEY", ok: false };
+    } catch { results["MessagePilot SMS"] = { value: "✗ Error", ok: false }; }
     results["Supabase DB"] = net ? { value: "✓ Connected", ok: true } : { value: "✗ Not connected — run SQL below", ok: false };
     setIntStatus(results);
     setCheckingInt(false);
@@ -774,13 +779,13 @@ export function SettingsView({ onChangePassword }: { onChangePassword: () => voi
           </p>
           <p className={`mt-1 text-xs font-semibold ${net.smsTwoWayReady ? "text-emerald-400" : "text-amber-400"}`}>
             {net.smsTwoWayReady
-              ? "Africa's Talking two-way shortcode is configured."
-              : "Setup incomplete: a Ghana two-way shortcode is required to receive your reply."}
+              ? "MessagePilot is configured."
+              : "Setup incomplete: MESSAGEPILOT_API_KEY is required, and two-way SMS must be enabled on your Sender ID in the MessagePilot dashboard to receive replies."}
           </p>
           {net.smsCallbackUrl && (
             <div className="mt-3">
               <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                Africa&apos;s Talking incoming-message callback URL
+                MessagePilot incoming-message callback URL
               </label>
               <div className="flex gap-2">
                 <input

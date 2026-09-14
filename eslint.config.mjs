@@ -21,6 +21,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local Windows toolchain dir (node install, Chrome profile dumps, n8n
+    // cache, dev logs) — not project source. Without this, eslint walks
+    // multi-hundred-KB minified bundles in here and OOMs.
+    ".tools/**",
   ]),
 ]);
 

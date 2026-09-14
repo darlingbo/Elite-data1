@@ -423,7 +423,7 @@ export function SettingsView({ onChangePassword }: { onChangePassword: () => voi
       const d = await fetch("/api/admin/inventor-balance").then(r => r.json());
       results["Inventor API"] = d.balance !== null ? { value: `✓ Balance: GH₵${Number(d.balance).toFixed(2)}`, ok: true } : { value: "✗ Unreachable", ok: false };
     } catch { results["Inventor API"] = { value: "✗ Error", ok: false }; }
-    results["Africa's Talking SMS"] = { value: "Check Vercel env: AT_API_KEY + AT_USERNAME", ok: false };
+    results["MessagePilot SMS"] = { value: "Check Vercel env: MESSAGEPILOT_API_KEY", ok: false };
     results["Supabase DB"] = net ? { value: "✓ Connected", ok: true } : { value: "✗ Not connected — run SQL below", ok: false };
     setIntStatus(results);
     setCheckingInt(false);
