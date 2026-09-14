@@ -21,12 +21,10 @@ import { roundCurrency } from "@/lib/finance";
  * given) the raw code.
  */
 
-const DEFAULT_PRICES: Record<string, { sellPrice: number; costPrice: number }> = {
+const DEFAULT_PRICES: Record<string, { sellPrice: number; costPrice: number; apiPrice?: number }> = {
   BECE: { sellPrice: 19, costPrice: 15 },
   WASSCE: { sellPrice: 19, costPrice: 15 },
 };
-const BULK_THRESHOLD = 10;
-const BULK_PRICE = 18;
 
 async function getVoucherPrices() {
   try {
@@ -36,7 +34,7 @@ async function getVoucherPrices() {
       .eq("key", "voucher_prices")
       .maybeSingle();
     return data?.value
-      ? (JSON.parse(data.value) as Record<string, { sellPrice: number; costPrice: number }>)
+      ? (JSON.parse(data.value) as Record<string, { sellPrice: number; costPrice: number; apiPrice?: number }>)
       : DEFAULT_PRICES;
   } catch {
     return DEFAULT_PRICES;
@@ -80,8 +78,11 @@ export async function POST(request: NextRequest) {
 
   const prices = await getVoucherPrices();
   const vPrice = prices[examType] ?? DEFAULT_PRICES[examType];
-  const unitSell = quantity > BULK_THRESHOLD ? BULK_PRICE : vPrice.sellPrice;
-  const price = roundCurrency(unitSell * quantity);
+  // API buyers get the admin-set apiPrice tier (falls back to sellPrice if
+  // never configured) — deliberately separate from the web-checkout price,
+  // no bulk-threshold logic here since that's a web-checkout concept.
+  const unitPrice = vPrice.apiPrice ?? vPrice.sellPrice;
+  const price = roundCurrency(unitPrice * quantity);
   const costTotal = roundCurrency(vPrice.costPrice * quantity);
 
   if (auth.walletBalance < price) {
