@@ -70,13 +70,16 @@ export async function POST(request: NextRequest) {
   const ref = String(reference).trim();
   if (!ref) return NextResponse.json({ success: false, error: "reference is required." }, { status: 400 });
 
-  // Idempotency — already processed?
-  const { data: existing } = await supabase.from("orders").select("reference, status").eq("reference", ref).maybeSingle();
+  // Idempotency check and price lookup don't depend on each other — run them
+  // concurrently instead of one after another to shave off a round-trip.
+  const [{ data: existing }, prices] = await Promise.all([
+    supabase.from("orders").select("reference, status").eq("reference", ref).maybeSingle(),
+    getVoucherPrices(),
+  ]);
   if (existing) {
     return NextResponse.json({ success: true, reference: existing.reference, status: existing.status, message: "Order already exists." });
   }
 
-  const prices = await getVoucherPrices();
   const vPrice = prices[examType] ?? DEFAULT_PRICES[examType];
   // API buyers get the admin-set apiPrice tier (falls back to sellPrice if
   // never configured) — deliberately separate from the web-checkout price,
