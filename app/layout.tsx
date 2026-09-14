@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import PublicNav from "@/components/PublicNav";
+import PromoBanner from "@/components/PromoBanner";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import Footer from "@/components/Footer";
 import WhatsAppButton from "@/components/WhatsAppButton";
@@ -114,6 +115,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             ] }] : []),
           ],
         }).replace(/</g, "\\u003c") }} />
+        {!isStandalone && <PromoBanner />}
         {!isStandalone && <PublicNav />}
         {!isStandalone && <AnnouncementBanner target="customers" />}
         <main className="flex-1">{children}</main>
