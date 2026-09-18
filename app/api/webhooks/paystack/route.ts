@@ -49,15 +49,25 @@ export async function POST(request: NextRequest) {
   // Silent Echo shares this Paystack account, so its own charges (wallet
   // top-ups, data/checker orders, account activation) land on this webhook
   // too — Paystack fires to every listener on the account, not just the one
-  // that started the charge. Those aren't Elite Data storefront orders at
-  // all; Silent Echo's own webhook already handles them. Recognize Silent
-  // Echo's metadata shape (it always tags `type`, never uses `custom_fields`)
-  // and skip silently instead of raising a false "missing data" alert.
-  const SILENT_ECHO_METADATA_TYPES = new Set([
-    "data_order", "checker_order", "wallet_funding", "account_activation",
-  ]);
+  // that started the charge. Those aren't Elite Data storefront orders —
+  // Silent Echo's own webhook fulfils them — but the money still moves
+  // through this same Paystack account, so it's worth seeing, not just
+  // silently dropping. Recognize Silent Echo's metadata shape (it always
+  // tags `type`, never uses `custom_fields`) and send one calm, clearly
+  // labeled note instead of the "missing data, deliver manually" alarm.
+  const SILENT_ECHO_METADATA_LABELS: Record<string, string> = {
+    data_order: "Data/mashup order",
+    checker_order: "Results-checker order",
+    wallet_funding: "Wallet top-up",
+    account_activation: "Account activation",
+  };
   const rawMeta = (data.metadata as Record<string, unknown>) ?? {};
-  if (SILENT_ECHO_METADATA_TYPES.has(String(rawMeta.type ?? ""))) {
+  const silentEchoLabel = SILENT_ECHO_METADATA_LABELS[String(rawMeta.type ?? "")];
+  if (silentEchoLabel) {
+    const amount = fromMinorUnits(Number(data.amount ?? 0));
+    await sendAdminAlert(
+      `💠 <b>Silent Echo transaction</b> — ${silentEchoLabel}\nGH₵${amount.toFixed(2)} · Ref: <code>${reference}</code>\nHandled entirely by Silent Echo — no action needed here.`,
+    ).catch(() => {});
     return Response.json({ ok: true });
   }
 
