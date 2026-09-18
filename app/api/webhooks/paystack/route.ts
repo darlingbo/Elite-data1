@@ -46,6 +46,21 @@ export async function POST(request: NextRequest) {
   const reference = String(data.reference ?? "");
   if (!reference) return Response.json({ ok: true });
 
+  // Silent Echo shares this Paystack account, so its own charges (wallet
+  // top-ups, data/checker orders, account activation) land on this webhook
+  // too — Paystack fires to every listener on the account, not just the one
+  // that started the charge. Those aren't Elite Data storefront orders at
+  // all; Silent Echo's own webhook already handles them. Recognize Silent
+  // Echo's metadata shape (it always tags `type`, never uses `custom_fields`)
+  // and skip silently instead of raising a false "missing data" alert.
+  const SILENT_ECHO_METADATA_TYPES = new Set([
+    "data_order", "checker_order", "wallet_funding", "account_activation",
+  ]);
+  const rawMeta = (data.metadata as Record<string, unknown>) ?? {};
+  if (SILENT_ECHO_METADATA_TYPES.has(String(rawMeta.type ?? ""))) {
+    return Response.json({ ok: true });
+  }
+
   // Idempotency — if already processed, skip
   const { data: existing } = await supabase
     .from("orders").select("reference, status").eq("reference", reference).maybeSingle();

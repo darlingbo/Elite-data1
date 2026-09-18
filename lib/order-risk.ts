@@ -31,7 +31,7 @@ function isWalletReference(reference: string): boolean {
 export async function assessOrderRisk(reference: string): Promise<OrderRiskDecision> {
   const { data: order } = await supabase
     .from("orders")
-    .select("reference,paystack_reference,phone,network,bundle_size,amount,cost_price,agent_commission,created_at,status")
+    .select("reference,paystack_reference,payment_method,phone,network,bundle_size,amount,cost_price,agent_commission,created_at,status")
     .eq("reference", reference)
     .maybeSingle();
 
@@ -45,9 +45,16 @@ export async function assessOrderRisk(reference: string): Promise<OrderRiskDecis
   const commission = Number(order.agent_commission ?? 0);
 
   // Hard blocks — never auto-deliver these, even with automatic approval on.
+  // Wallet-funded orders (agent_wallet, api_wallet) never get a Paystack
+  // reference — the money was already verified and reserved atomically by
+  // the RPC that created the order (reserve_api_wallet_order / equivalent)
+  // before this row could exist at all, so payment_method itself is the
+  // trustworthy signal here, not a guess at the reference's string prefix.
+  const walletPaymentMethods = new Set(["agent_wallet", "api_wallet"]);
+  const isVerifiedWalletPayment = walletPaymentMethods.has(String(order.payment_method ?? ""));
   const hardReasons: string[] = [];
   if (!Number.isFinite(amount) || amount <= 0) hardReasons.push("Invalid selling amount");
-  if (!order.paystack_reference && !isWalletReference(reference)) {
+  if (!order.paystack_reference && !isWalletReference(reference) && !isVerifiedWalletPayment) {
     hardReasons.push("Verified payment reference is missing");
   }
 
