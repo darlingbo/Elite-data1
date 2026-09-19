@@ -5,6 +5,7 @@ interface NumberRow {
   phone: string;
   orders: number;
   lastOrder: string;
+  addedManually?: boolean;
   verified?: boolean; // undefined = not checked yet
 }
 
@@ -44,13 +45,16 @@ export default function MtnVerificationAdmin() {
   const [checkedCount, setCheckedCount] = useState(0);
   const [filter, setFilter] = useState<"all" | "verified" | "not_verified" | "unchecked">("all");
   const [search, setSearch] = useState("");
+  const [addPhone, setAddPhone] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/admin/mtn-numbers");
       const d = await res.json();
-      setRows((d.numbers ?? []).map((n: { phone: string; orders: number; lastOrder: string }) => ({ ...n })));
+      setRows((d.numbers ?? []).map((n: { phone: string; orders: number; lastOrder: string; addedManually?: boolean }) => ({ ...n })));
     } catch {
       // silent
     } finally {
@@ -59,6 +63,27 @@ export default function MtnVerificationAdmin() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  async function addNumber() {
+    if (!addPhone.trim()) return;
+    setAdding(true);
+    setAddError(null);
+    try {
+      const res = await fetch("/api/admin/mtn-numbers", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: addPhone.trim() }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setAddError(d.error ?? "Could not add that number."); return; }
+      setAddPhone("");
+      await load();
+    } catch {
+      setAddError("Network error — try again.");
+    } finally {
+      setAdding(false);
+    }
+  }
 
   async function checkAll() {
     setChecking(true);

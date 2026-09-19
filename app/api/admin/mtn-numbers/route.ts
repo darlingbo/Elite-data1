@@ -19,31 +19,58 @@ function normalise(raw: string): string | null {
   return null;
 }
 
-/** GET — every distinct MTN number that has ordered from us. */
+/** GET — every distinct MTN number that has ordered from us, plus any
+ * added by hand (leads not yet ordered, tracked in mtn_watch_numbers). */
 export async function GET() {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: orders } = await supabase
-    .from("orders")
-    .select("phone, created_at")
-    .neq("network", "voucher")
-    .not("phone", "is", null);
+  const [{ data: orders }, { data: watched }] = await Promise.all([
+    supabase.from("orders").select("phone, created_at").neq("network", "voucher").not("phone", "is", null),
+    supabase.from("mtn_watch_numbers").select("phone, added_at"),
+  ]);
 
-  const byPhone = new Map<string, { orders: number; lastOrder: string }>();
+  const byPhone = new Map<string, { orders: number; lastOrder: string; addedManually: boolean }>();
   for (const o of orders ?? []) {
     const phone = normalise(o.phone as string);
     if (!phone || !MTN_PREFIXES.includes(phone.slice(0, 3))) continue;
-    const entry = byPhone.get(phone) ?? { orders: 0, lastOrder: o.created_at as string };
+    const entry = byPhone.get(phone) ?? { orders: 0, lastOrder: o.created_at as string, addedManually: false };
     entry.orders++;
     if ((o.created_at as string) > entry.lastOrder) entry.lastOrder = o.created_at as string;
     byPhone.set(phone, entry);
   }
+  for (const w of watched ?? []) {
+    const phone = normalise(w.phone as string);
+    if (!phone || !MTN_PREFIXES.includes(phone.slice(0, 3))) continue;
+    if (!byPhone.has(phone)) {
+      byPhone.set(phone, { orders: 0, lastOrder: w.added_at as string, addedManually: true });
+    }
+  }
 
   const numbers = [...byPhone.entries()]
-    .map(([phone, v]) => ({ phone, orders: v.orders, lastOrder: v.lastOrder }))
+    .map(([phone, v]) => ({ phone, orders: v.orders, lastOrder: v.lastOrder, addedManually: v.addedManually }))
     .sort((a, b) => (a.lastOrder < b.lastOrder ? 1 : -1));
 
   return Response.json({ numbers, total: numbers.length });
+}
+
+/** PUT { phone, note? } — add a number by hand (a lead, not yet a customer)
+ * so it shows up here and can be checked/tracked before their first order. */
+export async function PUT(request: NextRequest) {
+  if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await request.json().catch(() => null);
+  const phone = normalise(String(body?.phone ?? ""));
+  if (!phone) return Response.json({ error: "Enter a valid 10-digit Ghana number, e.g. 0241234567." }, { status: 400 });
+  if (!MTN_PREFIXES.includes(phone.slice(0, 3))) {
+    return Response.json({ error: `${phone} isn't an MTN prefix — this list is MTN-only.` }, { status: 400 });
+  }
+
+  const { error } = await supabase
+    .from("mtn_watch_numbers")
+    .upsert({ phone, note: body?.note ?? null }, { onConflict: "phone" });
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  return Response.json({ success: true, phone });
 }
 
 /** POST { phones: string[] } — check current MTN beneficiary status for a
