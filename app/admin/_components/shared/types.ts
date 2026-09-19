@@ -16,6 +16,7 @@ export interface Order {
   refund_phone?: string | null;
   refunded?: boolean; refunded_at?: string | null; refund_amount?: number | null;
   not_on_list_at?: string | null;
+  completed_at?: string | null;
   risk_flags?: string[];
   approved_at?: string | null;
   approved_via?: string | null;

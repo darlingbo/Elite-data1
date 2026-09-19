@@ -2,6 +2,7 @@ import Link from "next/link";
 import AgentAwareSection from "@/components/AgentAwareSection";
 import PopularBundlesSection from "@/components/PopularBundlesSection";
 import SocialProofTicker from "@/components/SocialProofTicker";
+import { supabase } from "@/lib/supabase";
 
 const BG     = "#080f1e";
 const CARD   = "#0d1b2e";
@@ -56,7 +57,55 @@ const faqs = [
   { q: "How do I track my order?",            a: "After payment, you receive a reference code. Use it on the Track Order page to check your delivery status anytime." },
 ];
 
-export default function Home() {
+type LastDelivery = { placedAt: string; deliveredAt: string; minutes: number; label: string };
+
+/** Real elapsed time (placed -> completed_at) for the most recently
+ * delivered order, not an estimate. Hidden if the numbers look off
+ * (clock skew, backfilled rows) rather than showing something silly. */
+async function getLastDelivery(): Promise<LastDelivery | null> {
+  try {
+    const { data } = await supabase
+      .from("orders")
+      .select("network, bundle_size, created_at, completed_at")
+      .eq("status", "completed")
+      .not("completed_at", "is", null)
+      .order("completed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!data?.completed_at) return null;
+
+    const minutes = Math.round(
+      (new Date(data.completed_at).getTime() - new Date(data.created_at).getTime()) / 60000,
+    );
+    if (!Number.isFinite(minutes) || minutes < 0 || minutes > 24 * 60) return null;
+
+    return {
+      placedAt: data.created_at,
+      deliveredAt: data.completed_at,
+      minutes,
+      label: `${(data.network ?? "").toUpperCase()} ${data.bundle_size ?? ""}`.trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-GH", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function fmtDuration(minutes: number): string {
+  if (minutes < 1) return "under a minute";
+  if (minutes === 1) return "1 minute";
+  if (minutes < 60) return `${minutes} minutes`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  return rem === 0 ? `${hours}h` : `${hours}h ${rem}m`;
+}
+
+export default async function Home() {
+  const lastDelivery = await getLastDelivery();
+
   return (
     <div style={{ background: BG }}>
       <SocialProofTicker />
@@ -79,6 +128,28 @@ export default function Home() {
         }} />
 
         <div style={{ maxWidth: 700, margin: "0 auto", position: "relative" }}>
+          {lastDelivery && (
+            <div style={{
+              display: "inline-block",
+              background: CARD,
+              border: `1px solid ${BORDER}`,
+              borderRadius: 14,
+              padding: "10px 18px",
+              marginBottom: 18,
+              textAlign: "left",
+            }}>
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: "#34d399" }}>
+                ⚡ Latest {lastDelivery.label ? `${lastDelivery.label} ` : ""}Successful Order
+              </p>
+              <p style={{ margin: "3px 0 0", fontSize: 11.5, color: MUTED }}>
+                Placed at <strong style={{ color: TEXT }}>{fmtTime(lastDelivery.placedAt)}</strong>, Delivered at{" "}
+                <strong style={{ color: TEXT }}>{fmtTime(lastDelivery.deliveredAt)}</strong>
+              </p>
+              <p style={{ margin: "3px 0 0", fontSize: 11.5, color: MUTED }}>
+                Took about {fmtDuration(lastDelivery.minutes)}.
+              </p>
+            </div>
+          )}
           <span style={{
             display: "inline-block",
             background: "rgba(251,191,36,0.1)",

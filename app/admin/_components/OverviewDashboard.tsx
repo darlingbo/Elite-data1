@@ -22,6 +22,15 @@ export function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; a
   const revBreakdown = useMemo(() => getRevenueBreakdown(stats.orders.all), [stats.orders.all]);
   const dataSold = useMemo(() => getDataSold(stats.orders.all), [stats.orders.all]);
   const totalCustomers = useMemo(() => new Set(stats.orders.all.map(o => o.phone).filter(Boolean)).size, [stats.orders.all]);
+  const lastDelivery = useMemo(() => {
+    const delivered = stats.orders.all
+      .filter(o => o.completed_at)
+      .sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime())[0];
+    if (!delivered) return null;
+    const minutes = Math.round((new Date(delivered.completed_at!).getTime() - new Date(delivered.created_at).getTime()) / 60000);
+    if (!Number.isFinite(minutes) || minutes < 0 || minutes > 24 * 60) return null;
+    return { minutes, label: `${(delivered.network ?? "").toUpperCase()} ${delivered.bundle_size ?? ""}`.trim() };
+  }, [stats.orders.all]);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
   const [apiBalance, setApiBalance] = useState<string | null>(null);
@@ -123,6 +132,17 @@ export function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; a
         <p className="text-xs text-slate-500 mt-1">Total Profit (all time)</p>
         <p className="text-[10px] text-blue-500 mt-1.5 font-semibold">vs last 7 days →</p>
       </div>
+
+      {/* Last delivery time — same real placed-to-completed number shown on the public homepage */}
+      {lastDelivery && (
+        <div className="rounded-2xl p-4 border relative overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
+          <div className="flex items-start justify-between mb-3">
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl" style={{ background: "linear-gradient(135deg,#064e3b,#065f46)" }}>⚡</div>
+          </div>
+          <p className="text-2xl font-black text-white">{lastDelivery.minutes < 60 ? `${lastDelivery.minutes} min` : `${Math.floor(lastDelivery.minutes / 60)}h ${lastDelivery.minutes % 60}m`}</p>
+          <p className="text-xs text-slate-500 mt-1">Last delivery time{lastDelivery.label ? ` — ${lastDelivery.label}` : ""}</p>
+        </div>
+      )}
 
       {/* Revenue chart */}
       <div className="rounded-2xl border" style={{ background: CARD, borderColor: BORDER }}>
