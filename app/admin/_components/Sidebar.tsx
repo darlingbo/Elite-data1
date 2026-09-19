@@ -25,6 +25,7 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
     ] },
     { label: "MANAGE", items: [
       { id: "customers", icon: <Ic.agents />, label: "Customers" },
+      { id: "mtn-verification", icon: <Ic.check />, label: "MTN Verification" },
       { id: "data-bundles", icon: <Ic.bundle />, label: "Data Bundles" },
       { id: "mashup-bundles", icon: <Ic.bundle />, label: "Mashup Bundles" },
       { id: "all-orders", icon: <Ic.orders />, label: "Orders" },

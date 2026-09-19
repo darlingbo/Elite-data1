@@ -37,6 +37,7 @@ const OperationsCenter   = dynamic(() => import("./_components/OperationsCenter"
 const FinancialReconciliation = dynamic(() => import("./_components/FinancialReconciliation"), { loading: () => <Spinner /> });
 const AiHubView          = dynamic(() => import("./_components/AiHubView"),           { loading: () => <Spinner /> });
 const ResultCheckerAdmin = dynamic(() => import("./_components/ResultCheckerAdmin"), { loading: () => <Spinner /> });
+const MtnVerificationAdmin = dynamic(() => import("./_components/MtnVerificationAdmin"), { loading: () => <Spinner /> });
 
 const tabToOrderFilter: Record<string, OrderStatus> = {
   "all-orders": "ALL", "pending-orders": "PENDING", "processing": "PROCESSING",
@@ -62,6 +63,7 @@ const pageTitle: Record<Tab, string> = {
   "reconciliation": "Financial Reconciliation",
   "ai-hub": "AI Assistant",
   "result-checker": "Result Checker Requests",
+  "mtn-verification": "MTN Verification",
 };
 
 const pageSubtitle: Partial<Record<Tab, string>> = {
@@ -72,6 +74,7 @@ const pageSubtitle: Partial<Record<Tab, string>> = {
   reconciliation: "Compare payments, delivery, refunds, commission, cost, and profit",
   "ai-hub": "Ask questions, analyze the business, and create content safely",
   "result-checker": "Check paid BECE and WASSCE results and send them to customers on WhatsApp",
+  "mtn-verification": "See which MTN numbers are registered as beneficiaries, so their data delivers instantly",
   transactions: "Server-validated revenue, profit, customers, agents, and transaction intelligence",
   commissions: "Manage private commission rules safely",
   withdrawals: "Review and approve agent payout requests",
@@ -244,6 +247,7 @@ export default function AdminDashboard() {
               {tab === "commissions"       && <CommissionAdmin />}
               {tab === "manual"            && <ManualOrdersAdmin />}
               {tab === "refund-numbers"    && <RefundNumbers />}
+              {tab === "mtn-verification"  && <MtnVerificationAdmin />}
               {tab === "compensate"        && <CompensateView />}
               {(tab === "announcements" || tab === "notifications") && <AnnouncementsAdmin />}
               {tab === "promo"             && <PromoBannerAdmin />}
