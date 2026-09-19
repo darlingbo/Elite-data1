@@ -90,12 +90,18 @@ export async function DELETE(req: NextRequest) {
   // Single-order deletion by reference
   if (body.reference) {
     const { reference } = body;
-    const { data: order } = await supabase.from("orders").select("status, reference").eq("reference", reference).maybeSingle();
+    const { data: order } = await supabase.from("orders").select("status, reference, not_on_list_at").eq("reference", reference).maybeSingle();
     if (!order) return Response.json({ error: "Order not found" }, { status: 404 });
 
+    const status = (order.status ?? "").toLowerCase();
     const allowedStatuses = ["failed", "pending", "pending_approval", "processing"];
-    if (!allowedStatuses.includes((order.status ?? "").toLowerCase())) {
-      return Response.json({ error: `Can only delete orders with status: ${allowedStatuses.join(", ")}` }, { status: 400 });
+    const isExpiredNotOnList = status === "not_on_list" && order.not_on_list_at &&
+      (Date.now() - new Date(order.not_on_list_at).getTime()) / 3_600_000 >= 72;
+    if (!allowedStatuses.includes(status) && !isExpiredNotOnList) {
+      return Response.json(
+        { error: `Can only delete orders with status: ${allowedStatuses.join(", ")}, or a "not_on_list" order past its 72h window` },
+        { status: 400 },
+      );
     }
 
     const { error } = await supabase.from("orders").update({

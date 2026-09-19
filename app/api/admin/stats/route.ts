@@ -14,7 +14,7 @@ export async function GET() {
 
   const [ordersRes, agentsRes, totalsRes] = await Promise.all([
     supabase.from("orders")
-      .select("status, amount, cost_price, admin_commission, agent_commission, agent_id, created_at, network, bundle_size, phone, reference, customer_name, refund_phone")
+      .select("status, amount, cost_price, admin_commission, agent_commission, agent_id, created_at, network, bundle_size, phone, reference, customer_name, refund_phone, not_on_list_at, refunded")
       .is("archived_at", null)
       .order("created_at", { ascending: false })
       .limit(200),

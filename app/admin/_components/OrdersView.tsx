@@ -6,6 +6,16 @@ import { getNetBadge } from "./shared/utils";
 import { Ic } from "./shared/Icons";
 import { getOrderReviewSecondsRemaining } from "@/lib/order-review-window";
 
+const NOT_ON_LIST_WINDOW_HOURS = 72;
+
+/** A "New Number (72h)" order stays untouched during its delivery window —
+ * only once that's passed with no resolution can it be refunded or deleted. */
+function pastNotOnListWindow(order: Order): boolean {
+  if (!order.not_on_list_at) return false;
+  const elapsedHours = (Date.now() - new Date(order.not_on_list_at).getTime()) / 3_600_000;
+  return elapsedHours >= NOT_ON_LIST_WINDOW_HOURS;
+}
+
 export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVAL" }: { orders: Order[]; onRefresh: () => void; defaultFilter?: OrderStatus }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus>(defaultFilter);
@@ -339,8 +349,9 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
           const busy = approving.has(o.reference);
           const statusLower = (o.status ?? "").toLowerCase();
           const canComplete = ["processing", "pending", "pending_approval", "failed", "not_on_list"].includes(statusLower);
-          const canDelete = ["failed", "pending", "pending_approval", "processing"].includes(statusLower);
-          const canRefund = ["failed", "rejected"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
+          const notOnListExpired = statusLower === "not_on_list" && pastNotOnListWindow(o);
+          const canDelete = ["failed", "pending", "pending_approval", "processing"].includes(statusLower) || notOnListExpired;
+          const canRefund = (["failed", "rejected"].includes(statusLower) || notOnListExpired) && !o.refunded && Number(o.amount) > 0;
           const refundBlocked = ["processing", "completed"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
           return (
             <article key={o.reference ?? idx} className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
@@ -460,8 +471,9 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                 const msgThis = actionMsg[o.reference];
                 const statusLower = (o.status ?? "").toLowerCase();
                 const canComplete = ["processing", "pending", "pending_approval", "failed", "not_on_list"].includes(statusLower);
-                const canDelete   = ["failed", "pending", "pending_approval", "processing"].includes(statusLower);
-                const canRefund   = ["failed", "rejected"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
+                const notOnListExpired = statusLower === "not_on_list" && pastNotOnListWindow(o);
+                const canDelete   = ["failed", "pending", "pending_approval", "processing"].includes(statusLower) || notOnListExpired;
+                const canRefund   = (["failed", "rejected"].includes(statusLower) || notOnListExpired) && !o.refunded && Number(o.amount) > 0;
                 const refundBlocked = ["processing", "completed"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
                 const reviewSeconds = isPendingApproval ? getOrderReviewSecondsRemaining(o.created_at, now) : 0;
 

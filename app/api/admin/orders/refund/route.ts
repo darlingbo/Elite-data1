@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   // Fetch the order
   const { data: order } = await supabase
     .from("orders")
-    .select("reference, paystack_reference, amount, cost_price, status, refunded, customer_name, phone, agent_id, payment_method")
+    .select("reference, paystack_reference, amount, cost_price, status, refunded, customer_name, phone, agent_id, payment_method, not_on_list_at")
     .eq("reference", reference)
     .maybeSingle();
 
@@ -38,10 +38,16 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Cannot refund a completed order — the bundle was already delivered." }, { status: 409 });
   }
   if (s === "not_on_list") {
-    return Response.json(
-      { error: "This is a new number being delivered manually (up to 72h) — it is not refunded. If it truly cannot be delivered, set the order to \"failed\" first." },
-      { status: 409 },
-    );
+    const elapsedHours = order.not_on_list_at
+      ? (Date.now() - new Date(order.not_on_list_at).getTime()) / 3_600_000
+      : 0;
+    if (elapsedHours < 72) {
+      const remaining = Math.max(1, Math.ceil(72 - elapsedHours));
+      return Response.json(
+        { error: `This is a new number still inside its 72h manual-delivery window (${remaining}h left) — not refundable yet. Set it to "failed" first if it truly can't be delivered.` },
+        { status: 409 },
+      );
+    }
   }
   if (s === "processing" || s === "pending_approval" || s === "pending") {
     return Response.json(
