@@ -1,22 +1,12 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
-import { datacityBalance } from "@/lib/datacity";
-import { datifyBalance } from "@/lib/datify";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
+import { yhangMhanyBalance } from "@/lib/yhangmhany";
 
 async function isAdmin() {
   const s = await cookies();
   return verifyAdminSessionValue(s.get("admin_session")?.value);
-}
-
-async function getSetting(key: string) {
-  const { data } = await supabase.from("system_settings").select("value").eq("key", key).maybeSingle();
-  return data?.value ?? null;
-}
-
-async function setSetting(key: string, value: string) {
-  await supabase.from("system_settings").upsert({ key, value }, { onConflict: "key" });
 }
 
 async function getInventorBalance(): Promise<number | null> {
@@ -33,36 +23,29 @@ async function getInventorBalance(): Promise<number | null> {
   } catch { return null; }
 }
 
+/** Which provider handles new MTN orders. Telecel/AirtelTigo always use
+ * Inventor -- there is no switch for those (yet). */
 export async function GET() {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [inventorBal, datacityBal, datifyBal, invEnabled, dcEnabled, dtEnabled] = await Promise.all([
+  const [inventorBalance, yhangMhanyBal, setting] = await Promise.all([
     getInventorBalance(),
-    datacityBalance(),
-    datifyBalance(),
-    getSetting("inventor_enabled"),
-    getSetting("datacity_enabled"),
-    getSetting("datify_enabled"),
+    yhangMhanyBalance(),
+    supabase.from("system_settings").select("value").eq("key", "mtn_provider").maybeSingle(),
   ]);
 
   return Response.json({
-    inventorBalance:  inventorBal,
-    datacityBalance:  datacityBal,
-    datifyBalance:    datifyBal,
-    inventorEnabled:  (invEnabled ?? "1") === "1",
-    datacityEnabled:  (dcEnabled  ?? "1") === "1",
-    datifyEnabled:    (dtEnabled  ?? "1") === "1",
+    inventorBalance,
+    yhangMhanyBalance: yhangMhanyBal,
+    mtnProvider: setting.data?.value === "yhangmhany" ? "yhangmhany" : "inventor",
     checkedAt: new Date().toISOString(),
   });
 }
 
 export async function PATCH(req: NextRequest) {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await req.json();
-  const ops: Promise<void>[] = [];
-  if ("inventorEnabled" in body) ops.push(setSetting("inventor_enabled", body.inventorEnabled ? "1" : "0"));
-  if ("datacityEnabled" in body) ops.push(setSetting("datacity_enabled", body.datacityEnabled ? "1" : "0"));
-  if ("datifyEnabled"   in body) ops.push(setSetting("datify_enabled",   body.datifyEnabled   ? "1" : "0"));
-  await Promise.all(ops);
-  return Response.json({ success: true });
+  const body = await req.json().catch(() => ({}));
+  const provider = body.mtnProvider === "yhangmhany" ? "yhangmhany" : "inventor";
+  await supabase.from("system_settings").upsert({ key: "mtn_provider", value: provider }, { onConflict: "key" });
+  return Response.json({ success: true, mtnProvider: provider });
 }

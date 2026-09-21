@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
 import { sendAgentNotification, sendAdminAlert, sendOrderFailedAlert } from "@/lib/telegram";
 import { inventorPurchase, inventorVerifyNumber, inventorVoucher } from "@/lib/inventor";
+import { yhangmhanyPurchase } from "@/lib/yhangmhany";
 import { sendCustomerSMS, orderFailedSMS, isNotOnListError, orderNotOnListSMS } from "@/lib/sms";
 import { auditLog } from "@/lib/audit";
 import { assessOrderRisk, isOrderGuardEnabled } from "@/lib/order-risk";
@@ -22,6 +23,13 @@ export async function isAutoApprovalEnabled(): Promise<boolean> {
     .eq("key", "auto_approve_orders")
     .maybeSingle();
   return !error && data?.value === "1";
+}
+
+/** Which provider handles new MTN orders -- set from Admin -> Network
+ * Providers. Telecel/AirtelTigo always use Inventor regardless. */
+async function getMtnProvider(): Promise<"inventor" | "yhangmhany"> {
+  const { data } = await supabase.from("system_settings").select("value").eq("key", "mtn_provider").maybeSingle();
+  return data?.value === "yhangmhany" ? "yhangmhany" : "inventor";
 }
 
 export async function approveOrder(
@@ -150,6 +158,7 @@ export async function approveOrder(
   let balanceAfter: number | null = null;
   let inventorReference: string | null = null;
   let errorBody: Record<string, unknown> = {};
+  let providerUsed: "inventor" | "yhangmhany" = "inventor";
   try {
     if (isVoucher) {
       const voucherTypeMatch = String(order.bundle_size ?? "").match(/^(BECE|WASSCE)/i);
@@ -164,46 +173,60 @@ export async function approveOrder(
       const networkApiMap: Record<string, string> = { mtn: "MTN", telecel: "TELECEL", airteltigo: "AT ISHARE" };
       const network = networkApiMap[order.network as string] ??
         networkApiName[order.network as keyof typeof networkApiName] ?? "MTN";
-      if (network === "MTN") {
-        const verification = await inventorVerifyNumber(order.phone);
-        if (!verification.verified) {
-          // New number / not on the beneficiary list: this is a delivery DELAY,
-          // not a failure. Hold it for manual delivery (up to 72h), tell the
-          // customer no refund is coming, and keep it out of the approval queue.
-          await supabase
-            .from("orders")
-            .update({ status: "not_on_list", not_on_list_at: new Date().toISOString() })
-            .eq("reference", reference)
-            .eq("status", "processing");
-          const reason = verification.error ?? "MTN number is not on the Inventor beneficiary list";
-          await auditLog("order_not_on_list", { reference, channel, reason, stage: "pre_purchase" });
-          sendCustomerSMS(
-            order.phone,
-            orderNotOnListSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", reference),
-          ).catch(() => {});
-          sendAdminAlert(
-            `🟠 <b>NEW NUMBER — MANUAL DELIVERY (up to 72h)</b>\n<code>${reference}</code>\n<code>${order.phone}</code>\n${reason}\n\nDeliver via the Inventor dashboard, then mark the order complete.`,
-          ).catch(() => {});
-          return { ok: false, message: reason };
+
+      if (network === "MTN" && (await getMtnProvider()) === "yhangmhany") {
+        // Yhang Mhany has no beneficiary pre-check like Inventor's -- it
+        // handles unverified numbers on its own end. No idempotency key
+        // either, so this purchase call must only ever happen once per
+        // order (guaranteed by claim_order_for_fulfillment already having
+        // claimed this order above).
+        providerUsed = "yhangmhany";
+        const result = await yhangmhanyPurchase(order.phone, Number(order.bundle_size_gb ?? 1));
+        apiOk = result.ok;
+        inventorReference = result.reference;
+        if (!apiOk) errorBody = result.body;
+      } else {
+        if (network === "MTN") {
+          const verification = await inventorVerifyNumber(order.phone);
+          if (!verification.verified) {
+            // New number / not on the beneficiary list: this is a delivery DELAY,
+            // not a failure. Hold it for manual delivery (up to 72h), tell the
+            // customer no refund is coming, and keep it out of the approval queue.
+            await supabase
+              .from("orders")
+              .update({ status: "not_on_list", not_on_list_at: new Date().toISOString() })
+              .eq("reference", reference)
+              .eq("status", "processing");
+            const reason = verification.error ?? "MTN number is not on the Inventor beneficiary list";
+            await auditLog("order_not_on_list", { reference, channel, reason, stage: "pre_purchase" });
+            sendCustomerSMS(
+              order.phone,
+              orderNotOnListSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", reference),
+            ).catch(() => {});
+            sendAdminAlert(
+              `🟠 <b>NEW NUMBER — MANUAL DELIVERY (up to 72h)</b>\n<code>${reference}</code>\n<code>${order.phone}</code>\n${reason}\n\nDeliver via the Inventor dashboard, then mark the order complete.`,
+            ).catch(() => {});
+            return { ok: false, message: reason };
+          }
         }
+        const result = await inventorPurchase(network, order.phone, Number(order.bundle_size_gb ?? 1), reference);
+        apiOk = result.ok;
+        balanceAfter = result.balance;
+        inventorReference = result.reference;
+        if (!apiOk) errorBody = result.body;
       }
-      const result = await inventorPurchase(network, order.phone, Number(order.bundle_size_gb ?? 1), reference);
-      apiOk = result.ok;
-      balanceAfter = result.balance;
-      inventorReference = result.reference;
-      if (!apiOk) errorBody = result.body;
     }
   } catch (error) {
-    await supabase.from("orders").update({ status: "failed", provider_used: "inventor" }).eq("reference", reference);
+    await supabase.from("orders").update({ status: "failed", provider_used: providerUsed }).eq("reference", reference);
     const message = error instanceof Error ? error.message : String(error);
     sendOrderFailedAlert({
       reference,
       phone: order.phone,
       network: order.network,
       bundleSize: order.bundle_size,
-      reason: `Inventor exception: ${message.slice(0, 160)}`,
+      reason: `${providerUsed} exception: ${message.slice(0, 160)}`,
     }).catch(() => {});
-    return { ok: false, message: `Inventor error: ${message.slice(0, 120)}` };
+    return { ok: false, message: `${providerUsed} error: ${message.slice(0, 120)}` };
   }
 
   if (!apiOk) {
@@ -212,8 +235,10 @@ export async function approveOrder(
     ).slice(0, 160);
 
     // A "not on beneficiary list / new number" rejection is a delay, not a
-    // failure — hold for manual delivery (up to 72h), no refund.
-    if (!isVoucher && isNotOnListError(message)) {
+    // failure — hold for manual delivery (up to 72h), no refund. Inventor-
+    // specific concept; Yhang Mhany has no such state, its failures always
+    // fall through to the normal failed+refund path below.
+    if (!isVoucher && providerUsed === "inventor" && isNotOnListError(message)) {
       await supabase
         .from("orders")
         .update({ status: "not_on_list", not_on_list_at: new Date().toISOString(), provider_used: "inventor" })
@@ -229,7 +254,7 @@ export async function approveOrder(
       return { ok: false, message };
     }
 
-    await supabase.from("orders").update({ status: "failed", provider_used: "inventor" }).eq("reference", reference);
+    await supabase.from("orders").update({ status: "failed", provider_used: providerUsed }).eq("reference", reference);
     sendCustomerSMS(
       order.phone,
       orderFailedSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", reference),
@@ -241,18 +266,20 @@ export async function approveOrder(
       bundleSize: order.bundle_size,
       reason: message,
     }).catch(() => {});
-    await auditLog("order_approval_failed", { reference, provider: "inventor", error: message, channel });
+    await auditLog("order_approval_failed", { reference, provider: providerUsed, error: message, channel });
     return { ok: false, message };
   }
 
   const fulfillmentUpdate = isVoucher
     ? { status: "completed", provider_used: "inventor", completed_at: new Date().toISOString() }
-    : { status: "processing", provider_used: "inventor", inventor_order_id: inventorReference ?? reference };
+    : providerUsed === "yhangmhany"
+      ? { status: "processing", provider_used: "yhangmhany", yhangmhany_order_id: inventorReference ?? reference }
+      : { status: "processing", provider_used: "inventor", inventor_order_id: inventorReference ?? reference };
   await supabase.from("orders").update(fulfillmentUpdate).eq("reference", reference);
   await supabase.rpc("apply_agent_order_accounting", { p_reference: reference });
   await creditMasterCommission(reference);
 
-  if (!isVoucher) try {
+  if (!isVoucher && providerUsed === "inventor") try {
     const { inventorBalance } = await import("@/lib/inventor");
     const balance = balanceAfter ?? await inventorBalance();
     if (balance !== null && balance < Number(process.env.INVENTOR_LOW_BALANCE_GHS ?? 50)) {
@@ -273,7 +300,7 @@ export async function approveOrder(
     }
   }
 
-  await auditLog("order_approved", { reference, provider: "inventor", channel });
+  await auditLog("order_approved", { reference, provider: isVoucher ? "inventor" : providerUsed, channel });
   if (channel === "auto_approval") {
     sendAdminAlert(`⚡ <b>AUTO-APPROVED</b>\n<code>${reference}</code>\n${order.network?.toUpperCase()} ${order.bundle_size} → <code>${order.phone}</code>`).catch(() => {});
   }

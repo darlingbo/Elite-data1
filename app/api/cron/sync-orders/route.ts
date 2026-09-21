@@ -52,12 +52,12 @@ export async function GET(request: NextRequest) {
 
   const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
-  type OrderRow = { reference: string; inventor_order_id: string | null; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null; cost_price: number | null; customer_name: string | null };
+  type OrderRow = { reference: string; inventor_order_id: string | null; provider_used: string | null; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null; cost_price: number | null; customer_name: string | null };
 
   let orders: OrderRow[] | null = null;
   const { data: full, error: fullErr } = await supabase
     .from("orders")
-    .select("reference, inventor_order_id, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount, cost_price, customer_name")
+    .select("reference, inventor_order_id, provider_used, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount, cost_price, customer_name")
     .in("status", ["pending", "processing"])
     .gte("created_at", cutoff48h)
     .neq("network", "voucher");
@@ -71,8 +71,12 @@ export async function GET(request: NextRequest) {
       .in("status", ["pending", "processing"])
       .gte("created_at", cutoff48h)
       .neq("network", "voucher");
-    orders = (basic ?? []).map(o => ({ ...o, inventor_order_id: null, bundle_size_gb: null, agent_commission: null, amount: null })) as OrderRow[];
+    orders = (basic ?? []).map(o => ({ ...o, inventor_order_id: null, provider_used: null, bundle_size_gb: null, agent_commission: null, amount: null })) as OrderRow[];
   }
+
+  // Yhang Mhany orders resolve via their own webhook, not Inventor's status
+  // API -- checking them here would just be a pointless Inventor call.
+  orders = (orders ?? []).filter(o => o.provider_used !== "yhangmhany");
 
   if (!orders?.length) return Response.json({ updated: 0, retried: 0, checked: 0 });
 
