@@ -37,7 +37,7 @@ export async function GET() {
   return Response.json({
     inventorBalance,
     yhangMhanyBalance: yhangMhanyBal,
-    mtnProvider: setting.data?.value === "yhangmhany" ? "yhangmhany" : "inventor",
+    mtnProvider: setting.data?.value === "yhangmhany" ? "yhangmhany" : setting.data?.value === "auto" ? "auto" : "inventor",
     checkedAt: new Date().toISOString(),
   });
 }
@@ -45,7 +45,7 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json().catch(() => ({}));
-  const provider = body.mtnProvider === "yhangmhany" ? "yhangmhany" : "inventor";
+  const provider = body.mtnProvider === "yhangmhany" ? "yhangmhany" : body.mtnProvider === "auto" ? "auto" : "inventor";
   await supabase.from("system_settings").upsert({ key: "mtn_provider", value: provider }, { onConflict: "key" });
   return Response.json({ success: true, mtnProvider: provider });
 }

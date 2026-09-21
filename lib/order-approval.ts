@@ -27,9 +27,9 @@ export async function isAutoApprovalEnabled(): Promise<boolean> {
 
 /** Which provider handles new MTN orders -- set from Admin -> Network
  * Providers. Telecel/AirtelTigo always use Inventor regardless. */
-async function getMtnProvider(): Promise<"inventor" | "yhangmhany"> {
+async function getMtnProvider(): Promise<"inventor" | "yhangmhany" | "auto"> {
   const { data } = await supabase.from("system_settings").select("value").eq("key", "mtn_provider").maybeSingle();
-  return data?.value === "yhangmhany" ? "yhangmhany" : "inventor";
+  return data?.value === "yhangmhany" ? "yhangmhany" : data?.value === "auto" ? "auto" : "inventor";
 }
 
 export async function approveOrder(
@@ -174,7 +174,45 @@ export async function approveOrder(
       const network = networkApiMap[order.network as string] ??
         networkApiName[order.network as keyof typeof networkApiName] ?? "MTN";
 
-      if (network === "MTN" && (await getMtnProvider()) === "yhangmhany") {
+      const mtnMode = network === "MTN" ? await getMtnProvider() : "inventor";
+
+      if (network === "MTN" && mtnMode === "auto") {
+        // Auto: Inventor first. If the number isn't on Inventor's beneficiary
+        // list (checked up front, or rejected as such at purchase time), try
+        // Yhang Mhany next. If that fails too, the order simply fails --
+        // no 72h manual-delivery hold in this mode. Only a definite
+        // "not on the list" moves on; a timeout or unclear error never
+        // triggers the fallback, so there's no risk of a double delivery.
+        const verification = await inventorVerifyNumber(order.phone);
+        let tryYhangMhany = !verification.verified;
+        let fallbackReason = verification.error ?? "not on the Inventor beneficiary list";
+
+        if (!tryYhangMhany) {
+          const result = await inventorPurchase(network, order.phone, Number(order.bundle_size_gb ?? 1), reference);
+          const msg = String((result.body.message as string) ?? (result.body.error as string) ?? "");
+          if (!result.ok && isNotOnListError(msg)) {
+            tryYhangMhany = true;
+            fallbackReason = msg;
+          } else {
+            apiOk = result.ok;
+            balanceAfter = result.balance;
+            inventorReference = result.reference;
+            if (!apiOk) errorBody = result.body;
+          }
+        }
+
+        if (tryYhangMhany) {
+          providerUsed = "yhangmhany";
+          await auditLog("mtn_provider_fallback", { reference, from: "inventor", to: "yhangmhany", reason: fallbackReason, channel });
+          const result = await yhangmhanyPurchase(order.phone, Number(order.bundle_size_gb ?? 1));
+          apiOk = result.ok;
+          balanceAfter = null;
+          inventorReference = result.reference;
+          errorBody = apiOk
+            ? {}
+            : { message: `Not deliverable: ${String((result.body.message as string) ?? (result.body.error as string) ?? "Yhang Mhany rejected the order").slice(0, 100)} (Inventor: ${fallbackReason.slice(0, 60)})` };
+        }
+      } else if (network === "MTN" && mtnMode === "yhangmhany") {
         // Yhang Mhany has no beneficiary pre-check like Inventor's -- it
         // handles unverified numbers on its own end. No idempotency key
         // either, so this purchase call must only ever happen once per

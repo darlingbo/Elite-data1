@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 
 const CARD = "#111827", BORDER = "#1f2937";
 
-type MtnProvider = "inventor" | "yhangmhany";
+type MtnProvider = "inventor" | "yhangmhany" | "auto";
 
 interface ProviderData {
   inventorBalance: number | null;
@@ -13,8 +13,9 @@ interface ProviderData {
 }
 
 const OPTIONS: { key: MtnProvider; icon: string; label: string; accent: string; bg: string; note: string }[] = [
-  { key: "inventor", icon: "🚀", label: "Inventor", accent: "#16a34a", bg: "#0c2a0c", note: "New numbers hold for manual delivery (up to 72h) if not on the beneficiary list." },
-  { key: "yhangmhany", icon: "📶", label: "Yhang Mhany", accent: "#3b82f6", bg: "#0c1e3a", note: "Handles unverified numbers on its own end — no 72h hold here." },
+  { key: "inventor", icon: "🚀", label: "Inventor", accent: "#16a34a", bg: "#0c2a0c", note: "Checkout blocks numbers not on the beneficiary list. Any that slip through hold for manual delivery (up to 72h)." },
+  { key: "yhangmhany", icon: "📶", label: "Yhang Mhany", accent: "#3b82f6", bg: "#0c1e3a", note: "No number check at checkout (Yhang Mhany has no way to verify). Handles unverified numbers on its own end." },
+  { key: "auto", icon: "🤖", label: "Auto", accent: "#a855f7", bg: "#1a0c3a", note: "Checkout blocks numbers not on the list. At delivery: Inventor first, then Yhang Mhany if Inventor can't take the number. If neither can, the order fails." },
 ];
 
 function BalanceDisplay({ bal }: { bal: number | null }) {
@@ -85,7 +86,7 @@ export default function NetworkProvidersAdmin() {
           Pick which provider fulfils every new MTN order. Switching takes effect immediately for orders placed after the switch — anything already in flight keeps using whichever provider it started with.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {OPTIONS.map(opt => {
             const active = current === opt.key;
             const bal = opt.key === "inventor" ? data?.inventorBalance ?? null : data?.yhangMhanyBalance ?? null;
@@ -113,10 +114,23 @@ export default function NetworkProvidersAdmin() {
                     </span>
                   )}
                 </div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span style={{ color: "#94a3b8" }}>Wallet Balance</span>
-                  <span className="font-black"><BalanceDisplay bal={bal} /></span>
-                </div>
+                {opt.key === "auto" ? (
+                  <>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span style={{ color: "#94a3b8" }}>Inventor</span>
+                      <span className="font-black"><BalanceDisplay bal={data?.inventorBalance ?? null} /></span>
+                    </div>
+                    <div className="flex justify-between text-sm mb-2">
+                      <span style={{ color: "#94a3b8" }}>Yhang Mhany</span>
+                      <span className="font-black"><BalanceDisplay bal={data?.yhangMhanyBalance ?? null} /></span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between text-sm mb-2">
+                    <span style={{ color: "#94a3b8" }}>Wallet Balance</span>
+                    <span className="font-black"><BalanceDisplay bal={bal} /></span>
+                  </div>
+                )}
                 <p className="text-xs" style={{ color: "#64748b" }}>{opt.note}</p>
               </button>
             );
