@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
 import { sendAgentNotification, sendAdminAlert, sendOrderFailedAlert } from "@/lib/telegram";
 import { inventorPurchase, inventorVerifyNumber, inventorVoucher } from "@/lib/inventor";
-import { yhangmhanyPurchase } from "@/lib/yhangmhany";
+import { yhangmhanyPurchase, yhangmhanyVerifyNumber } from "@/lib/yhangmhany";
 import { sendCustomerSMS, orderFailedSMS, isNotOnListError, orderNotOnListSMS } from "@/lib/sms";
 import { auditLog } from "@/lib/audit";
 import { assessOrderRisk, isOrderGuardEnabled } from "@/lib/order-risk";
@@ -204,25 +204,41 @@ export async function approveOrder(
         if (tryYhangMhany) {
           providerUsed = "yhangmhany";
           await auditLog("mtn_provider_fallback", { reference, from: "inventor", to: "yhangmhany", reason: fallbackReason, channel });
-          const result = await yhangmhanyPurchase(order.phone, Number(order.bundle_size_gb ?? 1));
-          apiOk = result.ok;
-          balanceAfter = null;
-          inventorReference = result.reference;
-          errorBody = apiOk
-            ? {}
-            : { message: `Not deliverable: ${String((result.body.message as string) ?? (result.body.error as string) ?? "Yhang Mhany rejected the order").slice(0, 100)} (Inventor: ${fallbackReason.slice(0, 60)})` };
+          // Yhang Mhany can be pre-checked too. A definite "not verified"
+          // means neither provider has the number: fail now instead of
+          // buying and waiting for their manual rejection.
+          const ymStatus = await yhangmhanyVerifyNumber(order.phone);
+          if (ymStatus === "not_verified") {
+            apiOk = false;
+            balanceAfter = null;
+            errorBody = { message: `Number is not verified on Inventor or Yhang Mhany (Inventor: ${fallbackReason.slice(0, 60)})` };
+          } else {
+            const result = await yhangmhanyPurchase(order.phone, Number(order.bundle_size_gb ?? 1));
+            apiOk = result.ok;
+            balanceAfter = null;
+            inventorReference = result.reference;
+            errorBody = apiOk
+              ? {}
+              : { message: `Not deliverable: ${String((result.body.message as string) ?? (result.body.error as string) ?? "Yhang Mhany rejected the order").slice(0, 100)} (Inventor: ${fallbackReason.slice(0, 60)})` };
+          }
         }
       } else if (network === "MTN" && mtnMode === "yhangmhany") {
-        // Yhang Mhany has no beneficiary pre-check like Inventor's -- it
-        // handles unverified numbers on its own end. No idempotency key
-        // either, so this purchase call must only ever happen once per
-        // order (guaranteed by claim_order_for_fulfillment already having
-        // claimed this order above).
+        // Pre-check with Yhang Mhany's verify-number; a definite "not
+        // verified" fails the order here rather than buying it. No
+        // idempotency key on their purchase call, so it must only ever
+        // fire once per order (guaranteed by claim_order_for_fulfillment
+        // already having claimed this order above).
         providerUsed = "yhangmhany";
-        const result = await yhangmhanyPurchase(order.phone, Number(order.bundle_size_gb ?? 1));
-        apiOk = result.ok;
-        inventorReference = result.reference;
-        if (!apiOk) errorBody = result.body;
+        const ymStatus = await yhangmhanyVerifyNumber(order.phone);
+        if (ymStatus === "not_verified") {
+          apiOk = false;
+          errorBody = { message: "Number is not verified on Yhang Mhany" };
+        } else {
+          const result = await yhangmhanyPurchase(order.phone, Number(order.bundle_size_gb ?? 1));
+          apiOk = result.ok;
+          inventorReference = result.reference;
+          if (!apiOk) errorBody = result.body;
+        }
       } else {
         if (network === "MTN") {
           const verification = await inventorVerifyNumber(order.phone);

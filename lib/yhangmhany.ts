@@ -38,7 +38,7 @@ async function yhmFetch(path: string, init?: RequestInit): Promise<{ ok: boolean
         "Content-Type": "application/json",
         ...(init?.headers ?? {}),
       },
-      signal: AbortSignal.timeout(25_000),
+      signal: init?.signal ?? AbortSignal.timeout(25_000),
       cache: "no-store",
     });
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -46,6 +46,28 @@ async function yhmFetch(path: string, init?: RequestInit): Promise<{ ok: boolean
   } catch (e) {
     return { ok: false, json: { error: e instanceof Error ? e.message : "Could not reach Yhang Mhany" } };
   }
+}
+
+export type VerifyStatus = "verified" | "not_verified" | "unknown";
+
+/**
+ * Is this number verified for MTN data on Yhang Mhany? Only their explicit
+ * JSON answer ("Verified" / "Not Verified") counts. Anything else -- an
+ * HTML 404 (which they return when hit in quick bursts), a timeout, a
+ * missing key -- is "unknown", never "not verified", so a hiccup can't be
+ * mistaken for a real rejection. One retry on unknown.
+ */
+export async function yhangmhanyVerifyNumber(phone: string): Promise<VerifyStatus> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { json } = await yhmFetch(`/api/v1/verify-number?number=${encodeURIComponent(phone)}`, {
+      signal: AbortSignal.timeout(8_000),
+    });
+    const status = String(json.status ?? "").toLowerCase();
+    if (status === "verified") return "verified";
+    if (status === "not verified") return "not_verified";
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 500));
+  }
+  return "unknown";
 }
 
 type YhmBundle = { bundleId: string; network: string; size_mb: number; price: number };
