@@ -114,6 +114,22 @@ export async function yhangmhanyPurchase(phone: string, sizeGB: number): Promise
   };
 }
 
+/**
+ * Did a failed `yhangmhanyPurchase` DEFINITELY not create an order there?
+ * True only for a clear answer from Yhang Mhany (e.g. "no matching bundle",
+ * "insufficient balance", "number not eligible"). A timeout, dropped
+ * connection, or empty/HTML server error is ambiguous -- the order may have
+ * gone through -- so that returns false. Their purchase call has no
+ * idempotency key, so only a definite "no" makes it safe to send the same
+ * order to another provider (Auto mode's Inventor fallback) without risking
+ * a double delivery.
+ */
+export function yhangmhanyDefinitelyDidNotTake(message: string): boolean {
+  const m = (message ?? "").trim();
+  if (!m) return false;
+  return !/abort|timeout|timed out|fetch failed|could not reach|network|econn|enotfound|socket|internal server|bad gateway|unavailable|gateway/i.test(m);
+}
+
 export type StatusResult = { status: "PROCESSING" | "DELIVERED" | "REJECTED" | "UNKNOWN" };
 
 /** Poll an existing order -- safe to call as many times as needed. */

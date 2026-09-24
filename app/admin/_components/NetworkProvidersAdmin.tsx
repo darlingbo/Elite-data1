@@ -15,7 +15,7 @@ interface ProviderData {
 const OPTIONS: { key: MtnProvider; icon: string; label: string; accent: string; bg: string; note: string }[] = [
   { key: "inventor", icon: "🚀", label: "Inventor", accent: "#16a34a", bg: "#0c2a0c", note: "Checkout blocks numbers not on the beneficiary list. Any that slip through hold for manual delivery (up to 72h)." },
   { key: "yhangmhany", icon: "📶", label: "Yhang Mhany", accent: "#3b82f6", bg: "#0c1e3a", note: "Checkout checks the number with Yhang Mhany and blocks unverified ones. Anything that slips through fails instead of being bought." },
-  { key: "auto", icon: "🤖", label: "Auto", accent: "#a855f7", bg: "#1a0c3a", note: "Checkout allows a number verified on Inventor OR Yhang Mhany. At delivery: Inventor first, then Yhang Mhany. If neither has it, the order fails." },
+  { key: "auto", icon: "🤖", label: "Auto", accent: "#a855f7", bg: "#1a0c3a", note: "At delivery: Yhang Mhany first, then Inventor. If neither has the number, the order becomes a New Number (manual delivery up to 72h) and the customer gets the SMS — no refund needed." },
 ];
 
 function BalanceDisplay({ bal }: { bal: number | null }) {

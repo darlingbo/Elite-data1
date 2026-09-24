@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
 import { sendAgentNotification, sendAdminAlert, sendOrderFailedAlert } from "@/lib/telegram";
 import { inventorPurchase, inventorVerifyNumber, inventorVoucher } from "@/lib/inventor";
-import { yhangmhanyPurchase, yhangmhanyVerifyNumber } from "@/lib/yhangmhany";
+import { yhangmhanyPurchase, yhangmhanyVerifyNumber, yhangmhanyDefinitelyDidNotTake } from "@/lib/yhangmhany";
 import { sendCustomerSMS, orderFailedSMS, isNotOnListError, orderNotOnListSMS } from "@/lib/sms";
 import { auditLog } from "@/lib/audit";
 import { assessOrderRisk, isOrderGuardEnabled } from "@/lib/order-risk";
@@ -177,50 +177,75 @@ export async function approveOrder(
       const mtnMode = network === "MTN" ? await getMtnProvider() : "inventor";
 
       if (network === "MTN" && mtnMode === "auto") {
-        // Auto: Inventor first. If the number isn't on Inventor's beneficiary
-        // list (checked up front, or rejected as such at purchase time), try
-        // Yhang Mhany next. If that fails too, the order simply fails --
-        // no 72h manual-delivery hold in this mode. Only a definite
-        // "not on the list" moves on; a timeout or unclear error never
-        // triggers the fallback, so there's no risk of a double delivery.
-        const verification = await inventorVerifyNumber(order.phone);
-        let tryYhangMhany = !verification.verified;
-        let fallbackReason = verification.error ?? "not on the Inventor beneficiary list";
+        // Auto: Yhang Mhany first, then Inventor. Only when NEITHER has the
+        // number does the order become a "new number" (manual delivery, up to
+        // 72h, customer gets the SMS, no refund) -- never a failure.
+        //
+        // Double-delivery safety: Yhang Mhany's purchase has no idempotency
+        // key, so we only move on to Inventor when Yhang Mhany definitely did
+        // NOT take the order -- the number isn't verified there (nothing was
+        // bought), there's no matching bundle (nothing was bought), or it gave
+        // a clear rejection. A timeout / server error is ambiguous (it may
+        // have gone through), so that case does not fall back and fails as
+        // before instead of risking a second delivery.
+        let tryInventor = false;
+        let fallbackReason = "";
 
-        if (!tryYhangMhany) {
-          const result = await inventorPurchase(network, order.phone, Number(order.bundle_size_gb ?? 1), reference);
-          const msg = String((result.body.message as string) ?? (result.body.error as string) ?? "");
-          if (!result.ok && isNotOnListError(msg)) {
-            tryYhangMhany = true;
-            fallbackReason = msg;
-          } else {
-            apiOk = result.ok;
-            balanceAfter = result.balance;
-            inventorReference = result.reference;
-            if (!apiOk) errorBody = result.body;
+        const ymStatus = await yhangmhanyVerifyNumber(order.phone);
+        if (ymStatus === "not_verified") {
+          tryInventor = true;
+          fallbackReason = "not verified on Yhang Mhany";
+        } else {
+          providerUsed = "yhangmhany";
+          const result = await yhangmhanyPurchase(order.phone, Number(order.bundle_size_gb ?? 1));
+          apiOk = result.ok;
+          balanceAfter = null;
+          inventorReference = result.reference;
+          if (!apiOk) {
+            const msg = String((result.body.message as string) ?? (result.body.error as string) ?? "");
+            if (yhangmhanyDefinitelyDidNotTake(msg)) {
+              tryInventor = true;
+              fallbackReason = msg.slice(0, 100);
+            } else {
+              errorBody = result.body;
+            }
           }
         }
 
-        if (tryYhangMhany) {
-          providerUsed = "yhangmhany";
-          await auditLog("mtn_provider_fallback", { reference, from: "inventor", to: "yhangmhany", reason: fallbackReason, channel });
-          // Yhang Mhany can be pre-checked too. A definite "not verified"
-          // means neither provider has the number: fail now instead of
-          // buying and waiting for their manual rejection.
-          const ymStatus = await yhangmhanyVerifyNumber(order.phone);
-          if (ymStatus === "not_verified") {
-            apiOk = false;
-            balanceAfter = null;
-            errorBody = { message: `Number is not verified on Inventor or Yhang Mhany (Inventor: ${fallbackReason.slice(0, 60)})` };
-          } else {
-            const result = await yhangmhanyPurchase(order.phone, Number(order.bundle_size_gb ?? 1));
-            apiOk = result.ok;
-            balanceAfter = null;
-            inventorReference = result.reference;
-            errorBody = apiOk
-              ? {}
-              : { message: `Not deliverable: ${String((result.body.message as string) ?? (result.body.error as string) ?? "Yhang Mhany rejected the order").slice(0, 100)} (Inventor: ${fallbackReason.slice(0, 60)})` };
+        if (tryInventor) {
+          providerUsed = "inventor";
+          apiOk = false;
+          inventorReference = null;
+          await auditLog("mtn_provider_fallback", { reference, from: "yhangmhany", to: "inventor", reason: fallbackReason, channel });
+
+          const verification = await inventorVerifyNumber(order.phone);
+          if (!verification.verified) {
+            // On neither list: a new number. Hold for manual delivery (up to
+            // 72h), SMS the customer that no refund is coming, alert admin.
+            const reason = `Not on Yhang Mhany (${fallbackReason}) or Inventor (${(verification.error ?? "not on the beneficiary list").slice(0, 60)})`;
+            await supabase
+              .from("orders")
+              .update({ status: "not_on_list", not_on_list_at: new Date().toISOString(), provider_used: "inventor" })
+              .eq("reference", reference)
+              .eq("status", "processing");
+            await auditLog("order_not_on_list", { reference, channel, reason, stage: "auto_both_lists" });
+            sendCustomerSMS(
+              order.phone,
+              orderNotOnListSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", reference),
+            ).catch(() => {});
+            sendAdminAlert(
+              `\u{1F7E0} <b>NEW NUMBER — MANUAL DELIVERY (up to 72h)</b>\n<code>${reference}</code>\n<code>${order.phone}</code>\n${reason}\n\nDeliver via the Inventor dashboard, then mark the order complete.`,
+            ).catch(() => {});
+            return { ok: false, message: reason };
           }
+
+          const result = await inventorPurchase(network, order.phone, Number(order.bundle_size_gb ?? 1), reference);
+          apiOk = result.ok;
+          balanceAfter = result.balance;
+          inventorReference = result.reference;
+          // A "not on the list" rejection here becomes the same 72h hold + SMS
+          // via the not_on_list handling further down.
+          if (!apiOk) errorBody = result.body;
         }
       } else if (network === "MTN" && mtnMode === "yhangmhany") {
         // Pre-check with Yhang Mhany's verify-number; a definite "not
