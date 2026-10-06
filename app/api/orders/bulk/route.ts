@@ -61,24 +61,46 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "This payment has already been processed." }, { status: 400 });
   }
 
-  // Verify Paystack payment
+  // Verify Payment
   const unitCharged = addCurrency(price, percentageOf(price, PLATFORM_FEE_RATE));
   const expectedKobo = toMinorUnits(multiplyCurrency(unitCharged, phoneList.length));
 
-  let psData: Record<string, unknown> = {};
-  try {
-    const psRes = await fetch(
-      `https://api.paystack.co/transaction/verify/${encodeURIComponent(paystackRef)}`,
-      { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` } }
-    );
-    psData = await psRes.json();
-  } catch (err) {
-    return Response.json({ error: `Could not reach Paystack: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
+  let txnStatus: string | undefined;
+  let txnAmount = 0;
+  let isYebeck = String(paystackRef).startsWith("ybk-") || String(paystackRef).startsWith("yebeck-");
+
+  if (!isYebeck) {
+    const { getPaymentAttempt } = await import("@/lib/payment-attempt");
+    const existingAttempt = await getPaymentAttempt(String(paystackRef));
+    if (existingAttempt) isYebeck = true;
   }
 
-  const txnStatus = (psData.data as Record<string, unknown>)?.status;
-  const txnAmount = Number((psData.data as Record<string, unknown>)?.amount ?? 0);
-  const paid = psData.status === true && txnStatus === "success" && txnAmount >= expectedKobo;
+  if (isYebeck) {
+    try {
+      const { verifyYebeckPayment } = await import("@/lib/payment-attempt");
+      const ybk = await verifyYebeckPayment(String(paystackRef));
+      txnStatus = ybk.status === "success" ? "success" : ybk.status;
+      txnAmount = ybk.attempt.amount_pesewas;
+    } catch (err) {
+      return Response.json({ error: `Could not reach Yebeck: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
+    }
+  } else {
+    let psData: Record<string, unknown> = {};
+    try {
+      const psRes = await fetch(
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(paystackRef)}`,
+        { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` } }
+      );
+      psData = await psRes.json();
+    } catch (err) {
+      return Response.json({ error: `Could not reach Paystack: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
+    }
+
+    txnStatus = (psData.data as Record<string, unknown>)?.status as string | undefined;
+    txnAmount = Number((psData.data as Record<string, unknown>)?.amount ?? 0);
+  }
+
+  const paid = txnStatus === "success" && txnAmount >= expectedKobo;
 
   if (!paid) {
     return Response.json({
@@ -89,11 +111,11 @@ export async function POST(request: NextRequest) {
   const adminCommission = Math.max(0, roundCurrency(price - costPrice));
   const totalCharged = multiplyCurrency(unitCharged, phoneList.length);
 
-  // Atomically claim the Paystack transaction. The unique reference index means
+  // Atomically claim the transaction. The unique reference index means
   // two retries can never both proceed to provider delivery.
   const { error: claimError } = await supabase.from("payments").insert({
     amount: fromMinorUnits(txnAmount),
-    method: "paystack_bulk",
+    method: isYebeck ? "yebeck_bulk" : "paystack_bulk",
     reference: paystackRef,
     status: "processing",
   });

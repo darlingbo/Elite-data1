@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { Bundle, networkConfig } from "@/lib/bundles";
+import { normalizeGhPhone, detectGhProvider } from "@/lib/phone";
 
 interface Props {
   bundle: Bundle;
@@ -179,6 +180,10 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
   const [beneficiarySaved, setBeneficiarySaved] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("mobile_money");
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("details");
+  const [momoPhone, setMomoPhone] = useState("");
+  const [momoNetwork, setMomoNetwork] = useState<"mtn" | "telecel" | "at">("mtn");
+  const [momoPending, setMomoPending] = useState(false);
+  const [momoMessage, setMomoMessage] = useState("");
   const paystackReady = usePaystackReady();
   const { list: beneficiaries, save: saveBeneficiary, remove: removeBeneficiary } = useBeneficiaries();
   const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -247,6 +252,12 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
     setError("");
     if (!name.trim()) return setError("Please enter your name.");
     if (!validatePhone(phone)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
+    if (!momoPhone) {
+      const norm = normalizeGhPhone(phone) ?? phone.replace(/\s/g, "");
+      setMomoPhone(norm);
+      const det = detectGhProvider(norm);
+      if (det) setMomoNetwork(det);
+    }
     setCheckoutStep("confirm");
   }
 
@@ -367,12 +378,93 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
       }
     }
 
+    if (paymentMethod === "mobile_money") {
+      const cleanMomoPhone = normalizeGhPhone(momoPhone || phone);
+      if (!cleanMomoPhone) {
+        setLoading(false);
+        setError("Please enter a valid 10-digit Ghana Mobile Money phone number.");
+        return;
+      }
+
+      setMomoPending(true);
+      setMomoMessage("Initiating payment request to your phone…");
+
+      try {
+        const ybkRes = await fetch("/api/yebeck/charge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: totalAmount,
+            phone: cleanMomoPhone,
+            network: momoNetwork,
+            type: "data_order",
+            name,
+            metadata: {
+              customer_name: name,
+              bundle_id: bundle.id,
+              recipient_phone: phone,
+              agent_code: agentCode ?? "",
+            },
+          }),
+        });
+
+        const ybkData = await ybkRes.json();
+        if (!ybkRes.ok || !ybkData.ok) {
+          setLoading(false);
+          setMomoPending(false);
+          setError(ybkData.message || "Could not start Mobile Money prompt. Please try again.");
+          return;
+        }
+
+        const ybkRef = ybkData.reference;
+        setMomoMessage(ybkData.message || "Prompt sent! Approve the transaction on your phone.");
+
+        // Fast poll every 1.5 - 2s
+        const pollInterval = setInterval(async () => {
+          try {
+            const statusRes = await fetch(`/api/yebeck/status?reference=${encodeURIComponent(ybkRef)}`);
+            const statusData = await statusRes.json();
+            if (statusData.status === "success") {
+              clearInterval(pollInterval);
+              setMomoPending(false);
+              setMomoMessage("Payment approved! Creating order…");
+              await completePaidOrder(ybkRef);
+            } else if (statusData.status === "failed") {
+              clearInterval(pollInterval);
+              setLoading(false);
+              setMomoPending(false);
+              setError("Payment was declined or cancelled on your phone. Please try again.");
+            } else {
+              setMomoMessage("Waiting for approval on your phone… Check your handset prompt.");
+            }
+          } catch {
+            // Keep polling
+          }
+        }, 1800);
+
+        // Stop polling after 3 minutes
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          if (momoPending) {
+            setLoading(false);
+            setMomoPending(false);
+            setError("Payment timed out. If you already approved it, please check your orders or contact support.");
+          }
+        }, 180000);
+
+        return;
+      } catch (err) {
+        setLoading(false);
+        setMomoPending(false);
+        setError(`Mobile Money request failed: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+    }
+
     const autoEmail = `${phone.replace(/\s/g, "")}@elitedata1.com`;
     const selectedPaymentMethod = PAYMENT_METHODS.find(method => method.id === paymentMethod) ?? PAYMENT_METHODS[0];
 
-    // Mobile Money, card and bank all go through Paystack's own popup. For Mobile
-    // Money the popup collects the number and handles every verification step
-    // Paystack requires — OTP for new customers, PIN, and the on-phone prompt.
+    // Card and bank go through Paystack popup
     try {
       const handler = window.PaystackPop.setup({
         key,
@@ -905,15 +997,72 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
                 );
               })}
             </div>
+            {paymentMethod === "mobile_money" && (
+              <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/50 p-3.5 space-y-3">
+                <p className="text-xs font-bold text-slate-800">Mobile Money payment prompt</p>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Paying from phone number
+                  </label>
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    value={momoPhone}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setMomoPhone(val);
+                      const det = detectGhProvider(val);
+                      if (det) setMomoNetwork(det);
+                    }}
+                    placeholder="e.g. 0244000000"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+                  />
+                  <p className="mt-0.5 text-[11px] text-slate-500">Number must have a registered Mobile Money wallet</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Mobile Money network
+                  </label>
+                  <select
+                    value={momoNetwork}
+                    onChange={(e) => setMomoNetwork(e.target.value as "mtn" | "telecel" | "at")}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+                  >
+                    <option value="mtn">MTN Mobile Money</option>
+                    <option value="telecel">Telecel Cash</option>
+                    <option value="at">AirtelTigo Money</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {momoPending && (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 flex items-start gap-2 animate-pulse">
+                <span className="text-base">⏳</span>
+                <div>
+                  <p className="font-bold">Prompt Sent to Your Handset</p>
+                  <p>{momoMessage || "Approve the prompt on your phone now. Order will confirm automatically."}</p>
+                </div>
+              </div>
+            )}
+
             <p className="mt-2 flex items-center gap-1.5 text-[11px] text-gray-400">
-              <span aria-hidden="true">🔒</span> Payments are securely processed. Sensitive credentials are never stored by EliteData1.
+              <span aria-hidden="true">🔒</span> Direct Mobile Money via Yebeck. Fast verification upon approval.
             </p>
             <button
               onClick={() => void handlePay()}
-              disabled={loading || !paystackReady}
-              className="mt-4 w-full rounded-xl bg-amber-400 py-3 font-black text-slate-950 disabled:opacity-60"
+              disabled={loading || (paymentMethod !== "mobile_money" && !paystackReady)}
+              className="mt-4 w-full rounded-xl bg-amber-400 py-3 font-black text-slate-950 disabled:opacity-60 hover:bg-amber-300 transition-colors"
             >
-              {loading ? "Opening secure payment…" : !paystackReady ? "Loading secure payment…" : `Pay GHS ${totalAmount.toFixed(2)}`}
+              {loading
+                ? momoPending
+                  ? "Waiting for phone approval…"
+                  : "Opening secure payment…"
+                : paymentMethod === "mobile_money"
+                ? `Pay GHS ${totalAmount.toFixed(2)} with MoMo ⚡`
+                : !paystackReady
+                ? "Loading secure payment…"
+                : `Pay GHS ${totalAmount.toFixed(2)}`}
             </button>
             <button onClick={() => setCheckoutStep("confirm")} className="mt-2 w-full py-2 text-sm font-bold text-slate-500">← Back</button>
           </fieldset>)}

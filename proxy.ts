@@ -43,7 +43,7 @@ export function proxy(request: NextRequest) {
     // 'unsafe-inline' is ignored by nonce-aware browsers; kept only for legacy fallback
     `script-src 'self' 'nonce-${nonce}' 'unsafe-inline' https://js.paystack.co`,
     "style-src 'self' 'unsafe-inline'",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.paystack.co",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.paystack.co https://api.yebeck.com",
     "frame-src https://checkout.paystack.com",
     "img-src 'self' data: blob:",
     "font-src 'self'",

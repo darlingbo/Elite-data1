@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { detectGhProvider } from "@/lib/phone";
 
 const VOUCHER_META = [
   { id: "BECE"   as const, label: "BECE",   full: "Basic Education Certificate Examination",           color: "#3b82f6", dark: "#1d4ed8", glow: "rgba(59,130,246,0.4)",  emoji: "📗" },
@@ -111,7 +112,7 @@ export default function VouchersPage() {
   const candidateValid = candidateName.trim().length >= 2 && /^(?:\d[\s-]*){6,14}$/.test(indexNumber.trim()) && indexNumber.trim() === confirmIndexNumber.trim()
     && /^\d{4}$/.test(examYear) && Number(examYear) >= 1990 && Number(examYear) <= new Date().getFullYear()
     && (!needsDob || /^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) && consent;
-  const canPay          = phoneValid && !phoneError && (!isAssisted || candidateValid) && paystackReady && !loading;
+  const canPay          = phoneValid && !phoneError && (!isAssisted || candidateValid) && !loading;
   const bulkLeft      = selected.bulkThreshold + 1 - quantity;
 
   function changeQty(val: number) {
@@ -149,65 +150,98 @@ export default function VouchersPage() {
       .catch(() => {});
   }
 
-  function handlePay() {
+  async function handlePay() {
     setError("");
     const cleaned = normalizeGhana(isAssisted ? whatsapp : phone);
     if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setError("Enter a valid Ghana phone number (e.g. 0241234567 or +233241234567)."); return; }
     if (isAssisted && !candidateValid) { setError("Complete all candidate details, confirm the index number, and accept the authorization."); return; }
-    if (!paystackReady) { setError("Payment loading, try again."); return; }
-    const key = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
-    if (!key) { setError("Paystack key missing."); return; }
-    const email = `${cleaned}@voucher.elitedata.com`;
+
+    const momoNet = detectGhProvider(cleaned) ?? "mtn";
     setLoading(true);
+
     try {
-      const handler = window.PaystackPop.setup({
-        key, email,
-        amount: Math.round(total * 100),
-        currency: "GHS",
-        ref: `elite-vch-${Date.now()}`,
-        metadata: {
-          custom_fields: [
-            { display_name: "Phone",   variable_name: "phone",   value: cleaned },
-            { display_name: "Purchase", variable_name: "purchase_kind", value: "voucher" },
-            { display_name: "Voucher Type", variable_name: "voucher_type", value: selected.id },
-            { display_name: "Quantity", variable_name: "voucher_quantity", value: String(quantity) },
-            { display_name: "Voucher", variable_name: "voucher", value: `${selected.label} x${quantity}` },
-            { display_name: "Promo", variable_name: "promo_code", value: promoApplied ? promoCode.trim().toUpperCase() : "" },
-            { display_name: "Service", variable_name: "service_mode", value: serviceMode },
-          ],
-        },
-        callback: (res: { reference: string }) => {
-          fetch("/api/vouchers/create", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: "Customer", email, phone: cleaned,
-              voucherType: selected.id, quantity: isAssisted ? 1 : quantity,
-              paystackRef: res.reference,
-              promoCode: !isAssisted && promoApplied ? promoCode.trim() : undefined,
-              serviceMode,
-              candidateName: candidateName.trim(), candidateType, examYear,
-              indexNumber: indexNumber.trim(), confirmIndexNumber: confirmIndexNumber.trim(),
-              dateOfBirth: needsDob ? dateOfBirth : undefined, whatsapp: cleaned, consent,
-            }),
-          })
-            .then(r => r.json())
-            .then(data => {
-              setLoading(false);
-              if (data.success) {
-                setSuccess({ reference: data.reference, pendingApproval: data.pendingApproval !== false });
-              } else {
-                setError(data.error || "Payment was received but the order could not be confirmed. Contact support with your Paystack reference.");
-              }
-            })
-            .catch(() => { setLoading(false); setError("Network error. Contact support on WhatsApp."); });
-        },
-        onClose: () => setLoading(false),
+      const ybkRes = await fetch("/api/yebeck/charge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: total,
+          phone: cleaned,
+          network: momoNet,
+          type: "voucher_order",
+          name: candidateName.trim() || "Customer",
+          metadata: {
+            voucherType: selected.id,
+            quantity: isAssisted ? 1 : quantity,
+            phone: cleaned,
+          },
+        }),
       });
-      handler.openIframe();
+
+      const ybkData = await ybkRes.json();
+      if (!ybkRes.ok || !ybkData.ok) {
+        setLoading(false);
+        setError(ybkData.message || "Could not initiate Mobile Money prompt. Please check your number.");
+        return;
+      }
+
+      const ybkRef = ybkData.reference;
+
+      // Fast poll status
+      const pollInterval = setInterval(async () => {
+        try {
+          const sRes = await fetch(`/api/yebeck/status?reference=${encodeURIComponent(ybkRef)}`);
+          const sData = await sRes.json();
+          if (sData.status === "success") {
+            clearInterval(pollInterval);
+            const email = `${cleaned}@voucher.elitedata.com`;
+            const cr = await fetch("/api/vouchers/create", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: candidateName.trim() || "Customer",
+                email,
+                phone: cleaned,
+                voucherType: selected.id,
+                quantity: isAssisted ? 1 : quantity,
+                paystackRef: ybkRef,
+                promoCode: !isAssisted && promoApplied ? promoCode.trim() : undefined,
+                serviceMode,
+                candidateName: candidateName.trim(),
+                candidateType,
+                examYear,
+                indexNumber: indexNumber.trim(),
+                confirmIndexNumber: confirmIndexNumber.trim(),
+                dateOfBirth: needsDob ? dateOfBirth : undefined,
+                whatsapp: cleaned,
+                consent,
+              }),
+            });
+            const d = await cr.json();
+            setLoading(false);
+            if (d.success) {
+              setSuccess({ reference: d.reference, pendingApproval: d.pendingApproval !== false });
+            } else {
+              setError(d.error || "Payment received! Contact support with your reference: " + ybkRef);
+            }
+          } else if (sData.status === "failed") {
+            clearInterval(pollInterval);
+            setLoading(false);
+            setError("Payment was declined or cancelled on your phone. Please try again.");
+          }
+        } catch {
+          // keep polling
+        }
+      }, 1800);
+
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setLoading(false);
+      }, 180000);
+
     } catch (err) {
       setLoading(false);
       setError(`Payment error: ${err instanceof Error ? err.message : String(err)}`);
+    }
     }
   }
 
@@ -569,13 +603,13 @@ export default function VouchersPage() {
           {loading ? (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
               <span style={{ width: 18, height: 18, border: "2px solid white", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />
-              Processing…
+              Awaiting phone approval…
             </span>
-          ) : !paystackReady ? "Loading payment…" : `Pay GH₵${total.toFixed(2)} ⚡`}
+          ) : `Pay GH₵${total.toFixed(2)} with MoMo ⚡`}
         </button>
 
         <p style={{ color: D.muted, fontSize: 11, textAlign: "center", margin: "14px 0 0", opacity: mounted ? 1 : 0, transition: "opacity .5s .6s" }}>
-          🔒 Secured by Paystack · Your data is safe
+          🔒 Direct Mobile Money via Yebeck · Fast Instant Processing
         </p>
       </div>
     </div>

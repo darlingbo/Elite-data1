@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { detectGhProvider } from "@/lib/phone";
 
 interface VoucherType {
   id: "BECE" | "WASSCE";
@@ -63,63 +64,84 @@ export default function VoucherModal({ onClose, agentCode }: Props) {
   const fee = parseFloat((totalSell * PLATFORM_FEE_RATE).toFixed(2));
   const total = parseFloat((totalSell + fee).toFixed(2));
 
-  function handlePay() {
+  async function handlePay() {
     setError("");
     const cleaned = phone.replace(/\s/g, "");
     if (!/^0[2-5][0-9]{8}$/.test(cleaned)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
-    if (!paystackReady) return setError("Payment is still loading. Try again in a moment.");
 
-    const key = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
-    if (!key) return setError("Paystack key missing.");
-
-    // Use phone-based email so Paystack receipt goes somewhere sensible
-    const payEmail = `${cleaned}@voucher.elitedata.com`;
-
+    const momoNet = detectGhProvider(cleaned) ?? "mtn";
     setLoading(true);
+
     try {
-      const handler = window.PaystackPop.setup({
-        key,
-        email: payEmail,
-        amount: Math.round(total * 100),
-        currency: "GHS",
-        ref: `elite-vch-${Date.now()}`,
-        metadata: {
-          custom_fields: [
-            { display_name: "Phone", variable_name: "phone", value: cleaned },
-            { display_name: "Voucher", variable_name: "voucher", value: `${selected.label} x${quantity}` },
-            { display_name: "Voucher Type", variable_name: "voucher_type", value: selected.id },
-            { display_name: "Voucher Quantity", variable_name: "voucher_quantity", value: String(quantity) },
-            { display_name: "Agent", variable_name: "agent_code", value: agentCode ?? "" },
-          ],
-        },
-        callback: (response: { reference: string }) => {
-          fetch("/api/vouchers/create", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: "Customer",
-              email: payEmail,
-              phone: cleaned,
-              voucherType: selected.id,
-              quantity,
-              paystackRef: response.reference,
-              agentCode: agentCode ?? null,
-            }),
-          })
-            .then((r) => r.json())
-            .then((data) => {
-              setLoading(false);
-              if (data.success) setSuccess({ reference: data.reference });
-              else setError(data.error || "Something went wrong. Contact support.");
-            })
-            .catch(() => { setLoading(false); setError("Network error. Contact support on WhatsApp."); });
-        },
-        onClose: () => setLoading(false),
+      const ybkRes = await fetch("/api/yebeck/charge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: total,
+          phone: cleaned,
+          network: momoNet,
+          type: "voucher_order",
+          name: "Customer",
+          metadata: {
+            voucherType: selected.id,
+            quantity,
+            agentCode: agentCode ?? "",
+          },
+        }),
       });
-      handler.openIframe();
+
+      const ybkData = await ybkRes.json();
+      if (!ybkRes.ok || !ybkData.ok) {
+        setLoading(false);
+        setError(ybkData.message || "Could not initiate payment prompt. Check your phone number.");
+        return;
+      }
+
+      const ybkRef = ybkData.reference;
+
+      // Poll status every 1.8s
+      const pollInterval = setInterval(async () => {
+        try {
+          const sRes = await fetch(`/api/yebeck/status?reference=${encodeURIComponent(ybkRef)}`);
+          const sData = await sRes.json();
+          if (sData.status === "success") {
+            clearInterval(pollInterval);
+            const payEmail = `${cleaned}@voucher.elitedata.com`;
+            const cr = await fetch("/api/vouchers/create", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: "Customer",
+                email: payEmail,
+                phone: cleaned,
+                voucherType: selected.id,
+                quantity,
+                paystackRef: ybkRef,
+                agentCode: agentCode ?? null,
+              }),
+            });
+            const d = await cr.json();
+            setLoading(false);
+            if (d.success) setSuccess({ reference: d.reference });
+            else setError(d.error || "Payment received! Contact support with ref: " + ybkRef);
+          } else if (sData.status === "failed") {
+            clearInterval(pollInterval);
+            setLoading(false);
+            setError("Payment was declined or cancelled on your phone. Please try again.");
+          }
+        } catch {
+          // keep polling
+        }
+      }, 1800);
+
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setLoading(false);
+      }, 180000);
+
     } catch (err) {
       setLoading(false);
-      setError(`Paystack error: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`Payment error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -242,10 +264,10 @@ export default function VoucherModal({ onClose, agentCode }: Props) {
                   className="flex-1 py-3 rounded-xl font-bold text-gray-600 text-sm border border-gray-300 hover:bg-gray-50 transition-colors">
                   ← Back
                 </button>
-                <button onClick={handlePay} disabled={loading || !paystackReady}
+                <button onClick={handlePay} disabled={loading}
                   className="flex-1 py-3 rounded-xl font-bold text-white text-sm transition-colors disabled:opacity-60"
                   style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
-                  {loading ? "Processing…" : !paystackReady ? "Loading…" : `Pay GH₵${total.toFixed(2)}`}
+                  {loading ? "Awaiting phone approval…" : `Pay GH₵${total.toFixed(2)} with MoMo ⚡`}
                 </button>
               </div>
             </>

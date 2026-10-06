@@ -2,6 +2,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import type { Bundle, Network } from "@/lib/bundles";
+import { detectGhProvider, normalizeGhPhone } from "@/lib/phone";
 
 const PLATFORM_FEE_RATE = 0.02;
 
@@ -72,53 +73,87 @@ function BusinessContent() {
   const grandTotal = parseFloat((unitTotal * uniquePhones.length).toFixed(2));
   const platformFee = parseFloat((selectedBundle ? selectedBundle.price * PLATFORM_FEE_RATE * uniquePhones.length : 0).toFixed(2));
 
-  function handlePay() {
+  async function handlePay() {
     if (!selectedBundle || uniquePhones.length < 2) return;
     if (!contactPhone.trim()) { setError("Enter your contact phone number."); return; }
     setError("");
+
+    const cleanContact = normalizeGhPhone(contactPhone);
+    if (!cleanContact) {
+      setError("Enter a valid 10-digit Ghana contact phone number.");
+      return;
+    }
+
+    const momoNet = detectGhProvider(cleanContact) ?? "mtn";
     setLoading(true);
 
-    const key = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
-    if (!key) { setError("Paystack key missing."); setLoading(false); return; }
-
-    const email = `bulk-${contactPhone.replace(/\s/g, "")}@business.elitedata.com`;
-    const ref = `elite-bulk-${Date.now()}`;
-
     try {
-      const handler = window.PaystackPop.setup({
-        key,
-        email,
-        amount: Math.round(grandTotal * 100),
-        currency: "GHS",
-        ref,
-        callback: async (response: { reference: string }) => {
-          try {
+      const ybkRes = await fetch("/api/yebeck/charge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: grandTotal,
+          phone: cleanContact,
+          network: momoNet,
+          type: "bulk_order",
+          name: companyName.trim() || "Business Customer",
+          metadata: {
+            phonesCount: uniquePhones.length,
+            bundleId: selectedBundle.id,
+            companyName: companyName.trim() || null,
+          },
+        }),
+      });
+
+      const ybkData = await ybkRes.json();
+      if (!ybkRes.ok || !ybkData.ok) {
+        setLoading(false);
+        setError(ybkData.message || "Could not start Mobile Money prompt. Please try again.");
+        return;
+      }
+
+      const ybkRef = ybkData.reference;
+
+      // Poll status every 1.8s
+      const pollInterval = setInterval(async () => {
+        try {
+          const sRes = await fetch(`/api/yebeck/status?reference=${encodeURIComponent(ybkRef)}`);
+          const sData = await sRes.json();
+          if (sData.status === "success") {
+            clearInterval(pollInterval);
             const res = await fetch("/api/orders/bulk", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 phones: uniquePhones,
                 bundleId: selectedBundle.id,
-                paystackRef: response.reference,
+                paystackRef: ybkRef,
                 companyName: companyName.trim() || null,
-                contactPhone: contactPhone.trim(),
+                contactPhone: cleanContact,
               }),
             });
             const d = await res.json();
             setLoading(false);
             if (d.success) setResults(d);
-            else setError(d.error || "Order failed. Contact support on WhatsApp.");
-          } catch {
+            else setError(d.error || "Order failed. Contact support with reference: " + ybkRef);
+          } else if (sData.status === "failed") {
+            clearInterval(pollInterval);
             setLoading(false);
-            setError("Network error. Contact support on WhatsApp.");
+            setError("Payment was declined or cancelled on your phone. Please try again.");
           }
-        },
-        onClose: () => setLoading(false),
-      });
-      handler.openIframe();
+        } catch {
+          // keep polling
+        }
+      }, 1800);
+
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setLoading(false);
+      }, 180000);
+
     } catch (err) {
       setLoading(false);
-      setError(`Paystack error: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`Payment error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -390,9 +425,9 @@ function BusinessContent() {
               className="px-5 py-3 rounded-2xl border border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50 transition-colors">
               ← Back
             </button>
-            <button onClick={handlePay} disabled={loading || !paystackReady}
+            <button onClick={handlePay} disabled={loading}
               className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-2xl text-sm transition-colors">
-              {loading ? "Processing…" : !paystackReady ? "Loading…" : `Pay GH₵${grandTotal.toFixed(2)} →`}
+              {loading ? "Waiting for phone approval…" : `Pay GH₵${grandTotal.toFixed(2)} with MoMo →`}
             </button>
           </div>
         </div>

@@ -144,80 +144,108 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
   if (existing) return Response.json({ success: true, reference: existing.reference, status: existing.status });
 
-  // Verify Paystack
-  let psData: Record<string, unknown> = {};
-  try {
-    psData = await verifyPaystackTransaction(String(paystackRef));
-  } catch (err) {
-    console.error("[vouchers/create] Paystack verification unavailable", {
-      reference: String(paystackRef),
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return Response.json({ error: `Paystack unreachable: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
+  let paid = false;
+  let reason = "";
+  let isYebeck = String(paystackRef).startsWith("ybk-") || String(paystackRef).startsWith("yebeck-");
+
+  if (!isYebeck) {
+    const { getPaymentAttempt } = await import("@/lib/payment-attempt");
+    const existingAttempt = await getPaymentAttempt(String(paystackRef));
+    if (existingAttempt) isYebeck = true;
   }
 
-  const txnData = psData.data as Record<string, unknown>;
-  const paid = psData.status === true &&
-    txnData?.status === "success" &&
-    String(txnData?.currency ?? "").toUpperCase() === "GHS" &&
-    Number(txnData?.amount ?? 0) >= expectedKobo;
+  if (isYebeck) {
+    try {
+      const { verifyYebeckPayment } = await import("@/lib/payment-attempt");
+      const ybk = await verifyYebeckPayment(String(paystackRef));
+      paid = ybk.status === "success" && ybk.attempt.amount_pesewas >= expectedKobo;
+      if (!paid) {
+        reason = ybk.status !== "success" ? `Status: ${ybk.status}` : `Amount: paid ${ybk.attempt.amount_pesewas}, expected ${expectedKobo}`;
+      }
+    } catch (err) {
+      return Response.json({ error: `Yebeck unreachable: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
+    }
+  } else {
+    // Verify Paystack
+    let psData: Record<string, unknown> = {};
+    try {
+      psData = await verifyPaystackTransaction(String(paystackRef));
+    } catch (err) {
+      console.error("[vouchers/create] Paystack verification unavailable", {
+        reference: String(paystackRef),
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return Response.json({ error: `Paystack unreachable: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
+    }
+
+    const txnData = psData.data as Record<string, unknown>;
+    paid = psData.status === true &&
+      txnData?.status === "success" &&
+      String(txnData?.currency ?? "").toUpperCase() === "GHS" &&
+      Number(txnData?.amount ?? 0) >= expectedKobo;
+
+    if (!paid) {
+      reason = txnData?.status !== "success"
+        ? `Transaction status: ${txnData?.status}`
+        : String(txnData?.currency ?? "").toUpperCase() !== "GHS"
+          ? `Currency mismatch: ${txnData?.currency ?? "missing"}`
+          : `Amount mismatch: paid ${txnData?.amount} pesewas, expected ${expectedKobo}`;
+    }
+
+    if (paid) {
+      const paymentMetadata = (txnData.metadata ?? {}) as Record<string, unknown>;
+      const paymentFields = (paymentMetadata.custom_fields ?? []) as Array<Record<string, unknown>>;
+      const paymentField = (key: string) => String(
+        paymentFields.find(field => field.variable_name === key)?.value ?? "",
+      );
+      const paidPhone = normalizePhone(paymentField("phone"));
+      const paidVoucher = paymentField("voucher");
+      const paidVoucherType = (
+        paymentField("voucher_type") ||
+        paidVoucher.match(/^(BECE|WASSCE)/i)?.[1] ||
+        ""
+      ).toUpperCase();
+      const paidQuantity = Number(
+        paymentField("voucher_quantity") ||
+        paidVoucher.match(/x(\d+)/i)?.[1] ||
+        0
+      );
+      const paidServiceMode = paymentField("service_mode") || "voucher_only";
+      const paidAgentCode = paymentField("agent_code").trim().toUpperCase();
+      if (paidPhone && (paidPhone !== normalizedPhone || paidVoucherType !== vType || paidQuantity !== qty || paidServiceMode !== (isAssisted ? "assisted_result" : "voucher_only") || paidAgentCode !== (isAgentSale ? normalizedAgentCode : ""))) {
+        console.warn("[vouchers/create] Payment metadata mismatch", {
+          reference: String(paystackRef),
+          paidVoucherType,
+          requestedVoucherType: vType,
+          paidQuantity,
+          requestedQuantity: qty,
+        });
+        await sendAdminAlert(
+          `⚠️ VOUCHER PAYMENT METADATA MISMATCH\nRef: ${paystackRef}\nPaid for: ${paidVoucherType || "missing"} x${paidQuantity || "missing"}\nRequested: ${vType} x${qty}\nNo order was created.`,
+        ).catch(() => {});
+        return Response.json(
+          { error: "The paid voucher details do not match this order. Contact support with your payment reference." },
+          { status: 409 },
+        );
+      }
+    }
+  }
+
   if (!paid) {
-    const reason = txnData?.status !== "success"
-      ? `Transaction status: ${txnData?.status}`
-      : String(txnData?.currency ?? "").toUpperCase() !== "GHS"
-        ? `Currency mismatch: ${txnData?.currency ?? "missing"}`
-        : `Amount mismatch: paid ${txnData?.amount} pesewas, expected ${expectedKobo}`;
     console.warn("[vouchers/create] Payment not ready or invalid", {
       reference: String(paystackRef),
-      status: txnData?.status,
-      currency: txnData?.currency,
-      paidAmount: txnData?.amount,
+      reason,
       expectedKobo,
     });
     await sendAdminAlert(`VOUCHER PAYMENT FAILED\nRef: ${paystackRef}\nReason: ${reason}`).catch(() => {});
     return Response.json({ error: `Payment verification failed — ${reason}.` }, { status: 400 });
   }
 
-  const paymentMetadata = (txnData.metadata ?? {}) as Record<string, unknown>;
-  const paymentFields = (paymentMetadata.custom_fields ?? []) as Array<Record<string, unknown>>;
-  const paymentField = (key: string) => String(
-    paymentFields.find(field => field.variable_name === key)?.value ?? "",
-  );
-  const paidPhone = normalizePhone(paymentField("phone"));
-  const paidVoucher = paymentField("voucher");
-  const paidVoucherType = (
-    paymentField("voucher_type") ||
-    paidVoucher.match(/^(BECE|WASSCE)/i)?.[1] ||
-    ""
-  ).toUpperCase();
-  const paidQuantity = Number(
-    paymentField("voucher_quantity") ||
-    paidVoucher.match(/x(\d+)/i)?.[1] ||
-    0
-  );
-  const paidServiceMode = paymentField("service_mode") || "voucher_only";
-  const paidAgentCode = paymentField("agent_code").trim().toUpperCase();
-  if (paidPhone !== normalizedPhone || paidVoucherType !== vType || paidQuantity !== qty || paidServiceMode !== (isAssisted ? "assisted_result" : "voucher_only") || paidAgentCode !== (isAgentSale ? normalizedAgentCode : "")) {
-    console.warn("[vouchers/create] Payment metadata mismatch", {
-      reference: String(paystackRef),
-      paidVoucherType,
-      requestedVoucherType: vType,
-      paidQuantity,
-      requestedQuantity: qty,
-    });
-    await sendAdminAlert(
-      `⚠️ VOUCHER PAYMENT METADATA MISMATCH\nRef: ${paystackRef}\nPaid for: ${paidVoucherType || "missing"} x${paidQuantity || "missing"}\nRequested: ${vType} x${qty}\nNo order was created.`,
-    ).catch(() => {});
-    return Response.json(
-      { error: "The paid voucher details do not match this order. Contact support with your payment reference." },
-      { status: 409 },
-    );
-  }
-
   // Save order
   const { error: insertError } = await supabase.from("orders").insert({
     reference: String(paystackRef),
     paystack_reference: String(paystackRef),
+    payment_method: isYebeck ? "yebeck" : "paystack",
     customer_name: String(name),
     customer_email: String(email),
     phone: normalizedPhone,

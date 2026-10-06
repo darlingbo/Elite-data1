@@ -386,47 +386,74 @@ export async function POST(request: NextRequest) {
 
   }
 
-  // Verify Paystack payment
-  if (!process.env.PAYSTACK_SECRET_KEY) {
-    return Response.json(
-      { error: "PAYSTACK_SECRET_KEY is not set in Vercel environment variables. Add it and redeploy." },
-      { status: 500 }
-    );
+  let txnStatus: string | undefined;
+  let txnAmount = 0;
+  let txnCurrency = "GHS";
+  let isYebeck = String(paystackRef).startsWith("ybk-") || String(paystackRef).startsWith("yebeck-");
+
+  if (!isYebeck) {
+    // Check if it's stored as a Yebeck payment attempt first
+    const { getPaymentAttempt } = await import("@/lib/payment-attempt");
+    const existingAttempt = await getPaymentAttempt(String(paystackRef));
+    if (existingAttempt) isYebeck = true;
   }
 
-  let psData: Record<string, unknown> = {};
-  try {
-    const psCtrl = new AbortController();
-    const psTimer = setTimeout(() => psCtrl.abort(), 8_000);
-    const psRes = await fetch(
-      `https://api.paystack.co/transaction/verify/${encodeURIComponent(paystackRef)}`,
-      { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }, signal: psCtrl.signal }
-    );
-    clearTimeout(psTimer);
-    psData = await psRes.json();
-  } catch (err) {
-    return Response.json(
-      { error: `Could not reach Paystack API: ${err instanceof Error ? err.message : String(err)}` },
-      { status: 502 }
-    );
-  }
+  if (isYebeck) {
+    try {
+      const { verifyYebeckPayment } = await import("@/lib/payment-attempt");
+      const ybk = await verifyYebeckPayment(String(paystackRef));
+      txnStatus = ybk.status === "success" ? "success" : ybk.status;
+      txnAmount = ybk.attempt.amount_pesewas;
+      txnCurrency = "GHS";
+    } catch (err) {
+      return Response.json(
+        { error: `Could not verify Yebeck payment: ${err instanceof Error ? err.message : String(err)}` },
+        { status: 502 }
+      );
+    }
+  } else {
+    // Verify Paystack payment
+    if (!process.env.PAYSTACK_SECRET_KEY) {
+      return Response.json(
+        { error: "PAYSTACK_SECRET_KEY is not set in Vercel environment variables. Add it and redeploy." },
+        { status: 500 }
+      );
+    }
 
-  const txnStatus = (psData.data as Record<string, unknown>)?.status;
-  const txnAmount = Number((psData.data as Record<string, unknown>)?.amount ?? 0);
-  const txnCurrency = String((psData.data as Record<string, unknown>)?.currency ?? "").toUpperCase();
+    let psData: Record<string, unknown> = {};
+    try {
+      const psCtrl = new AbortController();
+      const psTimer = setTimeout(() => psCtrl.abort(), 8_000);
+      const psRes = await fetch(
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(paystackRef)}`,
+        { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }, signal: psCtrl.signal }
+      );
+      clearTimeout(psTimer);
+      psData = await psRes.json();
+    } catch (err) {
+      return Response.json(
+        { error: `Could not reach Paystack API: ${err instanceof Error ? err.message : String(err)}` },
+        { status: 502 }
+      );
+    }
 
-  const txnMetadata = ((psData.data as Record<string, unknown>)?.metadata ?? {}) as Record<string, unknown>;
-  const txnFields = (txnMetadata.custom_fields ?? []) as Array<Record<string, unknown>>;
-  const txnField = (key: string) => String(txnFields.find(field => field.variable_name === key)?.value ?? "");
-  const paidPhone = txnField("phone").replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0");
-  const paidBundleId = txnField("bundle_id");
-  const requestedPhone = phone.replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0");
+    txnStatus = (psData.data as Record<string, unknown>)?.status as string | undefined;
+    txnAmount = Number((psData.data as Record<string, unknown>)?.amount ?? 0);
+    txnCurrency = String((psData.data as Record<string, unknown>)?.currency ?? "").toUpperCase();
 
-  if (paidPhone !== requestedPhone || paidBundleId !== String(bundleId)) {
-    await sendAdminAlert(
-      `PAYMENT METADATA MISMATCH\nRef: ${paystackRef}\nThe paid phone or bundle does not match the submitted order. No order was created.`,
-    ).catch(() => {});
-    return Response.json({ error: "The payment details do not match this order." }, { status: 409 });
+    const txnMetadata = ((psData.data as Record<string, unknown>)?.metadata ?? {}) as Record<string, unknown>;
+    const txnFields = (txnMetadata.custom_fields ?? []) as Array<Record<string, unknown>>;
+    const txnField = (key: string) => String(txnFields.find(field => field.variable_name === key)?.value ?? "");
+    const paidPhone = txnField("phone").replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0");
+    const paidBundleId = txnField("bundle_id");
+    const requestedPhone = phone.replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0");
+
+    if (paidPhone && (paidPhone !== requestedPhone || paidBundleId !== String(bundleId))) {
+      await sendAdminAlert(
+        `PAYMENT METADATA MISMATCH\nRef: ${paystackRef}\nThe paid phone or bundle does not match the submitted order. No order was created.`,
+      ).catch(() => {});
+      return Response.json({ error: "The payment details do not match this order." }, { status: 409 });
+    }
   }
 
   // Hard floor: no bundle can ever cost less than GH₵1.00 — catches zero-priced DB entries
@@ -505,21 +532,18 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true, reference: paystackRef, fraudTrap: true });
   }
 
-  // Require the complete server-calculated checkout amount. Paystack, not the
+  // Require the complete server-calculated checkout amount. Provider, not the
   // browser, is the source of truth for what was actually paid.
   const minKobo = Math.max(toMinorUnits(ABSOLUTE_MIN_GHC), expectedKobo);
   const paid =
-    psData.status === true &&
     txnStatus === "success" &&
     txnCurrency === "GHS" &&
     txnAmount >= minKobo;
 
   if (!paid) {
     const reason =
-      psData.status !== true
-        ? `Paystack API error: ${psData.message ?? "unknown"}`
-        : txnStatus !== "success"
-        ? `Transaction status: ${txnStatus}`
+      txnStatus !== "success"
+        ? `Transaction status: ${txnStatus ?? "unsuccessful"}`
         : txnCurrency !== "GHS"
         ? `Currency mismatch: ${txnCurrency || "missing"}`
         : `Amount too low: paid ${txnAmount} pesewas, minimum ${minKobo}`;
@@ -532,7 +556,7 @@ export async function POST(request: NextRequest) {
         { onConflict: "key" }
       );
       await sendAdminAlert(`🚫 AUTO-BLOCKED: ${phone}\nPaid only GH₵${(txnAmount / 100).toFixed(2)} for ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\nRef: ${paystackRef}`).catch(() => {});
-      return Response.json({ error: "👀 I SEE WHAT YOU ARE DOING" }, { status: 400 });
+      return Response.json({ error: "👀 I SEE WHAT YOU ARE DOING" }, { status: 403 });
     }
 
     await sendAdminAlert(`PAYMENT VERIFY FAILED\nRef: ${paystackRef}\nReason: ${reason}`).catch(() => {});
@@ -599,6 +623,7 @@ export async function POST(request: NextRequest) {
   const saved = await saveOrder({
     reference: paystackRef,
     paystack_reference: paystackRef,
+    payment_method: isYebeck ? "yebeck" : "paystack",
     customer_name: name,
     customer_email: email,
     phone,
