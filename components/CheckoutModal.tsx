@@ -615,9 +615,47 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
             <p className="text-gray-500 text-sm mb-4">
               Payment confirmed. Your <span className="font-bold">{net.name} {bundle.size}</span> bundle is being processed and will be delivered to <span className="font-bold">{phone}</span> shortly.
             </p>
-            <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 mb-4 text-left">
-              <p className="text-xs text-gray-500 font-semibold mb-0.5">Order Reference</p>
-              <p className="font-mono font-bold text-gray-800 text-sm break-all">{pendingApproval.reference}</p>
+            {/* Payment Receipt */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4 text-left space-y-2">
+              <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Payment Receipt</span>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">PAID</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Order Reference</span>
+                <span className="font-mono font-bold text-gray-800 break-all">{pendingApproval.reference}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Recipient Phone</span>
+                <span className="font-bold text-gray-800">{phone}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Bundle</span>
+                <span className="font-bold text-gray-800">{net.name} {bundle.size}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Payment Gateway</span>
+                <span className="font-semibold text-gray-700">{paymentMethod === "mobile_money" ? "Mobile Money (Yebeck)" : "Paystack"}</span>
+              </div>
+              <div className="flex justify-between text-xs border-t border-gray-200 pt-1.5 font-bold">
+                <span className="text-gray-700">Amount Paid</span>
+                <span className="text-emerald-600 text-sm">GH₵{totalAmount.toFixed(2)}</span>
+              </div>
+            </div>
+            <div className="flex gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="flex-1 border border-gray-300 text-gray-700 font-bold py-2 rounded-xl text-xs hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
+              >
+                <span>🖨️</span> Print Receipt
+              </button>
+              <a
+                href={`/track?ref=${encodeURIComponent(pendingApproval.reference)}`}
+                className="flex-1 bg-blue-600 text-white font-bold py-2 rounded-xl text-xs hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
+              >
+                Track Live →
+              </a>
             </div>
             <p className="text-xs text-gray-400 mb-4">You will receive an SMS once your bundle is delivered.</p>
             <button onClick={onClose} className="w-full bg-green-500 text-white font-bold py-2.5 rounded-xl text-sm hover:bg-green-600 transition-colors">
@@ -652,10 +690,42 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
           </div>
 
           <div className="px-5 py-4 space-y-3">
-            {/* Order reference */}
-            <div className="bg-gray-50 rounded-xl px-4 py-3">
-              <p className="text-xs text-gray-400 mb-0.5">Order Reference</p>
-              <p className="font-mono font-bold text-gray-800 text-sm break-all">{success.reference}</p>
+            {/* Payment Receipt */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-left space-y-2">
+              <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Payment Receipt</span>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">PAID</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Order Reference</span>
+                <span className="font-mono font-bold text-gray-800 break-all">{success.reference}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Recipient Phone</span>
+                <span className="font-bold text-gray-800">{phone}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Bundle</span>
+                <span className="font-bold text-gray-800">{net.name} {bundle.size}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Payment Gateway</span>
+                <span className="font-semibold text-gray-700">{paymentMethod === "mobile_money" ? "Mobile Money (Yebeck)" : "Paystack"}</span>
+              </div>
+              <div className="flex justify-between text-xs border-t border-gray-200 pt-1.5 font-bold">
+                <span className="text-gray-700">Amount Paid</span>
+                <span className="text-emerald-600 text-sm">GH₵{totalAmount.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="w-full border border-gray-300 text-gray-700 font-bold py-2 rounded-xl text-xs hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
+              >
+                <span>🖨️</span> Print Receipt
+              </button>
             </div>
 
             {/* Save beneficiary prompt */}

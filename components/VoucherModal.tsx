@@ -159,14 +159,46 @@ export default function VoucherModal({ onClose, agentCode }: Props) {
             Your <span className="font-bold">{selected.label} × {quantity}</span> voucher code{quantity > 1 ? "s have" : " has"} been sent via SMS to{" "}
             <span className="font-bold">{phone}</span>.
           </p>
-          <div className="bg-gray-50 rounded-xl px-4 py-3 mb-5">
-            <p className="text-xs text-gray-400 mb-1">Order Reference</p>
-            <p className="font-mono font-bold text-gray-800 text-sm break-all">{success.reference}</p>
+          {/* Payment Receipt */}
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4 text-left space-y-2">
+            <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Payment Receipt</span>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">PAID</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">Order Reference</span>
+              <span className="font-mono font-bold text-gray-800 break-all">{success.reference}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">Recipient Phone</span>
+              <span className="font-bold text-gray-800">{phone}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">Item</span>
+              <span className="font-bold text-gray-800">{selected.label} × {quantity}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">Payment Gateway</span>
+              <span className="font-semibold text-gray-700">Mobile Money (Yebeck)</span>
+            </div>
+            <div className="flex justify-between text-xs border-t border-gray-200 pt-1.5 font-bold">
+              <span className="text-gray-700">Amount Paid</span>
+              <span className="text-emerald-600 text-sm">GH₵{totalAmount.toFixed(2)}</span>
+            </div>
           </div>
-          <a href={`/track?ref=${encodeURIComponent(success.reference)}`}
-            className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors text-sm mb-3">
-            Track Order →
-          </a>
+          <div className="flex gap-2 mb-3">
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="flex-1 border border-gray-300 text-gray-700 font-bold py-2 rounded-xl text-xs hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <span>🖨️</span> Print Receipt
+            </button>
+            <a href={`/track?ref=${encodeURIComponent(success.reference)}`}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-xl transition-colors text-xs flex items-center justify-center gap-1">
+              Track Order →
+            </a>
+          </div>
           <button onClick={onClose} className="w-full text-gray-400 hover:text-gray-600 text-sm py-1 transition-colors">Close</button>
         </div>
       </div>

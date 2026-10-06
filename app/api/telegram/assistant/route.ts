@@ -1529,36 +1529,66 @@ async function cmdRecover(chatId: string, reference: string) {
     return;
   }
 
-  let psData: Record<string, unknown> = {};
-  try {
-    const psRes = await fetch(
-      `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
-      { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` } }
-    );
-    psData = await psRes.json();
-  } catch {
-    await send(chatId, "❌ Could not reach Paystack. Check your connection and try again.", mainMenu());
-    return;
+  let customerName = "Customer";
+  let phone = "";
+  let bundleLabel = "";
+  let email = "";
+  let amountPesewas = 0;
+
+  const isYebeck = reference.startsWith("ybk-") || reference.startsWith("yebeck-");
+  if (isYebeck) {
+    try {
+      const { verifyYebeckPayment } = await import("@/lib/payment-attempt");
+      const ybk = await verifyYebeckPayment(reference);
+      if (ybk.status !== "success") {
+        await send(chatId,
+          `❌ <b>Payment not confirmed</b>\n\nRef: <code>${reference}</code>\nYebeck status: ${ybk.status}\n\nThis Mobile Money payment was not successful — no delivery needed.`,
+          mainMenu()
+        );
+        return;
+      }
+      customerName = ybk.attempt.customer_name || "Customer";
+      phone = ybk.attempt.phone || "";
+      amountPesewas = ybk.attempt.amount_pesewas;
+      email = `${phone}@elitedata1.com`;
+      const meta = ybk.attempt.metadata as Record<string, string> | undefined;
+      bundleLabel = meta?.bundle_id ?? "";
+    } catch (e) {
+      await send(chatId, `❌ Could not verify Yebeck reference: ${String(e)}`, mainMenu());
+      return;
+    }
+  } else {
+    let psData: Record<string, unknown> = {};
+    try {
+      const psRes = await fetch(
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
+        { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` } }
+      );
+      psData = await psRes.json();
+    } catch {
+      await send(chatId, "❌ Could not reach Paystack. Check your connection and try again.", mainMenu());
+      return;
+    }
+
+    const txn = psData.data as Record<string, unknown>;
+    if (!psData.status || txn?.status !== "success") {
+      await send(chatId,
+        `❌ <b>Payment not confirmed</b>\n\nRef: <code>${reference}</code>\nPaystack status: ${txn?.status ?? "unknown"}\n\nThis payment was not successful — no delivery needed.`,
+        mainMenu()
+      );
+      return;
+    }
+
+    const meta = txn.metadata as Record<string, unknown>;
+    const fields = (meta?.custom_fields as Array<Record<string, string>>) ?? [];
+    const getField = (name: string) => fields.find(f => f.variable_name === name)?.value ?? "";
+
+    customerName = getField("name") || String((txn.customer as Record<string, string>)?.first_name ?? "") || "Customer";
+    phone = getField("phone") || "";
+    bundleLabel = getField("bundle") || "";
+    email = (txn.customer as Record<string, string>)?.email ?? "";
+    amountPesewas = Number(txn.amount ?? 0);
   }
-
-  const txn = psData.data as Record<string, unknown>;
-  if (!psData.status || txn?.status !== "success") {
-    await send(chatId,
-      `❌ <b>Payment not confirmed</b>\n\nRef: <code>${reference}</code>\nPaystack status: ${txn?.status ?? "unknown"}\n\nThis payment was not successful — no delivery needed.`,
-      mainMenu()
-    );
-    return;
-  }
-
-  const meta = txn.metadata as Record<string, unknown>;
-  const fields = (meta?.custom_fields as Array<Record<string, string>>) ?? [];
-  const getField = (name: string) => fields.find(f => f.variable_name === name)?.value ?? "";
-
-  const customerName = getField("name") || String((txn.customer as Record<string, string>)?.first_name ?? "") || "Customer";
-  const phone = getField("phone") || "";
-  const bundleLabel = getField("bundle") || "";
-  const email = (txn.customer as Record<string, string>)?.email ?? "";
-  const amountPesewas = Number(txn.amount ?? 0);
 
   if (!phone) {
     await send(chatId,
