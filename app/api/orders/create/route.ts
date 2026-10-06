@@ -389,6 +389,7 @@ export async function POST(request: NextRequest) {
   let txnStatus: string | undefined;
   let txnAmount = 0;
   let txnCurrency = "GHS";
+  let psData: Record<string, unknown> = {};
   let isYebeck = String(paystackRef).startsWith("ybk-") || String(paystackRef).startsWith("yebeck-");
 
   if (!isYebeck) {
@@ -420,7 +421,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let psData: Record<string, unknown> = {};
     try {
       const psCtrl = new AbortController();
       const psTimer = setTimeout(() => psCtrl.abort(), 8_000);
@@ -502,7 +502,7 @@ export async function POST(request: NextRequest) {
     fastDelivery: fastDelivery === true,
   });
   const expectedKobo = toMinorUnits(expectedCharge);
-  if (psData.status === true && txnStatus === "success" && isSeverelyUnderpaid(txnAmount, expectedCharge)) {
+  if (txnStatus === "success" && isSeverelyUnderpaid(txnAmount, expectedCharge)) {
     // Auto-block this phone
     const updatedList = [...new Set([...blocklist, normalizedPhone])];
     await supabase.from("system_settings").upsert(
