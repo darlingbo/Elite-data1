@@ -76,9 +76,9 @@ function CheckoutContent() {
 
       <div className="mx-auto grid max-w-6xl gap-7 px-4 py-6 sm:px-5 sm:py-8 lg:grid-cols-[minmax(0,1fr)_480px] lg:py-14">
         <section className="order-last lg:order-0">
-          <p className="text-xs font-black uppercase tracking-[.22em] text-blue-400">Complete your purchase</p>
-          <h1 className="mt-3 max-w-xl text-3xl font-black tracking-tight sm:text-5xl">Fast data, clear pricing, secure payment.</h1>
-          <p className="mt-4 max-w-xl text-sm leading-7 text-slate-400">Review your bundle and enter the receiving number. Payment is verified securely and your order enters our monitored delivery queue.</p>
+          <p className="text-xs font-black uppercase tracking-[.22em] text-amber-400">⚡ Instant Mobile Money Checkout</p>
+          <h1 className="mt-3 max-w-xl text-3xl font-black tracking-tight sm:text-5xl">Fast Ghana MoMo, instant phone approval.</h1>
+          <p className="mt-4 max-w-xl text-sm leading-7 text-slate-400">Approve the payment prompt directly on your handset (MTN MoMo, Telecel Cash, or AirtelTigo Money). Orders verify in real-time and deliver automatically.</p>
 
           <div className="mt-8 rounded-3xl border border-white/10 bg-linear-to-br from-[#14223a] to-[#0d1728] p-6 shadow-2xl shadow-black/25 sm:p-8">
             <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:gap-5">
@@ -87,13 +87,17 @@ function CheckoutContent() {
                 <h2 className="mt-2 text-4xl font-black text-white">{bundle.size}</h2>
                 <p className="mt-2 text-sm text-slate-400">{bundle.network === "airteltigo" ? "AirtelTigo" : bundle.network.charAt(0).toUpperCase() + bundle.network.slice(1)} · {bundle.validity}</p>
               </div>
-              <div className="rounded-2xl bg-blue-500/15 px-4 py-3 text-right">
-                <small className="block text-[10px] uppercase tracking-wider text-blue-300">Bundle price</small>
-                <strong className="mt-1 block text-2xl text-white">GH₵{bundle.price.toFixed(2)}</strong>
+              <div className="rounded-2xl bg-amber-400/15 border border-amber-400/20 px-4 py-3 text-right">
+                <small className="block text-[10px] uppercase tracking-wider text-amber-300 font-bold">Bundle price</small>
+                <strong className="mt-1 block text-2xl text-amber-400">GH₵{bundle.price.toFixed(2)}</strong>
               </div>
             </div>
             <div className="mt-7 grid gap-3 sm:grid-cols-3">
-              {[['🔒','Secure payment','Protected checkout'],['✓','Verified order','Payment checked'],['💬','Customer support','Help when needed']].map(([icon,title,copy]) => (
+              {[
+                ['📱', 'Handset Prompt', 'Approve on your phone'],
+                ['⚡', '1.8s Fast Polling', 'Reflects immediately'],
+                ['🧾', 'Instant Receipt', 'Print or track live'],
+              ].map(([icon, title, copy]) => (
                 <div key={title} className="rounded-2xl border border-white/8 bg-white/[.035] p-4">
                   <span className="text-lg">{icon}</span><b className="mt-2 block text-xs text-white">{title}</b><small className="mt-1 block text-[11px] text-slate-500">{copy}</small>
                 </div>
@@ -102,7 +106,7 @@ function CheckoutContent() {
           </div>
 
           <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-500">
-            <span>🔐 Encrypted connection</span><span>📱 Ghana numbers supported</span><span>🧾 Order reference provided</span>
+            <span>🔒 Direct MoMo via Yebeck</span><span>💳 Card & Bank fallback</span><span>🧾 Instant receipt & tracking</span>
           </div>
         </section>
 

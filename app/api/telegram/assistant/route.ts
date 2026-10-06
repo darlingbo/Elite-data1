@@ -1547,12 +1547,12 @@ async function cmdRecover(chatId: string, reference: string) {
         );
         return;
       }
-      customerName = ybk.attempt.customer_name || "Customer";
-      phone = ybk.attempt.phone || "";
+      const meta = (ybk.attempt.metadata ?? {}) as Record<string, string>;
+      customerName = meta.customer_name || "Customer";
+      phone = meta.recipient_phone || meta.phone || "";
       amountPesewas = ybk.attempt.amount_pesewas;
       email = `${phone}@elitedata1.com`;
-      const meta = ybk.attempt.metadata as Record<string, string> | undefined;
-      bundleLabel = meta?.bundle_id ?? "";
+      bundleLabel = meta.bundle_id ?? "";
     } catch (e) {
       await send(chatId, `❌ Could not verify Yebeck reference: ${String(e)}`, mainMenu());
       return;

@@ -183,7 +183,7 @@ export default function VoucherModal({ onClose, agentCode }: Props) {
             </div>
             <div className="flex justify-between text-xs border-t border-gray-200 pt-1.5 font-bold">
               <span className="text-gray-700">Amount Paid</span>
-              <span className="text-emerald-600 text-sm">GH₵{totalAmount.toFixed(2)}</span>
+              <span className="text-emerald-600 text-sm">GH₵{total.toFixed(2)}</span>
             </div>
           </div>
           <div className="flex gap-2 mb-3">

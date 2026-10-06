@@ -307,12 +307,14 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
     setError("");
     if (!name.trim()) return setError("Please enter your name.");
     if (!validatePhone(phone)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
-    if (!paystackReady) return setError("Payment is still loading. Please try again in a moment.");
 
-    const key = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
-    if (!key) {
-      setError("Secure payment is temporarily unavailable. Please try again later.");
-      return;
+    if (paymentMethod !== "mobile_money") {
+      if (!paystackReady) return setError("Payment is still loading. Please try again in a moment.");
+      const key = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
+      if (!key) {
+        setError("Card/Bank payment is temporarily unavailable. Please pay with Mobile Money.");
+        return;
+      }
     }
 
     setLoading(true);
@@ -464,10 +466,17 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
     const autoEmail = `${phone.replace(/\s/g, "")}@elitedata1.com`;
     const selectedPaymentMethod = PAYMENT_METHODS.find(method => method.id === paymentMethod) ?? PAYMENT_METHODS[0];
 
+    const paystackKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
+    if (!paystackKey) {
+      setLoading(false);
+      setError("Card/Bank payment is unavailable. Please choose Mobile Money.");
+      return;
+    }
+
     // Card and bank go through Paystack popup
     try {
       const handler = window.PaystackPop.setup({
-        key,
+        key: paystackKey,
         email: autoEmail,
         amount: Math.round(totalAmount * 100),
         currency: "GHS",
@@ -1036,14 +1045,18 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
           {/* Payment method */}
           {checkoutStep === "method" && (<fieldset>
             <div className="mb-4 text-center">
-              <p className="text-xs font-black uppercase tracking-[.2em] text-amber-500">EliteData1</p>
-              <p className="mt-2 text-xs text-slate-500">Amount to Pay</p>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-black text-emerald-800 uppercase tracking-wider mb-2">
+                ⚡ Instant MoMo Prompt
+              </span>
+              <p className="text-xs text-slate-500">Total to Pay</p>
               <p className="text-3xl font-black text-slate-900">GHS {totalAmount.toFixed(2)}</p>
             </div>
-            <legend className="mb-2 block text-xs font-semibold text-gray-600">Choose payment method</legend>
-            <div className="space-y-2" role="radiogroup" aria-label="Payment method">
+
+            <legend className="mb-2 block text-xs font-semibold text-gray-700">Payment method</legend>
+            <div className="space-y-2.5" role="radiogroup" aria-label="Payment method">
               {PAYMENT_METHODS.map(method => {
                 const selected = paymentMethod === method.id;
+                const isMoMo = method.id === "mobile_money";
                 return (
                   <button
                     key={method.id}
@@ -1051,28 +1064,60 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
                     role="radio"
                     aria-checked={selected}
                     onClick={() => setPaymentMethod(method.id)}
-                    className={`flex w-full items-center gap-3 rounded-xl border-2 px-3 py-3 text-left transition-all ${selected ? "border-blue-600 bg-blue-50 shadow-sm" : "border-gray-200 bg-white hover:border-blue-200"}`}
+                    className={`relative flex w-full items-center gap-3 rounded-2xl border-2 p-3.5 text-left transition-all ${
+                      selected
+                        ? isMoMo
+                          ? "border-amber-400 bg-amber-50/50 shadow-sm"
+                          : "border-blue-600 bg-blue-50/50 shadow-sm"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    }`}
                   >
-                    <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-xl ${selected ? "bg-blue-600" : "bg-gray-100"}`}>
+                    <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl text-xl shadow-xs ${
+                      selected
+                        ? isMoMo
+                          ? "bg-amber-400 text-slate-950 font-bold"
+                          : "bg-blue-600 text-white font-bold"
+                        : "bg-gray-100"
+                    }`}>
                       {method.icon}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className={`block text-sm font-black ${selected ? "text-blue-700" : "text-gray-800"}`}>{method.label}</span>
-                      <span className="block text-xs leading-5 text-gray-500">{method.description}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm font-black ${selected ? "text-slate-900" : "text-gray-800"}`}>
+                          {method.label}
+                        </span>
+                        {isMoMo && (
+                          <span className="rounded-full bg-amber-200/70 px-2 py-0.5 text-[10px] font-black text-amber-900">
+                            RECOMMENDED
+                          </span>
+                        )}
+                      </div>
+                      <span className="block text-xs leading-5 text-gray-500 mt-0.5">{method.description}</span>
                     </span>
-                    <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${selected ? "border-blue-600 bg-blue-600" : "border-gray-300"}`}>
-                      {selected && <span className="h-2 w-2 rounded-full bg-white" />}
+                    <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${
+                      selected ? (isMoMo ? "border-amber-500 bg-amber-400" : "border-blue-600 bg-blue-600") : "border-gray-300"
+                    }`}>
+                      {selected && <span className={`h-2 w-2 rounded-full ${isMoMo ? "bg-slate-950" : "bg-white"}`} />}
                     </span>
                   </button>
                 );
               })}
             </div>
+
             {paymentMethod === "mobile_money" && (
-              <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/50 p-3.5 space-y-3">
-                <p className="text-xs font-bold text-slate-800">Mobile Money payment prompt</p>
+              <div className="mt-4 rounded-2xl border border-amber-200/80 bg-gradient-to-br from-amber-50/60 to-orange-50/30 p-4 space-y-3.5 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-black text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
+                    <span>📱</span> MoMo Wallet Details
+                  </p>
+                  <span className="text-[11px] font-bold text-amber-700 bg-amber-100/80 px-2.5 py-0.5 rounded-full">
+                    Yebeck Gateway
+                  </span>
+                </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Paying from phone number
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Phone number to charge from
                   </label>
                   <input
                     type="tel"
@@ -1085,56 +1130,93 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
                       if (det) setMomoNetwork(det);
                     }}
                     placeholder="e.g. 0244000000"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-amber-500 focus:ring-2 focus:ring-amber-200 focus:outline-none"
                   />
-                  <p className="mt-0.5 text-[11px] text-slate-500">Number must have a registered Mobile Money wallet</p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    A prompt requesting approval will appear immediately on this phone
+                  </p>
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Mobile Money network
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Select Network Provider
                   </label>
-                  <select
-                    value={momoNetwork}
-                    onChange={(e) => setMomoNetwork(e.target.value as "mtn" | "telecel" | "at")}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-600 focus:outline-none"
-                  >
-                    <option value="mtn">MTN Mobile Money</option>
-                    <option value="telecel">Telecel Cash</option>
-                    <option value="at">AirtelTigo Money</option>
-                  </select>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: "mtn", label: "MTN MoMo", badge: "MTN", color: "border-yellow-400 bg-yellow-50 text-yellow-900" },
+                      { id: "telecel", label: "Telecel Cash", badge: "Telecel", color: "border-red-400 bg-red-50 text-red-900" },
+                      { id: "at", label: "AT Money", badge: "AT", color: "border-blue-400 bg-blue-50 text-blue-900" },
+                    ].map(netOption => {
+                      const isNetActive = momoNetwork === netOption.id;
+                      return (
+                        <button
+                          key={netOption.id}
+                          type="button"
+                          onClick={() => setMomoNetwork(netOption.id as "mtn" | "telecel" | "at")}
+                          className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl border-2 text-center transition-all ${
+                            isNetActive
+                              ? `${netOption.color} font-black shadow-xs`
+                              : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                          }`}
+                        >
+                          <span className="text-xs font-bold">{netOption.badge}</span>
+                          <span className="text-[10px] text-gray-500 mt-0.5">{netOption.label.split(" ")[1]}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
 
             {momoPending && (
-              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 flex items-start gap-2 animate-pulse">
-                <span className="text-base">⏳</span>
-                <div>
-                  <p className="font-bold">Prompt Sent to Your Handset</p>
-                  <p>{momoMessage || "Approve the prompt on your phone now. Order will confirm automatically."}</p>
+              <div className="mt-3.5 rounded-2xl border border-amber-300 bg-amber-50/90 p-4 text-xs text-amber-900 flex items-start gap-3 animate-pulse shadow-sm">
+                <span className="text-2xl mt-0.5">📲</span>
+                <div className="flex-1 space-y-1">
+                  <p className="font-black text-sm text-amber-950">Prompt Sent to Your Phone!</p>
+                  <p className="text-amber-800 leading-relaxed">
+                    {momoMessage || "Please check your phone screen and enter your Mobile Money PIN to approve the transaction."}
+                  </p>
+                  <div className="flex items-center gap-2 pt-1 text-[11px] text-amber-700 font-bold">
+                    <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-ping" />
+                    Checking payment every 1.8s · Will confirm automatically
+                  </div>
                 </div>
               </div>
             )}
 
-            <p className="mt-2 flex items-center gap-1.5 text-[11px] text-gray-400">
-              <span aria-hidden="true">🔒</span> Direct Mobile Money via Yebeck. Fast verification upon approval.
+            <p className="mt-2.5 flex items-center gap-1.5 text-[11px] text-gray-500">
+              <span aria-hidden="true">🔒</span> Encrypted transaction via Yebeck. Fast automated verification upon phone approval.
             </p>
+
             <button
               onClick={() => void handlePay()}
               disabled={loading || (paymentMethod !== "mobile_money" && !paystackReady)}
-              className="mt-4 w-full rounded-xl bg-amber-400 py-3 font-black text-slate-950 disabled:opacity-60 hover:bg-amber-300 transition-colors"
+              className="mt-4 w-full rounded-2xl bg-amber-400 py-3.5 font-black text-slate-950 shadow-md hover:bg-amber-300 transition-all disabled:opacity-60 text-sm flex items-center justify-center gap-2"
             >
-              {loading
-                ? momoPending
-                  ? "Waiting for phone approval…"
-                  : "Opening secure payment…"
-                : paymentMethod === "mobile_money"
-                ? `Pay GHS ${totalAmount.toFixed(2)} with MoMo ⚡`
-                : !paystackReady
-                ? "Loading secure payment…"
-                : `Pay GHS ${totalAmount.toFixed(2)}`}
+              {loading ? (
+                momoPending ? (
+                  <>
+                    <span className="h-4 w-4 rounded-full border-2 border-slate-950 border-t-transparent animate-spin" />
+                    <span>Waiting for handset approval…</span>
+                  </>
+                ) : (
+                  <span>Opening secure payment…</span>
+                )
+              ) : paymentMethod === "mobile_money" ? (
+                <>
+                  <span>Pay GH₵{totalAmount.toFixed(2)} with MoMo</span>
+                  <span className="text-base">⚡</span>
+                </>
+              ) : !paystackReady ? (
+                <span>Loading secure payment…</span>
+              ) : (
+                <span>Pay GH₵{totalAmount.toFixed(2)}</span>
+              )}
             </button>
-            <button onClick={() => setCheckoutStep("confirm")} className="mt-2 w-full py-2 text-sm font-bold text-slate-500">← Back</button>
+            <button onClick={() => setCheckoutStep("confirm")} className="mt-2.5 w-full py-2 text-sm font-bold text-slate-500 hover:text-slate-800">
+              ← Edit details
+            </button>
           </fieldset>)}
 
           <button onClick={onClose} className="w-full text-gray-500 hover:text-gray-700 text-sm py-1 transition-colors">
