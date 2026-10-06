@@ -840,389 +840,115 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
   }
 
   return (
-    <div className={displayMode === "page" ? "w-full" : "fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"}>
-      <div className={displayMode === "page" ? "bg-white w-full overflow-hidden" : "bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto"}>
-        {/* Header */}
-        <div className={`${net.bgLight} rounded-t-2xl px-6 py-4 flex items-center justify-between border-b ${net.borderColor} border`}>
-          <div>
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{net.name} Bundle</p>
-            <h2 className="text-2xl font-black text-gray-800">{bundle.size}</h2>
-            <div className="mt-1 space-y-0.5">
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <span>Bundle price</span>
-                <span className="font-semibold text-gray-700">GH₵{bundle.price.toFixed(2)}</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-gray-400">
-                <span>Processing fee (2%)</span>
-                <span>GH₵{feeAmount.toFixed(2)}</span>
-              </div>
-              {referralCredit > 0 && (
-                <div className="flex items-center gap-2 text-xs text-emerald-600 font-semibold">
-                  <span>🎁 Referral credit</span>
-                  <span>−GH₵{referralCredit.toFixed(2)}</span>
-                </div>
-              )}
-              {surcharge > 0 && (
-                <div className="flex items-center gap-2 text-xs text-red-600 font-semibold">
-                  <span>⚠️ Outstanding balance</span>
-                  <span>+GH₵{surcharge.toFixed(2)}</span>
-                </div>
-              )}
-              {promoResult && (
-                <div className="flex items-center gap-2 text-xs text-purple-600 font-semibold">
-                  <span>🏷️ {promoResult.code} ({promoResult.label})</span>
-                  <span>−GH₵{promoResult.discount.toFixed(2)}</span>
-                </div>
-              )}
-              {fastDelivery && (
-                <div className="flex items-center gap-2 text-xs text-orange-500 font-semibold">
-                  <span>⚡ Fast delivery</span>
-                  <span>+GH₵{FAST_DELIVERY_FEE.toFixed(2)}</span>
-                </div>
-              )}
-              <div className={`flex items-center gap-2 text-base font-black ${net.textColor}`}>
-                <span>Total</span>
-                <span>GH₵{totalAmount.toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
-          <div className={`w-14 h-14 rounded-full ${net.bgColor} flex items-center justify-center text-white font-black text-sm shrink-0`}>
-            {net.logo}
-          </div>
+    <div className={displayMode === "page" ? "w-full" : "fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"}>
+      <div className={displayMode === "page" ? "bg-white w-full overflow-hidden p-6" : "bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4"} onClick={(e) => e.stopPropagation()}>
+        <div>
+          <h2 className="text-xl font-black text-slate-900">Confirm purchase</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            You are purchasing <span className="font-bold">{bundle.size}</span> for{" "}
+            <span className="font-bold">GH₵{bundle.price.toFixed(2)}</span>
+          </p>
         </div>
 
-        {/* Form */}
-        <div className="checkout-flow px-4 py-5 space-y-4 sm:px-6">
-          <div className="flex items-center gap-2" aria-label={`Checkout step ${checkoutStep}`}>
-            {["details", "confirm", "method"].map((step, index) => {
-              const activeIndex = checkoutStep === "details" ? 0 : checkoutStep === "confirm" ? 1 : 2;
-              return <span key={step} className={`h-1.5 flex-1 rounded-full ${index <= activeIndex ? "bg-amber-400" : "bg-gray-200"}`} />;
-            })}
-          </div>
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2 rounded-lg">{error}</div>
-          )}
-          {manualDeliveryWarning && (
-            <div className="bg-amber-50 border border-amber-300 text-amber-800 text-sm px-3 py-2 rounded-lg">
-              ⏳ {manualDeliveryWarning}
-            </div>
-          )}
+        <div>
+          <label htmlFor="recipient_phone" className="block text-sm font-semibold text-slate-700">
+            Recipient {bundle.network === "airteltigo" ? "AT" : bundle.network.toUpperCase()} number
+          </label>
+          <input
+            id="recipient_phone"
+            type="tel"
+            inputMode="tel"
+            value={phone}
+            onChange={(e) => {
+              const v = e.target.value;
+              setPhone(v);
+              if (!momoPhone || momoPhone === phone) {
+                setMomoPhone(v);
+                const det = detectGhProvider(v);
+                if (det) setMomoNetwork(det);
+              }
+            }}
+            placeholder="0599322785 or +233599322785"
+            required
+            className="mt-1 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-400"
+          />
+        </div>
 
-          {checkoutStep === "details" && (<>
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Full Name</label>
-            <input type="text" placeholder="e.g. Kwame Mensah" value={name} onChange={(e) => setName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" />
-          </div>
+        <div>
+          <label htmlFor="momo_phone" className="block text-sm font-semibold text-slate-700">
+            Mobile Money number to pay from
+          </label>
+          <input
+            id="momo_phone"
+            type="tel"
+            inputMode="tel"
+            value={momoPhone}
+            onChange={(e) => {
+              const v = e.target.value;
+              setMomoPhone(v);
+              const det = detectGhProvider(v);
+              if (det) setMomoNetwork(det);
+            }}
+            placeholder="0244000000"
+            required
+            className="mt-1 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-400"
+          />
+        </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-semibold text-gray-600">
-                {net.name} Phone Number <span className="text-gray-400">(bundle will be sent here)</span>
-              </label>
-              {beneficiaries.length > 0 && (
-                <span className="text-[10px] text-gray-400">Saved numbers ↓</span>
-              )}
-            </div>
+        <div>
+          <label htmlFor="momo_network" className="block text-sm font-semibold text-slate-700">
+            Mobile Money network
+          </label>
+          <select
+            id="momo_network"
+            value={momoNetwork}
+            onChange={(e) => setMomoNetwork(e.target.value as "mtn" | "telecel" | "at")}
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-400"
+          >
+            <option value="mtn">MTN</option>
+            <option value="telecel">Telecel</option>
+            <option value="at">AT</option>
+          </select>
+        </div>
 
-            {/* Beneficiary chips */}
-            {beneficiaries.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {beneficiaries.map(b => (
-                  <div key={b.phone} className="group flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-full pl-3 pr-1 py-1">
-                    <button
-                      type="button"
-                      onClick={() => setPhone(b.phone)}
-                      className="text-xs font-semibold text-blue-700 leading-none"
-                    >
-                      {b.label}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeBeneficiary(b.phone)}
-                      className="w-4 h-4 rounded-full flex items-center justify-center text-blue-300 hover:text-red-400 hover:bg-red-50 transition-colors text-[10px] font-bold leading-none"
-                      title="Remove"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+        <p className="text-xs text-slate-500 leading-relaxed">
+          Yebeck may add a transaction fee. Check the total shown on your phone before approving.
+        </p>
 
-            <input type="tel" placeholder="0241234567" value={phone} onChange={(e) => setPhone(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" />
-            {creditChecked && referralCredit > 0 && (
-              <p className="text-xs text-emerald-600 font-semibold mt-1">🎁 GH₵{referralCredit.toFixed(2)} referral credit applied!</p>
-            )}
-            {creditChecked && milestoneCode && !promoResult && (
-              <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                <p className="text-xs font-black text-amber-700">🏆 You earned a 20% milestone bonus!</p>
-                <p className="text-xs text-amber-600 mt-0.5">10 people used your referral link. Tap Apply to get 20% off this order.</p>
-                <button onClick={applyPromo} className="mt-1.5 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 px-3 py-1 rounded-md">Apply 20% Off</button>
-              </div>
-            )}
-            {creditChecked && referralUsesLeft !== null && referralUsesLeft > 0 && referralUsesLeft < 10 && (
-              <p className="text-xs text-blue-500 mt-1">🔗 Your referral link: <span className="font-bold">{10 - referralUsesLeft}/10</span> uses · {referralUsesLeft} more to earn 20% off</p>
-            )}
-          </div>
+        {error && (
+          <p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs font-semibold text-red-600">
+            {error}
+          </p>
+        )}
 
-          {/* Promo code */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Promo Code <span className="text-gray-400">(optional)</span></label>
-            {promoResult ? (
-              <div className="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2.5">
-                <span className="text-sm font-black text-purple-700">🏷️ {promoResult.code}</span>
-                <span className="text-xs text-purple-600">−GH₵{promoResult.discount.toFixed(2)}</span>
-                <button onClick={() => { setPromoResult(null); setPromoCode(""); setPromoError(""); }} className="ml-auto text-xs text-gray-400 hover:text-red-500">✕ Remove</button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <input value={promoCode} onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoError(""); }}
-                  onKeyDown={e => e.key === "Enter" && applyPromo()}
-                  placeholder="Enter code e.g. SAVE20"
-                  className="min-w-0 flex-1 border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-gray-900 bg-white uppercase tracking-wider" />
-                <button onClick={applyPromo} disabled={promoApplying || !promoCode.trim()}
-                  className="px-4 py-2.5 rounded-lg text-sm font-bold text-white disabled:opacity-50 bg-purple-600 hover:bg-purple-700 transition-colors shrink-0">
-                  {promoApplying ? "…" : "Apply"}
-                </button>
-              </div>
-            )}
-            {promoError && <p className="text-xs text-red-500 mt-1 font-semibold">{promoError}</p>}
-          </div>
+        {momoPending && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs font-semibold text-amber-800 animate-pulse">
+            {momoMessage || "Waiting for approval on your phone…"}
+          </p>
+        )}
 
-          <div className="bg-blue-50 rounded-lg px-3 py-2 text-xs text-blue-700">
-            Bundle delivered instantly after payment · Validity: {bundle.validity}
-          </div>
-
+        <div className="flex gap-3 pt-1">
           <button
             type="button"
-            onClick={() => setFastDelivery(v => !v)}
-            className={`w-full flex items-center gap-3 rounded-xl border-2 px-4 py-3 transition-all text-left ${fastDelivery ? "border-orange-400 bg-orange-50" : "border-gray-200 bg-white hover:border-orange-200"}`}
+            onClick={onClose}
+            disabled={loading}
+            className="flex-1 rounded-xl border border-slate-300 bg-white py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 transition disabled:opacity-50"
           >
-            <span className="text-2xl">⚡</span>
-            <div className="flex-1">
-              <p className={`text-sm font-black ${fastDelivery ? "text-orange-600" : "text-gray-700"}`}>Fast Delivery</p>
-              <p className="text-xs text-gray-400">Priority processing · +GH₵0.50</p>
-            </div>
-            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${fastDelivery ? "border-orange-400 bg-orange-400" : "border-gray-300"}`}>
-              {fastDelivery && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
-            </div>
-          </button>
-
-          <button onClick={showConfirmation} className="w-full rounded-xl bg-amber-400 py-3 font-black text-slate-950 hover:bg-amber-300">
-            Proceed to Payment
-          </button>
-          </>)}
-
-          {checkoutStep === "confirm" && (
-            <section className="space-y-4" aria-labelledby="confirm-order-title">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[.18em] text-amber-500">Step 1</p>
-                <h3 id="confirm-order-title" className="mt-1 text-2xl font-black text-slate-900">Confirm Your Order</h3>
-                <p className="mt-1 text-sm text-slate-500">Please confirm your details before proceeding.</p>
-              </div>
-              <dl className="divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-slate-50 px-4">
-                {[
-                  ["Customer Name", name],
-                  ["Customer Phone Number", phone],
-                  ["Data Recipient Number", phone],
-                  ["Network", net.name],
-                  ["Bundle", bundle.size],
-                  ["Amount", `GHS ${totalAmount.toFixed(2)}`],
-                ].map(([label, value]) => (
-                  <div key={label} className="flex items-start justify-between gap-4 py-3">
-                    <dt className="text-xs font-semibold text-slate-500">{label}</dt>
-                    <dd className="max-w-[58%] text-right text-sm font-black text-slate-900 wrap-break-word">{value}</dd>
-                  </div>
-                ))}
-              </dl>
-              <button onClick={() => setCheckoutStep("method")} className="w-full rounded-xl bg-amber-400 py-3 font-black text-slate-950 hover:bg-amber-300">Proceed to Payment</button>
-              <button onClick={() => setCheckoutStep("details")} className="w-full py-2 text-sm font-bold text-slate-500">← Edit details</button>
-            </section>
-          )}
-
-          {/* Payment method */}
-          {checkoutStep === "method" && (<fieldset>
-            <div className="mb-4 text-center">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-black text-emerald-800 uppercase tracking-wider mb-2">
-                ⚡ Instant MoMo Prompt
-              </span>
-              <p className="text-xs text-slate-500">Total to Pay</p>
-              <p className="text-3xl font-black text-slate-900">GHS {totalAmount.toFixed(2)}</p>
-            </div>
-
-            <legend className="mb-2 block text-xs font-semibold text-gray-700">Payment method</legend>
-            <div className="space-y-2.5" role="radiogroup" aria-label="Payment method">
-              {PAYMENT_METHODS.map(method => {
-                const selected = paymentMethod === method.id;
-                const isMoMo = method.id === "mobile_money";
-                return (
-                  <button
-                    key={method.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => setPaymentMethod(method.id)}
-                    className={`relative flex w-full items-center gap-3 rounded-2xl border-2 p-3.5 text-left transition-all ${
-                      selected
-                        ? isMoMo
-                          ? "border-amber-400 bg-amber-50/50 shadow-sm"
-                          : "border-blue-600 bg-blue-50/50 shadow-sm"
-                        : "border-gray-200 bg-white hover:border-gray-300"
-                    }`}
-                  >
-                    <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl text-xl shadow-xs ${
-                      selected
-                        ? isMoMo
-                          ? "bg-amber-400 text-slate-950 font-bold"
-                          : "bg-blue-600 text-white font-bold"
-                        : "bg-gray-100"
-                    }`}>
-                      {method.icon}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-sm font-black ${selected ? "text-slate-900" : "text-gray-800"}`}>
-                          {method.label}
-                        </span>
-                        {isMoMo && (
-                          <span className="rounded-full bg-amber-200/70 px-2 py-0.5 text-[10px] font-black text-amber-900">
-                            RECOMMENDED
-                          </span>
-                        )}
-                      </div>
-                      <span className="block text-xs leading-5 text-gray-500 mt-0.5">{method.description}</span>
-                    </span>
-                    <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${
-                      selected ? (isMoMo ? "border-amber-500 bg-amber-400" : "border-blue-600 bg-blue-600") : "border-gray-300"
-                    }`}>
-                      {selected && <span className={`h-2 w-2 rounded-full ${isMoMo ? "bg-slate-950" : "bg-white"}`} />}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {paymentMethod === "mobile_money" && (
-              <div className="mt-4 rounded-2xl border border-amber-200/80 bg-gradient-to-br from-amber-50/60 to-orange-50/30 p-4 space-y-3.5 shadow-xs">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-black text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
-                    <span>📱</span> MoMo Wallet Details
-                  </p>
-                  <span className="text-[11px] font-bold text-amber-700 bg-amber-100/80 px-2.5 py-0.5 rounded-full">
-                    Yebeck Gateway
-                  </span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Phone number to charge from
-                  </label>
-                  <input
-                    type="tel"
-                    inputMode="tel"
-                    value={momoPhone}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setMomoPhone(val);
-                      const det = detectGhProvider(val);
-                      if (det) setMomoNetwork(det);
-                    }}
-                    placeholder="e.g. 0244000000"
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 font-semibold focus:border-amber-500 focus:ring-2 focus:ring-amber-200 focus:outline-none"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    A prompt requesting approval will appear immediately on this phone
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Select Network Provider
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { id: "mtn", label: "MTN MoMo", badge: "MTN", color: "border-yellow-400 bg-yellow-50 text-yellow-900" },
-                      { id: "telecel", label: "Telecel Cash", badge: "Telecel", color: "border-red-400 bg-red-50 text-red-900" },
-                      { id: "at", label: "AT Money", badge: "AT", color: "border-blue-400 bg-blue-50 text-blue-900" },
-                    ].map(netOption => {
-                      const isNetActive = momoNetwork === netOption.id;
-                      return (
-                        <button
-                          key={netOption.id}
-                          type="button"
-                          onClick={() => setMomoNetwork(netOption.id as "mtn" | "telecel" | "at")}
-                          className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl border-2 text-center transition-all ${
-                            isNetActive
-                              ? `${netOption.color} font-black shadow-xs`
-                              : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
-                          }`}
-                        >
-                          <span className="text-xs font-bold">{netOption.badge}</span>
-                          <span className="text-[10px] text-gray-500 mt-0.5">{netOption.label.split(" ")[1]}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {momoPending && (
-              <div className="mt-3.5 rounded-2xl border border-amber-300 bg-amber-50/90 p-4 text-xs text-amber-900 flex items-start gap-3 animate-pulse shadow-sm">
-                <span className="text-2xl mt-0.5">📲</span>
-                <div className="flex-1 space-y-1">
-                  <p className="font-black text-sm text-amber-950">Prompt Sent to Your Phone!</p>
-                  <p className="text-amber-800 leading-relaxed">
-                    {momoMessage || "Please check your phone screen and enter your Mobile Money PIN to approve the transaction."}
-                  </p>
-                  <div className="flex items-center gap-2 pt-1 text-[11px] text-amber-700 font-bold">
-                    <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-ping" />
-                    Checking payment every 1.8s · Will confirm automatically
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <p className="mt-2.5 flex items-center gap-1.5 text-[11px] text-gray-500">
-              <span aria-hidden="true">🔒</span> Encrypted transaction via Yebeck. Fast automated verification upon phone approval.
-            </p>
-
-            <button
-              onClick={() => void handlePay()}
-              disabled={loading || (paymentMethod !== "mobile_money" && !paystackReady)}
-              className="mt-4 w-full rounded-2xl bg-amber-400 py-3.5 font-black text-slate-950 shadow-md hover:bg-amber-300 transition-all disabled:opacity-60 text-sm flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                momoPending ? (
-                  <>
-                    <span className="h-4 w-4 rounded-full border-2 border-slate-950 border-t-transparent animate-spin" />
-                    <span>Waiting for handset approval…</span>
-                  </>
-                ) : (
-                  <span>Opening secure payment…</span>
-                )
-              ) : paymentMethod === "mobile_money" ? (
-                <>
-                  <span>Pay GH₵{totalAmount.toFixed(2)} with MoMo</span>
-                  <span className="text-base">⚡</span>
-                </>
-              ) : !paystackReady ? (
-                <span>Loading secure payment…</span>
-              ) : (
-                <span>Pay GH₵{totalAmount.toFixed(2)}</span>
-              )}
-            </button>
-            <button onClick={() => setCheckoutStep("confirm")} className="mt-2.5 w-full py-2 text-sm font-bold text-slate-500 hover:text-slate-800">
-              ← Edit details
-            </button>
-          </fieldset>)}
-
-          <button onClick={onClose} className="w-full text-gray-500 hover:text-gray-700 text-sm py-1 transition-colors">
             Cancel
           </button>
+          <button
+            type="button"
+            onClick={() => void handlePay()}
+            disabled={loading || !phone.trim() || !momoPhone.trim()}
+            className="flex-1 rounded-xl bg-[#f87171] hover:bg-rose-500 py-3 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-50 shadow-xs"
+          >
+            {loading ? (momoPending ? "Waiting…" : "Processing…") : "Confirm"}
+          </button>
         </div>
+
+        <p className="text-center text-xs text-slate-400 pt-1">
+          A payment prompt will be sent to the number entered above.
+        </p>
       </div>
     </div>
   );
