@@ -20,3 +20,4 @@ export function detectGhProvider(raw: string): "mtn" | "telecel" | "at" | null {
   if (/^0(27|57|26|56)/.test(p)) return "at";
   return null;
 }
+

@@ -42,3 +42,4 @@ export async function POST(request: NextRequest) {
     return Response.json({ ok: false, message: "Could not verify collection" }, { status: 500 });
   }
 }
+

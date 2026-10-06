@@ -112,3 +112,4 @@ export function normalizeCollectionStatus(status: string): "success" | "pending"
   if (status === "failed" || status === "reversed") return "failed";
   return "pending";
 }
+

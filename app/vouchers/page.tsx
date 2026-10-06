@@ -242,7 +242,6 @@ export default function VouchersPage() {
       setLoading(false);
       setError(`Payment error: ${err instanceof Error ? err.message : String(err)}`);
     }
-    }
   }
 
   /* ── Success ── */
