@@ -191,7 +191,11 @@ export function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; a
                 return (
                   <tr key={i} className="border-b" style={{ borderColor: BORDER }}>
                     <td className="px-3 py-2.5 font-mono font-bold" style={{ color: "#60a5fa" }}>{shortRef}</td>
-                    <td className="px-3 py-2.5 text-white font-medium max-w-17.5 truncate">{(o.customer_name || o.phone || "—").slice(0, 10)}</td>
+                    <td className="px-3 py-2.5 text-white font-medium max-w-28 truncate font-mono">
+                      {o.customer_name && o.customer_name.toLowerCase() !== "customer" && o.customer_name !== o.phone
+                        ? o.customer_name
+                        : o.phone || "—"}
+                    </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <span className="text-[10px] font-black px-1.5 py-0.5 rounded mr-1" style={{ background: nb.bg, color: nb.color }}>{nb.label}</span>
                       <span className="text-slate-400">{cleanSize}</span>

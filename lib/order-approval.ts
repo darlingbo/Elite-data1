@@ -409,8 +409,10 @@ export async function maybeAutoApprove(reference: string): Promise<{ attempted: 
   }
   const result = await approveOrder(reference, "auto_approval");
   if (!result.ok && !/^Already /.test(result.message)) {
+    const { data: ord } = await supabase.from("orders").select("phone, network, bundle_size").eq("reference", reference).maybeSingle();
+    const recipientInfo = ord ? `📱 ${(ord.network ?? "").toUpperCase()} ${ord.bundle_size ?? ""}\n🎯 Recipient (Deliver To): <code>${ord.phone}</code>\n` : "";
     sendAdminAlert(
-      `⚠️ <b>AUTO-APPROVAL DID NOT COMPLETE</b>\n<code>${reference}</code>\n${result.message}\n\nApprove it manually from the dashboard.`,
+      `⚠️ <b>AUTO-APPROVAL DID NOT COMPLETE</b>\n<code>${reference}</code>\n${recipientInfo}${result.message}\n\nApprove or fulfill it manually from the dashboard.`,
     ).catch(() => {});
   }
   return { attempted: true, ...result };

@@ -28,6 +28,10 @@ function isWalletReference(reference: string): boolean {
     reference.startsWith("AGTAPI-");
 }
 
+function isYebeckReference(reference: string): boolean {
+  return /^(?:ybk|yebeck)-/i.test(reference);
+}
+
 export async function assessOrderRisk(reference: string): Promise<OrderRiskDecision> {
   const { data: order } = await supabase
     .from("orders")
@@ -47,14 +51,20 @@ export async function assessOrderRisk(reference: string): Promise<OrderRiskDecis
   // Hard blocks — never auto-deliver these, even with automatic approval on.
   // Wallet-funded orders (agent_wallet, api_wallet) never get a Paystack
   // reference — the money was already verified and reserved atomically by
-  // the RPC that created the order (reserve_api_wallet_order / equivalent)
-  // before this row could exist at all, so payment_method itself is the
-  // trustworthy signal here, not a guess at the reference's string prefix.
-  const walletPaymentMethods = new Set(["agent_wallet", "api_wallet"]);
-  const isVerifiedWalletPayment = walletPaymentMethods.has(String(order.payment_method ?? ""));
+  // the RPC that created the order before this row could exist at all.
+  // Yebeck payments (direct Mobile Money) are similarly verified at checkout
+  // before being saved to the orders table.
+  const verifiedMethods = new Set(["agent_wallet", "api_wallet", "yebeck", "yebeck_bulk", "paystack"]);
+  const paymentMethodLower = String(order.payment_method ?? "").toLowerCase();
+  const isVerifiedWalletOrYebeck = verifiedMethods.has(paymentMethodLower);
+  const isYebeckOrder =
+    paymentMethodLower.startsWith("yebeck") ||
+    isYebeckReference(reference) ||
+    isYebeckReference(String(order.paystack_reference ?? ""));
+
   const hardReasons: string[] = [];
   if (!Number.isFinite(amount) || amount <= 0) hardReasons.push("Invalid selling amount");
-  if (!order.paystack_reference && !isWalletReference(reference) && !isVerifiedWalletPayment) {
+  if (!order.paystack_reference && !isWalletReference(reference) && !isVerifiedWalletOrYebeck && !isYebeckOrder) {
     hardReasons.push("Verified payment reference is missing");
   }
 
@@ -86,7 +96,10 @@ export async function assessOrderRisk(reference: string): Promise<OrderRiskDecis
     const decision: OrderRiskDecision = { allow: false, mustHold: true, level: "high", reasons, source: "rules" };
     await auditLog("ai_order_guard_hold", { reference, ...decision });
     sendAdminAlert(
-      `🛡️ <b>ORDER HELD BY AI GUARD</b>\n<code>${reference}</code>\nReason: ${reasons.join("; ")}\nReview it in the approval queue.`,
+      `🛡️ <b>ORDER HELD BY AI GUARD</b>\n<code>${reference}</code>\n` +
+      `📱 ${(order.network ?? "").toUpperCase()} ${order.bundle_size ?? ""}\n` +
+      `🎯 Recipient: <code>${order.phone}</code>\n` +
+      `Reason: ${reasons.join("; ")}\nReview it in the approval queue.`,
     ).catch(() => {});
     return decision;
   }

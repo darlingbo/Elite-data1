@@ -357,8 +357,14 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
             <article key={o.reference ?? idx} className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate font-bold text-white">{o.customer_name || "Customer"}</p>
-                  <p className="mt-1 font-mono text-sm text-slate-300">{o.phone}</p>
+                  <p className="truncate font-bold text-white">
+                    {o.customer_name && o.customer_name.toLowerCase() !== "customer" && o.customer_name !== o.phone
+                      ? o.customer_name
+                      : o.phone}
+                  </p>
+                  <p className="mt-1 font-mono text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                    <span>🎯 Recipient:</span> <span className="underline">{o.phone}</span>
+                  </p>
                 </div>
                 <p className="shrink-0 text-lg font-black text-white">GH₵{Number(o.amount).toFixed(2)}</p>
               </div>
@@ -448,9 +454,9 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
               <tr className="border-b text-xs text-slate-500 uppercase tracking-wider" style={{ background: BG, borderColor: BORDER }}>
                 {statusFilter === "PENDING_APPROVAL" && <th className="px-4 py-3 w-10" />}
                 <th className="px-4 py-3 text-left font-semibold">#</th>
-                <th className="px-4 py-3 text-left font-semibold">Customer</th>
+                <th className="px-4 py-3 text-left font-semibold">Recipient / Customer</th>
                 <th className="px-4 py-3 text-left font-semibold">Bundle</th>
-                <th className="px-4 py-3 text-left font-semibold">Phone</th>
+                <th className="px-4 py-3 text-left font-semibold">Send To (Phone)</th>
                 <th className="px-4 py-3 text-left font-semibold">Amount</th>
                 <th className="px-4 py-3 text-left font-semibold">Source</th>
                 <th className="px-4 py-3 text-left font-semibold">Status</th>
@@ -494,7 +500,11 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                     <td className="px-4 py-3.5 text-slate-600 text-xs font-mono">{(page - 1) * PAGE_SIZE + idx + 1}</td>
 
                     <td className="px-4 py-3.5">
-                      <p className="font-semibold text-white whitespace-nowrap">{o.customer_name || o.phone || "—"}</p>
+                      <p className="font-semibold text-white whitespace-nowrap">
+                        {o.customer_name && o.customer_name.toLowerCase() !== "customer" && o.customer_name !== o.phone
+                          ? o.customer_name
+                          : o.phone}
+                      </p>
                       {o.risk_flags && o.risk_flags.length > 0 && (
                         <div className="mt-1 flex max-w-[220px] flex-wrap gap-1">
                           {o.risk_flags.map(flag => (
@@ -520,7 +530,10 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                       )}
                     </td>
 
-                    <td className="px-4 py-3.5 font-mono text-xs text-slate-400">{o.phone}</td>
+                    <td className="px-4 py-3.5 font-mono text-xs text-slate-300 font-semibold whitespace-nowrap">
+                      <span className="text-[10px] uppercase text-emerald-500 font-bold block">Deliver to:</span>
+                      <span className="text-white font-bold">{o.phone}</span>
+                    </td>
 
                     <td className="px-4 py-3.5 font-black text-white">GH₵{Number(o.amount).toFixed(2)}</td>
 

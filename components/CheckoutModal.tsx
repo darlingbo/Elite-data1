@@ -262,7 +262,8 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
 
   async function completePaidOrder(reference: string) {
     const autoEmail = `${phone.replace(/\s/g, "")}@elitedata1.com`;
-    const customerName = name.trim() || "Customer";
+    const cleanName = name.trim();
+    const customerName = (!cleanName || cleanName === "Customer") ? phone.trim() : cleanName;
     const response = await fetch("/api/orders/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -306,7 +307,8 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
   async function handlePay() {
     setError("");
     if (!validatePhone(phone)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
-    const customerName = name.trim() || "Customer";
+    const cleanName = name.trim();
+    const customerName = (!cleanName || cleanName === "Customer") ? phone.trim() : cleanName;
 
     if (paymentMethod !== "mobile_money") {
       if (!paystackReady) return setError("Payment is still loading. Please try again in a moment.");

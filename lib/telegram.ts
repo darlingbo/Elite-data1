@@ -99,11 +99,12 @@ export async function sendOrderFailedAlert({
 }): Promise<void> {
   const bundle = [network?.toUpperCase(), bundleSize].filter(Boolean).join(" ");
   await sendAdminAlert(
-    `❌ <b>ORDER FAILED</b>\n\n` +
+    `❌ <b>ORDER FAILED — DELIVER MANUALLY</b>\n\n` +
     (bundle ? `📱 ${tgEscape(bundle)}\n` : "") +
-    `📞 Customer number: <code>${tgEscape(phone)}</code>\n` +
+    `🎯 Recipient (Send Data To): <code>${tgEscape(phone)}</code>\n` +
     `📎 Ref: <code>${tgEscape(reference)}</code>\n` +
-    `⚠️ Reason: ${tgEscape(reason || "No failure reason was provided")}`,
+    `⚠️ Reason: ${tgEscape(reason || "No failure reason was provided")}\n\n` +
+    `<i>If automatic delivery failed, deliver the bundle manually to the recipient above.</i>`,
   );
 }
 

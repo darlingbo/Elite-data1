@@ -42,8 +42,9 @@ export async function GET() {
     if (nearbyOrders.some(candidate =>
       candidate.network === order.network && candidate.bundle_size === order.bundle_size
     )) riskFlags.push("Possible duplicate");
-    if (Number(order.amount) <= Number(order.cost_price ?? 0)) riskFlags.push("No profit margin");
-    if (!order.paystack_reference && !order.reference.startsWith("AGTWALLET-")) {
+    const isYebeck = /^(?:ybk|yebeck)-/i.test(order.reference) ||
+      /^(?:ybk|yebeck)-/i.test(String(order.paystack_reference ?? ""));
+    if (!order.paystack_reference && !order.reference.startsWith("AGTWALLET-") && !isYebeck) {
       riskFlags.push("Payment reference missing");
     }
 

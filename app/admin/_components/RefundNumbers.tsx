@@ -202,7 +202,11 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS refund_network TEXT;`}
                   <tr key={r.reference} style={{ borderBottom: `1px solid ${D.border}`, background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)" }}>
                     <td style={{ padding: "12px 14px", color: D.muted, fontFamily: "monospace" }}>{i + 1}</td>
                     <td style={{ padding: "12px 14px" }}>
-                      <p style={{ margin: 0, fontWeight: 700, color: D.text }}>{r.customer_name || "—"}</p>
+                      <p style={{ margin: 0, fontWeight: 700, color: D.text }}>
+                        {r.customer_name && r.customer_name.toLowerCase() !== "customer" && r.customer_name !== r.phone
+                          ? r.customer_name
+                          : r.phone || "—"}
+                      </p>
                       <p style={{ margin: 0, fontSize: 11, color: D.muted, fontFamily: "monospace" }}>{r.reference?.slice(0, 16)}…</p>
                     </td>
                     <td style={{ padding: "12px 14px", fontFamily: "monospace", color: D.muted, fontSize: 12 }}>{r.phone ?? "—"}</td>

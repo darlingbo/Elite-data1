@@ -1535,7 +1535,7 @@ async function cmdRecover(chatId: string, reference: string) {
   let email = "";
   let amountPesewas = 0;
 
-  const isYebeck = reference.startsWith("ybk-") || reference.startsWith("yebeck-");
+  const isYebeck = /^(?:ybk|yebeck)-/i.test(reference);
   if (isYebeck) {
     try {
       const { verifyYebeckPayment } = await import("@/lib/payment-attempt");

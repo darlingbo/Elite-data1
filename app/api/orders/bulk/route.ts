@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
   let txnStatus: string | undefined;
   let txnAmount = 0;
-  let isYebeck = String(paystackRef).startsWith("ybk-") || String(paystackRef).startsWith("yebeck-");
+  let isYebeck = /^(?:ybk|yebeck)-/i.test(String(paystackRef));
 
   if (!isYebeck) {
     const { getPaymentAttempt } = await import("@/lib/payment-attempt");

@@ -106,10 +106,14 @@ async function saveOrder(fields: Record<string, unknown>): Promise<{ error: bool
 
   const minimal = {
     reference: fields.reference,
+    paystack_reference: fields.paystack_reference ?? fields.reference,
+    payment_method: fields.payment_method ?? null,
     customer_name: fields.customer_name,
+    customer_email: fields.customer_email ?? null,
     phone: fields.phone,
     network: fields.network,
     bundle_size: fields.bundle_size,
+    bundle_size_gb: fields.bundle_size_gb ?? null,
     amount: fields.amount,
     cost_price: fields.cost_price,
     admin_commission: fields.admin_commission,
@@ -127,10 +131,14 @@ async function saveOrder(fields: Record<string, unknown>): Promise<{ error: bool
   if (isAgentFk && fields.agent_id) {
     const withoutAgent = {
       reference: fields.reference,
+      paystack_reference: fields.paystack_reference ?? fields.reference,
+      payment_method: fields.payment_method ?? null,
       customer_name: fields.customer_name,
+      customer_email: fields.customer_email ?? null,
       phone: fields.phone,
       network: fields.network,
       bundle_size: fields.bundle_size,
+      bundle_size_gb: fields.bundle_size_gb ?? null,
       amount: fields.amount,
       cost_price: fields.cost_price,
       admin_commission: fields.admin_commission,
@@ -143,9 +151,10 @@ async function saveOrder(fields: Record<string, unknown>): Promise<{ error: bool
     if (!e25) return { error: false, partial: `agent_id FK constraint — saved without agent_id link. Fix: ALTER TABLE orders DROP CONSTRAINT orders_agent_id_fkey; ALTER TABLE orders ADD CONSTRAINT orders_agent_id_fkey FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE SET NULL;` };
   }
 
-  // T3 — keep network, bundle_size, customer_name so the record is usable
+  // T3 — keep network, bundle_size, customer_name, and paystack_reference so the record is usable
   const bare = {
     reference: fields.reference,
+    paystack_reference: fields.paystack_reference ?? fields.reference,
     customer_name: fields.customer_name ?? null,
     phone: fields.phone,
     network: fields.network ?? null,
@@ -390,7 +399,7 @@ export async function POST(request: NextRequest) {
   let txnAmount = 0;
   let txnCurrency = "GHS";
   let psData: Record<string, unknown> = {};
-  let isYebeck = String(paystackRef).startsWith("ybk-") || String(paystackRef).startsWith("yebeck-");
+  let isYebeck = /^(?:ybk|yebeck)-/i.test(String(paystackRef));
 
   if (!isYebeck) {
     // Check if it's stored as a Yebeck payment attempt first
@@ -620,11 +629,14 @@ export async function POST(request: NextRequest) {
   }
   const profit = roundCurrency(agentCommission + adminCommission);
 
+  const cleanName = typeof name === "string" ? name.trim() : "";
+  const effectiveCustomerName = (!cleanName || cleanName.toLowerCase() === "customer") ? phone : cleanName;
+
   const saved = await saveOrder({
     reference: paystackRef,
     paystack_reference: paystackRef,
     payment_method: isYebeck ? "yebeck" : "paystack",
-    customer_name: name,
+    customer_name: effectiveCustomerName,
     customer_email: email,
     phone,
     network: bundleMeta.network,
