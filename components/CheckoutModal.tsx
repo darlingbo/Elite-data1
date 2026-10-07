@@ -151,7 +151,7 @@ function copyToClipboard(text: string, onDone: () => void) {
 
 export default function CheckoutModal({ bundle, agentCode, referralVia, onClose, displayMode = "modal" }: Props) {
   const [phone, setPhone] = useState("");
-  const [name, setName] = useState("");
+  const [name, setName] = useState("Customer");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<SuccessState | null>(null);
@@ -250,7 +250,6 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
 
   function showConfirmation() {
     setError("");
-    if (!name.trim()) return setError("Please enter your name.");
     if (!validatePhone(phone)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
     if (!momoPhone) {
       const norm = normalizeGhPhone(phone) ?? phone.replace(/\s/g, "");
@@ -263,11 +262,12 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
 
   async function completePaidOrder(reference: string) {
     const autoEmail = `${phone.replace(/\s/g, "")}@elitedata1.com`;
+    const customerName = name.trim() || "Customer";
     const response = await fetch("/api/orders/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name,
+        name: customerName,
         email: autoEmail,
         phone,
         bundleId: bundle.id,
@@ -305,8 +305,8 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
 
   async function handlePay() {
     setError("");
-    if (!name.trim()) return setError("Please enter your name.");
     if (!validatePhone(phone)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
+    const customerName = name.trim() || "Customer";
 
     if (paymentMethod !== "mobile_money") {
       if (!paystackReady) return setError("Payment is still loading. Please try again in a moment.");
@@ -400,9 +400,9 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
             phone: cleanMomoPhone,
             network: momoNetwork,
             type: "data_order",
-            name,
+            name: customerName,
             metadata: {
-              customer_name: name,
+              customer_name: customerName,
               bundle_id: bundle.id,
               recipient_phone: phone,
               agent_code: agentCode ?? "",
@@ -485,7 +485,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
         ...(agentSubaccountCode ? { subaccount: agentSubaccountCode, bearer: "account" } : {}),
         metadata: {
           custom_fields: [
-            { display_name: "Customer Name", variable_name: "name", value: name },
+            { display_name: "Customer Name", variable_name: "name", value: customerName },
             { display_name: "Phone Number", variable_name: "phone", value: phone },
             { display_name: "Bundle", variable_name: "bundle", value: `${net.name} ${bundle.size}` },
             { display_name: "Bundle ID", variable_name: "bundle_id", value: bundle.id },
