@@ -210,14 +210,14 @@ export { normaliseGhanaPhone };
 
 export function orderReceivedSMS(name: string, network: string, size: string, _phone: string, reference: string): string {
   const first = (name || "").split(" ")[0] || "Customer";
-  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
-  return `Hi ${first}! Your ${network.toUpperCase()} ${size} data order (Ref: ${shortRef}) has been received. Delivery is in progress. Thank you for choosing Elite Data!`;
+  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-6).toUpperCase();
+  return `Hi ${first}! Your ${network.toUpperCase()} ${size} data order (Ref: ${shortRef}) has been received. Delivery is in progress. Thank you for choosing Elite Data! https://elitedata1.com`;
 }
 
 export function orderDeliveredSMS(name: string, network: string, size: string, _phone: string, reference: string): string {
   const first = (name || "").split(" ")[0] || "Customer";
-  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
-  return `Hi ${first}! Your ${network.toUpperCase()} ${size} data has been delivered. Ref: ${shortRef}. Thank you for choosing Elite Data!`;
+  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-6).toUpperCase();
+  return `Hi ${first}! Your ${network.toUpperCase()} ${size} data has been delivered. Ref: ${shortRef}. Thank you for choosing Elite Data! https://elitedata1.com`;
 }
 
 export function orderConfirmedSMS(name: string, network: string, size: string, phone: string, reference: string): string {
@@ -226,8 +226,8 @@ export function orderConfirmedSMS(name: string, network: string, size: string, p
 
 export function orderFailedSMS(name: string, network: string, size: string, reference: string): string {
   const first = (name || "").split(" ")[0] || "Customer";
-  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
-  return `Hi ${first}, we're sorry — your ${network.toUpperCase()} ${size} data order (Ref: ${shortRef}) could not be delivered. You will receive a full refund within 24 hours. Contact us for help.`;
+  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-6).toUpperCase();
+  return `Hi ${first}, we're sorry — your ${network.toUpperCase()} ${size} data order (Ref: ${shortRef}) could not be delivered. You will receive a full refund within 24 hours. https://elitedata1.com`;
 }
 
 /**
@@ -243,15 +243,15 @@ export function isNotOnListError(message: string): boolean {
 /** Sent once when an order lands in `not_on_list` — reassure, no refund, up to 72h. */
 export function orderNotOnListSMS(name: string, network: string, size: string, reference: string): string {
   const first = (name || "").split(" ")[0] || "Customer";
-  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
-  return `Hi ${first}, your ${network.toUpperCase()} ${size} order (Ref: ${shortRef}) has been received. This number is new to our system or not yet on our beneficiary list, so delivery can take up to 72 hours. No refund is needed — your data will be delivered. Thank you for your patience. — Elite Data`;
+  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-6).toUpperCase();
+  return `Hi ${first}, your ${network.toUpperCase()} ${size} order (Ref: ${shortRef}) has been received. This number is new to our system or not yet on our beneficiary list, so delivery can take up to 72 hours. No refund is needed — your data will be delivered. Thank you for your patience. — Elite Data https://elitedata1.com`;
 }
 
 /** Sent once if a `not_on_list` order is still undelivered after 72h. No refund. */
 export function orderNotOnListApologySMS(name: string, network: string, size: string, reference: string): string {
   const first = (name || "").split(" ")[0] || "Customer";
-  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
-  return `Hi ${first}, we sincerely apologise — your ${network.toUpperCase()} ${size} order (Ref: ${shortRef}) is taking longer than expected. Our team is still working to deliver it to your number. Thank you for your patience. — Elite Data`;
+  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-6).toUpperCase();
+  return `Hi ${first}, we sincerely apologise — your ${network.toUpperCase()} ${size} order (Ref: ${shortRef}) is taking longer than expected. Our team is still working to deliver it to your number. Thank you for your patience. — Elite Data https://elitedata1.com`;
 }
 import { supabase } from "@/lib/supabase";
 
@@ -262,7 +262,7 @@ function normaliseGhanaPhone(phone: string): string {
 
 export function orderRefundedSMS(name: string, amount: number, reference: string): string {
   const first = (name || "").split(" ")[0] || "Customer";
-  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
-  return `Hi ${first}, your GH₵${amount.toFixed(2)} refund for order ${shortRef} has been processed. Please allow your payment provider time to complete settlement. Thank you.`;
+  const shortRef = reference.replace(/[^A-Z0-9]/gi, "").slice(-6).toUpperCase();
+  return `Hi ${first}, your GH₵${amount.toFixed(2)} refund for order ${shortRef} has been processed. Please allow your payment provider time to complete settlement. Thank you. https://elitedata1.com`;
 }
 import { createHash, randomUUID } from "node:crypto";

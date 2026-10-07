@@ -481,7 +481,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
         amount: Math.round(totalAmount * 100),
         currency: "GHS",
         channels: selectedPaymentMethod.channels,
-        ref: `elite-${Date.now()}`,
+        ref: `ED-${Math.floor(100000 + Math.random() * 900000)}`,
         ...(agentSubaccountCode ? { subaccount: agentSubaccountCode, bearer: "account" } : {}),
         metadata: {
           custom_fields: [
@@ -912,7 +912,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
         </div>
 
         <p className="text-xs text-slate-500 leading-relaxed">
-          Yebeck may add a transaction fee. Check the total shown on your phone before approving.
+          Includes 2% processing &amp; transaction fee (applied to Mobile Money &amp; Card payments).
         </p>
 
         {error && (

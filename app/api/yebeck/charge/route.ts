@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     const amountPesewas = toMinorUnits(amountGhc);
-    const ref = reference || `ybk-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const ref = reference || `YBK-${Math.floor(100000 + Math.random() * 900000)}`;
 
     const res = await startYebeckCharge({
       amountPesewas,
