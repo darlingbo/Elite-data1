@@ -173,28 +173,6 @@ async function saveOrder(fields: Record<string, unknown>): Promise<{ error: bool
   };
 }
 
-async function deliverFreeBundle(phone: string, network: string, triggerRef: string): Promise<void> {
-  const networkApiMap: Record<string, string> = {
-    mtn: "MTN", telecel: "TELECEL", airteltigo: "AT ISHARE",
-  };
-  try {
-    await fetch(`${(process.env.INVENTOR_API_BASE_URL ?? "").replace(/\/+$/, "")}/api/developer/purchase`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.INVENTOR_API_KEY}` },
-      body: JSON.stringify({
-        network: networkApiMap[network] ?? "MTN",
-        Phone: phone,
-        Datasize: 1,
-        reference: `loyalty-reward-${triggerRef}`,
-      }),
-    });
-  } catch {
-    await sendAdminAlert(
-      `🎁 LOYALTY REWARD DELIVERY FAILED\nPhone: ${phone}\nNetwork: ${network.toUpperCase()}\nTrigger: ${triggerRef}\n\nPlease deliver 1GB manually.`
-    ).catch(() => {});
-  }
-}
-
 async function processLoyalty(
   phone: string,
   network: string,
@@ -228,9 +206,10 @@ async function processLoyalty(
         .eq("id", session.id);
 
       if (rewardEarned) {
-        deliverFreeBundle(phone, network, reference).catch(() => {});
+        // Inventor is only ever called through the approval flow, so the free
+        // 1GB is delivered manually by the admin.
         await sendAdminAlert(
-          `🎁 LOYALTY REWARD EARNED\nPhone: ${phone}\nNetwork: ${network.toUpperCase()}\n4 bundles purchased within 7h window — delivering free 1GB.`
+          `🎁 LOYALTY REWARD EARNED\nPhone: ${phone}\nNetwork: ${network.toUpperCase()}\nTrigger: ${reference}\n4 bundles purchased within 7h window — please deliver the free 1GB manually.`
         ).catch(() => {});
       }
 
