@@ -1,8 +1,19 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { bundles as defaultBundles, sizeLabel } from "@/lib/bundles";
+import { bundles as defaultBundles, sizeLabel, Bundle } from "@/lib/bundles";
 
 export const dynamic = "force-dynamic";
+
+function getAgentPrice(
+  bundle: { id: string; network: string; sizeGB: number },
+  agentMap: Map<string, number>
+): number | undefined {
+  if (agentMap.has(bundle.id)) return agentMap.get(bundle.id);
+  const netPrefix = bundle.network === "airteltigo" ? "at" : bundle.network;
+  const legacyId = `${netPrefix}-${bundle.sizeGB}gb`;
+  if (agentMap.has(legacyId)) return agentMap.get(legacyId);
+  return undefined;
+}
 
 export async function GET(request: NextRequest) {
   const agentCode = request.nextUrl.searchParams.get("agent");
@@ -53,8 +64,21 @@ export async function GET(request: NextRequest) {
       costPrice: o.cost_price,
     }));
 
+  // Deduplicate by network and sizeGB:
+  // 1. Static default bundles serve as the baseline/fallback.
+  // 2. Active custom bundles from the database take precedence over static bundles.
+  const bundleMap = new Map<string, Bundle>();
+
+  for (const b of defaultFiltered) {
+    bundleMap.set(`${b.network}:${b.sizeGB}`, b);
+  }
+
+  for (const cb of customBundles) {
+    bundleMap.set(`${cb.network}:${cb.sizeGB}`, cb);
+  }
+
   const netOrder: Record<string, number> = { mtn: 0, telecel: 1, airteltigo: 2 };
-  let allBundles = [...defaultFiltered, ...customBundles].sort((a, b) => {
+  let allBundles = Array.from(bundleMap.values()).sort((a, b) => {
     const netDiff = (netOrder[a.network] ?? 9) - (netOrder[b.network] ?? 9);
     if (netDiff !== 0) return netDiff;
     return (a.sizeGB ?? 0) - (b.sizeGB ?? 0);
@@ -70,25 +94,21 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (agent?.agent_type === "custom_price") {
-      // Get admin's tier prices as the base
-      const { data: tierPrices } = await supabase
-        .from("custom_tier_prices")
-        .select("bundle_id, price");
-      const tierMap = new Map((tierPrices ?? []).map((p: { bundle_id: string; price: number }) => [p.bundle_id, p.price]));
-      void tierMap;
-
       // Get this agent's personal markup prices
       const { data: agentPrices } = await supabase
         .from("agent_bundle_prices")
         .select("bundle_id, custom_price")
         .eq("agent_id", agent.id)
         .eq("active", true);
-      const agentMap = new Map((agentPrices ?? []).map((p: { bundle_id: string; custom_price: number }) => [p.bundle_id, p.custom_price]));
+      const agentMap = new Map((agentPrices ?? []).map((p: { bundle_id: string; custom_price: number }) => [p.bundle_id, Number(p.custom_price)]));
 
       // Only show bundles the agent has explicitly priced — apply their price
       allBundles = allBundles
-        .filter(b => agentMap.has(b.id))
-        .map(b => ({ ...b, price: agentMap.get(b.id)! }));
+        .map((b) => {
+          const customPrice = getAgentPrice(b, agentMap);
+          return customPrice !== undefined ? { ...b, price: customPrice } : null;
+        })
+        .filter((b): b is Bundle => b !== null);
     }
 
     if (agent && (agent as { plan?: string }).plan === "pro") {
@@ -100,10 +120,10 @@ export async function GET(request: NextRequest) {
         .eq("active", true);
       const agentMap = new Map((agentPrices ?? []).map((p: { bundle_id: string; custom_price: number }) => [p.bundle_id, Number(p.custom_price)]));
 
-      allBundles = allBundles.map(b => ({
-        ...b,
-        price: agentMap.has(b.id) ? agentMap.get(b.id)! : b.price,
-      }));
+      allBundles = allBundles.map((b) => {
+        const customPrice = getAgentPrice(b, agentMap);
+        return customPrice !== undefined ? { ...b, price: customPrice } : b;
+      });
     }
   }
 
