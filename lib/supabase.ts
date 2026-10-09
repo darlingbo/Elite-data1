@@ -1,20 +1,28 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl =
+const cleanUrl = (
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  "https://ycgtybmkqrmmlkelwtvq.supabase.co";
+  "https://ycgtybmkqrmmlkelwtvq.supabase.co"
+)
+  .trim()
+  .replace(/^["']|["']$/g, "");
 
 // Accept SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY.
 // Supports both new format (sb_secret_...) and standard Supabase JWT service role keys.
-const rawServiceKey =
+const rawServiceKey = (
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.SUPABASE_SERVICE_KEY ||
-  "";
+  ""
+)
+  .trim()
+  .replace(/^["']|["']$/g, "");
 
 const usingServiceKey = Boolean(rawServiceKey);
-const supabaseKey = usingServiceKey
-  ? rawServiceKey
-  : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "");
+const rawAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "")
+  .trim()
+  .replace(/^["']|["']$/g, "");
+
+const supabaseKey = usingServiceKey ? rawServiceKey : rawAnonKey;
 
 if (!usingServiceKey && typeof window === "undefined") {
   console.error(
@@ -23,7 +31,7 @@ if (!usingServiceKey && typeof window === "undefined") {
   );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabase = createClient(cleanUrl, supabaseKey);
 
 export type OrderStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
 

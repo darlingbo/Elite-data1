@@ -39,8 +39,10 @@ export async function GET() {
     },
     env: {
       supabaseUrlConfigured: Boolean(url),
+      supabaseOrigin: url ? new URL(url).origin : "(none)",
       serviceKeyConfigured: Boolean(serviceKey),
-      serviceKeyPrefix: serviceKey ? `${serviceKey.slice(0, 6)}...` : "(none)",
+      serviceKeyPrefix: serviceKey ? `${serviceKey.slice(0, 7)}...` : "(none)",
+      serviceKeySuffix: serviceKey ? `...${serviceKey.slice(-4)}` : "(none)",
       serviceKeyLength: serviceKey.length,
       anonKeyConfigured: Boolean(anonKey),
       adminPasswordConfigured: Boolean(process.env.ADMIN_PASSWORD),
