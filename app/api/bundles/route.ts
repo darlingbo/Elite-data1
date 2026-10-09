@@ -2,12 +2,18 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles as defaultBundles, sizeLabel } from "@/lib/bundles";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const agentCode = request.nextUrl.searchParams.get("agent");
 
-  const { data: overrides } = await supabase
+  const { data: overrides, error } = await supabase
     .from("bundle_prices")
     .select("id, price, cost_price, active, size_label, size_gb, validity, network");
+
+  if (error) {
+    console.error("[bundles] Supabase bundle_prices query error:", error.message, error.code);
+  }
 
   const rows = overrides ?? [];
   const overrideMap = new Map(rows.map((o: { id: string }) => [o.id, o]));
