@@ -22,31 +22,39 @@ export const networkApiName: Record<Network, string> = {
 // Base bundles provide an immediate fallback if DB queries are transiently unavailable.
 // Live prices and custom packages in bundle_prices table override these dynamically.
 export const bundles: Bundle[] = [
-  // MTN
-  { id: "mtn-1gb",    network: "mtn", size: "1GB",   sizeGB: 1,   price: 7,   costPrice: 4.20,  validity: "30 days" },
-  { id: "mtn-2gb",    network: "mtn", size: "2GB",   sizeGB: 2,   price: 12,  costPrice: 8.70,  validity: "30 days", popular: true },
-  { id: "mtn-3gb",    network: "mtn", size: "3GB",   sizeGB: 3,   price: 17,  costPrice: 13.00, validity: "30 days" },
-  { id: "mtn-5gb",    network: "mtn", size: "5GB",   sizeGB: 5,   price: 25,  costPrice: 20.90, validity: "30 days", popular: true },
-  { id: "mtn-10gb",   network: "mtn", size: "10GB",  sizeGB: 10,  price: 45,  costPrice: 39.50, validity: "30 days" },
-  { id: "mtn-15gb",   network: "mtn", size: "15GB",  sizeGB: 15,  price: 65,  costPrice: 57.00, validity: "30 days" },
-  { id: "mtn-20gb",   network: "mtn", size: "20GB",  sizeGB: 20,  price: 80,  costPrice: 72.00, validity: "30 days", popular: true },
-  { id: "mtn-50gb",   network: "mtn", size: "50GB",  sizeGB: 50,  price: 195, costPrice: 172.00, validity: "30 days" },
+  // MTN — matching silentecho.online/guest exactly
+  { id: "mtn-1gb",    network: "mtn", size: "1GB",   sizeGB: 1,   price: 5,     costPrice: 4.30,  validity: "90 days" },
+  { id: "mtn-2gb",    network: "mtn", size: "2GB",   sizeGB: 2,   price: 10,    costPrice: 8.90,  validity: "90 days", popular: true },
+  { id: "mtn-3gb",    network: "mtn", size: "3GB",   sizeGB: 3,   price: 15,    costPrice: 13.30, validity: "90 days" },
+  { id: "mtn-4gb",    network: "mtn", size: "4GB",   sizeGB: 4,   price: 20,    costPrice: 17.50, validity: "90 days" },
+  { id: "mtn-5gb",    network: "mtn", size: "5GB",   sizeGB: 5,   price: 25,    costPrice: 22.50, validity: "90 days", popular: true },
+  { id: "mtn-6gb",    network: "mtn", size: "6GB",   sizeGB: 6,   price: 28,    costPrice: 26.50, validity: "90 days" },
+  { id: "mtn-8gb",    network: "mtn", size: "8GB",   sizeGB: 8,   price: 37.5,  costPrice: 33.50, validity: "90 days" },
+  { id: "mtn-10gb",   network: "mtn", size: "10GB",  sizeGB: 10,  price: 48,    costPrice: 44.00, validity: "90 days", popular: true },
+  { id: "mtn-15gb",   network: "mtn", size: "15GB",  sizeGB: 15,  price: 67,    costPrice: 62.50, validity: "90 days" },
+  { id: "mtn-20gb",   network: "mtn", size: "20GB",  sizeGB: 20,  price: 88,    costPrice: 82.00, validity: "90 days", popular: true },
+  { id: "mtn-30gb",   network: "mtn", size: "30GB",  sizeGB: 30,  price: 127,   costPrice: 122.00, validity: "90 days" },
 
-  // Telecel
-  { id: "telecel-1gb",  network: "telecel", size: "1GB",  sizeGB: 1,  price: 6,   costPrice: 3.60,  validity: "30 days" },
-  { id: "telecel-2gb",  network: "telecel", size: "2GB",  sizeGB: 2,  price: 11,  costPrice: 7.50,  validity: "30 days", popular: true },
-  { id: "telecel-5gb",  network: "telecel", size: "5GB",  sizeGB: 5,  price: 23,  costPrice: 18.00, validity: "30 days", popular: true },
-  { id: "telecel-10gb", network: "telecel", size: "10GB", sizeGB: 10, price: 42,  costPrice: 34.00, validity: "30 days" },
-  { id: "telecel-20gb", network: "telecel", size: "20GB", sizeGB: 20, price: 75,  costPrice: 63.00, validity: "30 days", popular: true },
-  { id: "telecel-50gb", network: "telecel", size: "50GB", sizeGB: 50, price: 170, costPrice: 145.00, validity: "30 days" },
+  // Telecel — matching silentecho.online/guest exactly
+  { id: "telecel-10gb", network: "telecel", size: "10GB", sizeGB: 10, price: 40,  costPrice: 38.50, validity: "Unlimited", popular: true },
+  { id: "telecel-15gb", network: "telecel", size: "15GB", sizeGB: 15, price: 56,  costPrice: 55.00, validity: "Unlimited" },
+  { id: "telecel-20gb", network: "telecel", size: "20GB", sizeGB: 20, price: 76,  costPrice: 75.00, validity: "Unlimited", popular: true },
+  { id: "telecel-25gb", network: "telecel", size: "25GB", sizeGB: 25, price: 93,  costPrice: 90.50, validity: "Unlimited" },
+  { id: "telecel-30gb", network: "telecel", size: "30GB", sizeGB: 30, price: 110, costPrice: 108.00, validity: "Unlimited" },
+  { id: "telecel-40gb", network: "telecel", size: "40GB", sizeGB: 40, price: 150, costPrice: 145.00, validity: "30 days", popular: true },
 
-  // AirtelTigo
-  { id: "at-1gb",  network: "airteltigo", size: "1GB",  sizeGB: 1,  price: 6,   costPrice: 3.40,  validity: "30 days" },
-  { id: "at-2gb",  network: "airteltigo", size: "2GB",  sizeGB: 2,  price: 10,  costPrice: 7.10,  validity: "30 days", popular: true },
-  { id: "at-5gb",  network: "airteltigo", size: "5GB",  sizeGB: 5,  price: 22,  costPrice: 17.00, validity: "30 days", popular: true },
-  { id: "at-10gb", network: "airteltigo", size: "10GB", sizeGB: 10, price: 40,  costPrice: 32.00, validity: "30 days" },
-  { id: "at-20gb", network: "airteltigo", size: "20GB", sizeGB: 20, price: 70,  costPrice: 60.00, validity: "30 days", popular: true },
-  { id: "at-50gb", network: "airteltigo", size: "50GB", sizeGB: 50, price: 160, costPrice: 138.00, validity: "30 days" },
+  // AirtelTigo — matching silentecho.online/guest exactly
+  { id: "at-1gb",  network: "airteltigo", size: "1GB",  sizeGB: 1,  price: 4.5,   costPrice: 4.00,  validity: "90 days" },
+  { id: "at-2gb",  network: "airteltigo", size: "2GB",  sizeGB: 2,  price: 9,     costPrice: 8.50,  validity: "90 days", popular: true },
+  { id: "at-3gb",  network: "airteltigo", size: "3GB",  sizeGB: 3,  price: 14,    costPrice: 12.00, validity: "90 days" },
+  { id: "at-4gb",  network: "airteltigo", size: "4GB",  sizeGB: 4,  price: 18,    costPrice: 17.00, validity: "90 days" },
+  { id: "at-5gb",  network: "airteltigo", size: "5GB",  sizeGB: 5,  price: 22.5,  costPrice: 20.20, validity: "90 days", popular: true },
+  { id: "at-6gb",  network: "airteltigo", size: "6GB",  sizeGB: 6,  price: 26.5,  costPrice: 25.00, validity: "90 days" },
+  { id: "at-7gb",  network: "airteltigo", size: "7GB",  sizeGB: 7,  price: 31,    costPrice: 29.00, validity: "90 days" },
+  { id: "at-8gb",  network: "airteltigo", size: "8GB",  sizeGB: 8,  price: 35,    costPrice: 31.00, validity: "90 days" },
+  { id: "at-9gb",  network: "airteltigo", size: "9GB",  sizeGB: 9,  price: 40,    costPrice: 37.00, validity: "90 days" },
+  { id: "at-10gb", network: "airteltigo", size: "10GB", sizeGB: 10, price: 43,    costPrice: 41.00, validity: "90 days" },
+  { id: "at-12gb", network: "airteltigo", size: "12GB", sizeGB: 12, price: 50.55, costPrice: 49.00, validity: "90 days" },
 ];
 
 export function sizeLabel(sizeGB: number): string {
