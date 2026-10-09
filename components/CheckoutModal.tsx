@@ -184,9 +184,20 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
   const [momoNetwork, setMomoNetwork] = useState<"mtn" | "telecel" | "at">("mtn");
   const [momoPending, setMomoPending] = useState(false);
   const [momoMessage, setMomoMessage] = useState("");
+  const [telecelNoticeEnabled, setTelecelNoticeEnabled] = useState(false);
   const paystackReady = usePaystackReady();
   const { list: beneficiaries, save: saveBeneficiary, remove: removeBeneficiary } = useBeneficiaries();
   const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Admin-controlled: when on, Telecel Mobile Money customers are told to
+  // WhatsApp the admin and send the money to the admin instead of paying here.
+  const telecelBlocked = telecelNoticeEnabled && paymentMethod === "mobile_money" && momoNetwork === "telecel";
+  useEffect(() => {
+    fetch("/api/admin/store-status")
+      .then((r) => r.json())
+      .then((d) => setTelecelNoticeEnabled(d.telecelNoticeEnabled === true))
+      .catch(() => {});
+  }, []);
 
   const net = networkConfig[bundle.network];
   const feeAmount = parseFloat((bundle.price * PLATFORM_FEE_RATE).toFixed(2));
@@ -306,6 +317,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
 
   async function handlePay() {
     setError("");
+    if (telecelBlocked) return;
     if (!validatePhone(phone)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
     const cleanName = name.trim();
     const customerName = (!cleanName || cleanName === "Customer") ? phone.trim() : cleanName;
@@ -913,6 +925,23 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
           </select>
         </div>
 
+        {telecelBlocked && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
+            <p className="font-bold">Telecel payment: contact the admin</p>
+            <p className="mt-1">
+              Please contact the admin on WhatsApp <strong>0509794503</strong> (WhatsApp only, no calls) and send the money to the admin.
+            </p>
+            <a
+              href="https://wa.me/233509794503"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-block rounded-lg bg-green-600 px-3 py-2 font-bold text-white hover:bg-green-700"
+            >
+              Chat on WhatsApp
+            </a>
+          </div>
+        )}
+
         <p className="text-xs text-slate-500 leading-relaxed">
           Includes 2% processing &amp; transaction fee (applied to Mobile Money &amp; Card payments).
         </p>
@@ -941,7 +970,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
           <button
             type="button"
             onClick={() => void handlePay()}
-            disabled={loading || !phone.trim() || !momoPhone.trim()}
+            disabled={loading || telecelBlocked || !phone.trim() || !momoPhone.trim()}
             className="flex-1 rounded-xl bg-[#f87171] hover:bg-rose-500 py-3 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-50 shadow-xs"
           >
             {loading ? (momoPending ? "Waiting…" : "Processing…") : "Confirm"}

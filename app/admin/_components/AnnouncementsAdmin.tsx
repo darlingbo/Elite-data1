@@ -97,6 +97,10 @@ export default function AnnouncementsAdmin() {
   const [mtnVerifyEnabled, setMtnVerifyEnabled] = useState<boolean | null>(null);
   const [mtnVerifyLoading, setMtnVerifyLoading] = useState(false);
   const [mtnVerifySaved, setMtnVerifySaved] = useState("");
+  // Telecel payment notice control
+  const [telecelNoticeEnabled, setTelecelNoticeEnabled] = useState<boolean | null>(null);
+  const [telecelNoticeLoading, setTelecelNoticeLoading] = useState(false);
+  const [telecelNoticeSaved, setTelecelNoticeSaved] = useState("");
   // Phone blocklist
   const [blocklist, setBlocklist] = useState<string[]>([]);
   const [blocklistLoading, setBlocklistLoading] = useState(false);
@@ -109,7 +113,8 @@ export default function AnnouncementsAdmin() {
       setClosedMsg(d.closedMessage ?? "");
       setHelplineEnabled(d.helplineEnabled !== false);
       setMtnVerifyEnabled(d.mtnVerificationEnabled !== false);
-    }).catch(() => { setStoreOpen(true); setHelplineEnabled(true); setMtnVerifyEnabled(true); });
+      setTelecelNoticeEnabled(d.telecelNoticeEnabled === true);
+    }).catch(() => { setStoreOpen(true); setHelplineEnabled(true); setMtnVerifyEnabled(true); setTelecelNoticeEnabled(false); });
     // Load blocklist
     fetch("/api/admin/blocklist").then(r => r.json()).then(d => setBlocklist(d.phones ?? [])).catch(() => {});
   }, []);
@@ -231,6 +236,16 @@ export default function AnnouncementsAdmin() {
     setMtnVerifyLoading(false);
     setMtnVerifySaved(newState ? "Verification is now ON" : "Verification is now OFF — all MTN orders allowed");
     setTimeout(() => setMtnVerifySaved(""), 4000);
+  }
+
+  async function toggleTelecelNotice() {
+    const newState = !telecelNoticeEnabled;
+    setTelecelNoticeEnabled(newState);
+    setTelecelNoticeLoading(true);
+    await fetch("/api/admin/store-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ telecelNoticeEnabled: newState }) }).catch(() => {});
+    setTelecelNoticeLoading(false);
+    setTelecelNoticeSaved(newState ? "Telecel notice is now ON" : "Telecel notice is now OFF");
+    setTimeout(() => setTelecelNoticeSaved(""), 4000);
   }
 
   async function saveClosedMessage() {
@@ -357,6 +372,38 @@ export default function AnnouncementsAdmin() {
           {mtnVerifyLoading ? "Saving…" : mtnVerifyEnabled !== false ? "Turn Off Verification" : "Turn On Verification"}
         </button>
         {mtnVerifySaved && <p style={{ color: "#4ade80", fontSize: 13, fontWeight: 700, marginTop: 8 }}>✓ {mtnVerifySaved}</p>}
+      </div>
+
+      {/* ── Telecel Payment Notice ── */}
+      <div style={{ background: "#162032", border: "1px solid #1e3050", borderRadius: 16, padding: 20 }}>
+        <h3 style={{ color: "#f1f5f9", fontWeight: 800, fontSize: 18, margin: "0 0 4px" }}>Telecel Payment Notice</h3>
+        <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 18px" }}>
+          When ON, a customer who picks Telecel as their Mobile Money network sees a note to WhatsApp you on 0509794503
+          and send the money to the admin. Their Confirm button is blocked while the note shows.
+        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <span style={{
+            width: 10, height: 10, borderRadius: "50%",
+            background: telecelNoticeEnabled === true ? "#f59e0b" : "#4ade80",
+            display: "inline-block",
+            boxShadow: telecelNoticeEnabled === true ? "0 0 6px #f59e0b" : "0 0 6px #4ade80",
+          }} />
+          <span style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 16 }}>
+            Notice is {telecelNoticeEnabled === true ? "ON — Telecel customers are told to contact you" : "OFF — Telecel pays normally"}
+          </span>
+        </div>
+        <button
+          onClick={toggleTelecelNotice}
+          disabled={telecelNoticeLoading || telecelNoticeEnabled === null}
+          style={{
+            background: telecelNoticeEnabled === true ? "#b45309" : "#16a34a",
+            color: "#fff", border: "none", borderRadius: 12,
+            padding: "12px 28px", fontWeight: 800, fontSize: 14,
+            cursor: "pointer", opacity: telecelNoticeLoading ? 0.6 : 1,
+          }}>
+          {telecelNoticeLoading ? "Saving…" : telecelNoticeEnabled === true ? "Turn Off Notice" : "Turn On Notice"}
+        </button>
+        {telecelNoticeSaved && <p style={{ color: "#4ade80", fontSize: 13, fontWeight: 700, marginTop: 8 }}>✓ {telecelNoticeSaved}</p>}
       </div>
 
       {/* ── Phone Blocklist ── */}
