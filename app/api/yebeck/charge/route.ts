@@ -3,8 +3,16 @@ import { startYebeckCharge } from "@/lib/yebeck-charge";
 import { normalizeGhPhone } from "@/lib/phone";
 import { toMinorUnits } from "@/lib/finance";
 import type { YebeckNetwork } from "@/lib/yebeck";
+import { getStoreStatus } from "@/lib/store-status";
 
 export async function POST(request: NextRequest) {
+  // Admin "Close Store" switch: no new payment prompts while closed. A page that
+  // was already open before closing could otherwise still start a charge.
+  const store = await getStoreStatus();
+  if (!store.open) {
+    return Response.json({ ok: false, message: store.message }, { status: 503 });
+  }
+
   try {
     const body = await request.json();
     const { amount, phone, network, type, reference, name, metadata } = body;

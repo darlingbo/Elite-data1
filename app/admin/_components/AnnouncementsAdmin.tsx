@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { ALTERNATE_STORE_LABEL } from "@/lib/store-closed";
 
 interface Announcement {
   id: string;
@@ -89,6 +90,7 @@ export default function AnnouncementsAdmin() {
   const [closedMsg, setClosedMsg] = useState("");
   const [storeLoading, setStoreLoading] = useState(false);
   const [storeSaved, setStoreSaved] = useState("");
+  const [storeError, setStoreError] = useState("");
   // Helpline control
   const [helplineEnabled, setHelplineEnabled] = useState<boolean | null>(null);
   const [helplineLoading, setHelplineLoading] = useState(false);
@@ -190,12 +192,31 @@ export default function AnnouncementsAdmin() {
     load();
   }
 
+  // Saves a store setting and returns an error message, or null when it really saved.
+  async function saveStoreSetting(body: Record<string, unknown>): Promise<string | null> {
+    try {
+      const res = await fetch("/api/admin/store-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) return null;
+      if (res.status === 401) return "Your admin session expired — log in again.";
+      const data = await res.json().catch(() => ({}));
+      return data.error ?? "Could not save. Please try again.";
+    } catch {
+      return "Network error — nothing was saved. Please try again.";
+    }
+  }
+
   async function toggleStore() {
     const newState = !storeOpen;
-    setStoreOpen(newState);
     setStoreLoading(true);
-    await fetch("/api/admin/store-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ open: newState }) }).catch(() => {});
+    setStoreError("");
+    const failure = await saveStoreSetting({ open: newState });
     setStoreLoading(false);
+    if (failure) {
+      // Keep the button showing the real state — the store did NOT change.
+      setStoreError(failure);
+      return;
+    }
+    setStoreOpen(newState);
     setStoreSaved(newState ? "Store is now OPEN" : "Store is now CLOSED");
     setTimeout(() => setStoreSaved(""), 3000);
   }
@@ -250,8 +271,13 @@ export default function AnnouncementsAdmin() {
 
   async function saveClosedMessage() {
     setStoreLoading(true);
-    await fetch("/api/admin/store-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ closedMessage: closedMsg }) }).catch(() => {});
+    setStoreError("");
+    const failure = await saveStoreSetting({ closedMessage: closedMsg });
     setStoreLoading(false);
+    if (failure) {
+      setStoreError(failure);
+      return;
+    }
     setStoreSaved("Message saved!");
     setTimeout(() => setStoreSaved(""), 3000);
   }
@@ -278,7 +304,7 @@ export default function AnnouncementsAdmin() {
           <span style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 16 }}>Store is {storeOpen !== false ? "OPEN" : "CLOSED"}</span>
         </div>
         <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 14px" }}>
-          When closed, the buy page and all agent stores show your message instead of the shop.
+          When closed, the home, buy, prices and vouchers pages and all agent stores show your message and a button to {ALTERNATE_STORE_LABEL}. The admin panel, agent dashboards and order tracking stay open. Takes effect within about 10 seconds.
         </p>
         <button
           onClick={toggleStore}
@@ -293,7 +319,7 @@ export default function AnnouncementsAdmin() {
         </button>
 
         <p style={{ color: "#94a3b8", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
-          Message to show customers when closed
+          Message to show customers when closed (leave blank to send them to {ALTERNATE_STORE_LABEL})
         </p>
         <textarea
           rows={4}
@@ -309,6 +335,7 @@ export default function AnnouncementsAdmin() {
           {storeLoading ? "Saving…" : "Save Message"}
         </button>
         {storeSaved && <p style={{ color: "#4ade80", fontSize: 13, fontWeight: 700, marginTop: 8 }}>✓ {storeSaved}</p>}
+        {storeError && <p style={{ color: "#f87171", fontSize: 13, fontWeight: 700, marginTop: 8 }}>✗ {storeError}</p>}
       </div>
 
       {/* ── Helpline Control ── */}

@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Bundle, networkConfig } from "@/lib/bundles";
 import { normalizeGhPhone, detectGhProvider } from "@/lib/phone";
+import { ALTERNATE_STORE_LABEL, ALTERNATE_STORE_URL, DEFAULT_CLOSED_MESSAGE } from "@/lib/store-closed";
 
 interface Props {
   bundle: Bundle;
@@ -185,6 +186,8 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
   const [momoPending, setMomoPending] = useState(false);
   const [momoMessage, setMomoMessage] = useState("");
   const [telecelNoticeEnabled, setTelecelNoticeEnabled] = useState(false);
+  // Set when the admin has closed the store after this page was loaded.
+  const [closedNotice, setClosedNotice] = useState<string | null>(null);
   const paystackReady = usePaystackReady();
   const { list: beneficiaries, save: saveBeneficiary, remove: removeBeneficiary } = useBeneficiaries();
   const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -195,7 +198,10 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
   useEffect(() => {
     fetch("/api/admin/store-status")
       .then((r) => r.json())
-      .then((d) => setTelecelNoticeEnabled(d.telecelNoticeEnabled === true))
+      .then((d) => {
+        setTelecelNoticeEnabled(d.telecelNoticeEnabled === true);
+        setClosedNotice(d.open === false ? (String(d.closedMessage ?? "").trim() || DEFAULT_CLOSED_MESSAGE) : null);
+      })
       .catch(() => {});
   }, []);
 
@@ -317,7 +323,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
 
   async function handlePay() {
     setError("");
-    if (telecelBlocked) return;
+    if (telecelBlocked || closedNotice) return;
     if (!validatePhone(phone)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
     const cleanName = name.trim();
     const customerName = (!cleanName || cleanName === "Customer") ? phone.trim() : cleanName;
@@ -925,6 +931,19 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
           </select>
         </div>
 
+        {closedNotice && (
+          <div className="bg-amber-50 border border-amber-300 text-amber-800 text-sm px-3 py-2 rounded-lg space-y-2">
+            <p className="font-bold">We&apos;re temporarily closed</p>
+            <p className="whitespace-pre-line">{closedNotice}</p>
+            <a
+              href={ALTERNATE_STORE_URL}
+              className="block text-center w-full bg-blue-600 hover:bg-blue-700 active:opacity-75 text-white font-bold py-3 rounded-xl transition-colors text-sm"
+            >
+              Buy data at {ALTERNATE_STORE_LABEL}
+            </a>
+          </div>
+        )}
+
         {telecelBlocked && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
             <p className="font-bold">Telecel payment: contact the admin</p>
@@ -970,7 +989,7 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
           <button
             type="button"
             onClick={() => void handlePay()}
-            disabled={loading || telecelBlocked || !phone.trim() || !momoPhone.trim()}
+            disabled={loading || telecelBlocked || !!closedNotice || !phone.trim() || !momoPhone.trim()}
             className="flex-1 rounded-xl bg-[#f87171] hover:bg-rose-500 py-3 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-50 shadow-xs"
           >
             {loading ? (momoPending ? "Waiting…" : "Processing…") : "Confirm"}

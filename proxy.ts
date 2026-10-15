@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isStoreGatedPath } from "@/lib/store-closed";
+import { getStoreStatus } from "@/lib/store-status";
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
@@ -56,6 +58,20 @@ export function proxy(request: NextRequest) {
   const reqHeaders = new Headers(request.headers);
   reqHeaders.set("x-nonce", nonce);
   reqHeaders.set("x-pathname", pathname);
+
+  // Admin "Close Store" switch: while closed, shopping pages show the closed
+  // screen (503 so search engines treat it as temporary). Admin, agent areas,
+  // order tracking, APIs and webhooks are untouched — see lib/store-closed.ts.
+  if (isStoreGatedPath(pathname) && !(await getStoreStatus()).open) {
+    reqHeaders.set("x-store-closed", "1");
+    const closed = NextResponse.rewrite(new URL("/store-closed", request.url), {
+      request: { headers: reqHeaders },
+      status: 503,
+      headers: { "Retry-After": "3600", "Cache-Control": "no-store" },
+    });
+    closed.headers.set("Content-Security-Policy", csp);
+    return closed;
+  }
 
   const response = NextResponse.next({ request: { headers: reqHeaders } });
 

@@ -93,7 +93,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const isAdmin = pathname.startsWith("/admin");
   const isAgent = pathname.startsWith("/agent");
   const isSubAdmin = pathname.startsWith("/subadmin");
-  const isStandalone = isAdmin || isAgent || isSubAdmin;
+  // Set by proxy.ts while the admin "Close Store" switch is on: show the bare
+  // closed screen with no nav, banners, chat or bottom bar pointing at the shop.
+  const storeClosed = headersList.get("x-store-closed") === "1";
+  const isStandalone = isAdmin || isAgent || isSubAdmin || storeClosed;
   const helplineEnabled = isStandalone ? false : await getHelplineEnabled();
   const bodyModeClass = isAdmin ? "admin-site" : isAgent ? "agent-site" : isSubAdmin ? "subadmin-site" : "public-site";
 

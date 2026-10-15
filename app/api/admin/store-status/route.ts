@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
+import { clearStoreStatusCache } from "@/lib/store-status";
 
 async function isAdmin() {
   const c = await cookies();
@@ -13,7 +14,10 @@ async function getKV(key: string): Promise<string | null> {
   return data?.value ?? null;
 }
 async function setKV(key: string, value: string) {
-  await supabase.from("system_settings").upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+  const { error } = await supabase.from("system_settings").upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+  // Surface failures — a swallowed error made the admin button say "CLOSED"
+  // while nothing was actually saved.
+  if (error) throw new Error(`Could not save ${key}: ${error.message}`);
 }
 
 export async function GET() {
@@ -37,10 +41,17 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json();
-  if (typeof body.open === "boolean") await setKV("store_open", String(body.open));
-  if (typeof body.closedMessage === "string") await setKV("store_closed_message", body.closedMessage);
-  if (typeof body.helplineEnabled === "boolean") await setKV("helpline_enabled", String(body.helplineEnabled));
-  if (typeof body.mtnVerificationEnabled === "boolean") await setKV("mtn_verification_enabled", String(body.mtnVerificationEnabled));
-  if (typeof body.telecelNoticeEnabled === "boolean") await setKV("telecel_notice_enabled", String(body.telecelNoticeEnabled));
+  try {
+    if (typeof body.open === "boolean") await setKV("store_open", String(body.open));
+    if (typeof body.closedMessage === "string") await setKV("store_closed_message", body.closedMessage);
+    if (typeof body.helplineEnabled === "boolean") await setKV("helpline_enabled", String(body.helplineEnabled));
+    if (typeof body.mtnVerificationEnabled === "boolean") await setKV("mtn_verification_enabled", String(body.mtnVerificationEnabled));
+    if (typeof body.telecelNoticeEnabled === "boolean") await setKV("telecel_notice_enabled", String(body.telecelNoticeEnabled));
+  } catch (err) {
+    return Response.json({ error: err instanceof Error ? err.message : "Could not save setting" }, { status: 500 });
+  } finally {
+    // Make this server instance notice the change immediately.
+    clearStoreStatusCache();
+  }
   return Response.json({ success: true });
 }
