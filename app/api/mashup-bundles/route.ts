@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { publicCache } from "@/lib/public-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -13,5 +14,5 @@ export async function GET() {
     console.error("[mashup-bundles] Supabase query error:", error.message, error.code);
     return Response.json({ bundles: [] });
   }
-  return Response.json({ bundles: data ?? [] });
+  return Response.json({ bundles: data ?? [] }, { headers: publicCache(30) });
 }

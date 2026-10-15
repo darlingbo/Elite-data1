@@ -123,14 +123,15 @@ export default function AdminDashboard() {
   useEffect(() => { if (tab === "overview") { setTimeout(() => setAnimated(false), 0); setTimeout(() => setAnimated(true), 60); } }, [tab]);
 
   useEffect(() => {
-    const id = setInterval(() => void fetchStats(), 30_000);
+    // Skip while the tab is in the background (saves Vercel CPU/invocations).
+    const id = setInterval(() => { if (!document.hidden) void fetchStats(); }, 30_000);
     return () => clearInterval(id);
   }, [fetchStats]);
 
   useEffect(() => {
     if (tab !== "approval-queue") return;
     void fetchPendingApproval();
-    const id = setInterval(() => void fetchPendingApproval(), 8_000);
+    const id = setInterval(() => { if (!document.hidden) void fetchPendingApproval(); }, 8_000);
     return () => clearInterval(id);
   }, [tab, fetchPendingApproval]);
 

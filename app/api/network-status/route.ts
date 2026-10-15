@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { publicCache } from "@/lib/public-cache";
 
 // Public endpoint — no auth required
 // Returns which networks are enabled so the buy page can hide disabled ones
@@ -16,5 +17,9 @@ export async function GET() {
     get("slow_delivery", "0"),
   ]);
 
-  return Response.json({ mtn: mtn === "1", telecel: telecel === "1", at: at === "1", mashup: mashup === "1", slowDelivery: slowDelivery === "1" });
+  // Short cache: when the admin switches a network off, customers should see it within a minute.
+  return Response.json(
+    { mtn: mtn === "1", telecel: telecel === "1", at: at === "1", mashup: mashup === "1", slowDelivery: slowDelivery === "1" },
+    { headers: publicCache(30) },
+  );
 }

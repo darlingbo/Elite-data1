@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles as defaultBundles, sizeLabel, Bundle } from "@/lib/bundles";
+import { publicCache } from "@/lib/public-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -127,5 +128,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return Response.json({ bundles: allBundles });
+  // Prices: short cache so an admin price change reaches customers within a minute.
+  // The CDN keys on the full URL, so each ?agent=CODE storefront is cached separately.
+  // Don't cache a failed price lookup (we'd be serving fallback prices).
+  return Response.json({ bundles: allBundles }, error ? undefined : { headers: publicCache(30) });
 }

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { publicCache } from "@/lib/public-cache";
 
 function maskPhone(phone: string): string {
   const p = phone.replace(/\s/g, "");
@@ -23,5 +24,5 @@ export async function GET() {
     created_at: o.created_at as string,
   }));
 
-  return Response.json({ orders });
+  return Response.json({ orders }, { headers: publicCache(60) });
 }

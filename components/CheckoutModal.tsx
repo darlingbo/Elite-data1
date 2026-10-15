@@ -871,8 +871,8 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
         </div>
 
         <div>
-          <label htmlFor="recipient_phone" className="block text-sm font-semibold text-slate-700">
-            Recipient {bundle.network === "airteltigo" ? "AT" : bundle.network.toUpperCase()} number
+          <label htmlFor="recipient_phone" className="block text-sm font-bold text-slate-800">
+            🎯 Recipient {bundle.network === "airteltigo" ? "AT" : bundle.network.toUpperCase()} Phone Number (Data will be sent here)
           </label>
           <input
             id="recipient_phone"
@@ -892,6 +892,21 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
             required
             className="mt-1 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-400"
           />
+          {(() => {
+            const clean = phone.replace(/\D/g, "");
+            if (clean.length >= 9 && bundle.network !== "mashup") {
+              const det = detectGhProvider(clean);
+              const expected = bundle.network === "airteltigo" ? "at" : bundle.network;
+              if (det && det !== expected) {
+                return (
+                  <div className="mt-1.5 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 font-semibold">
+                    ⚠️ Mismatch warning: You chose an {bundle.network.toUpperCase()} bundle, but this looks like a {det === "at" ? "AirtelTigo" : det.toUpperCase()} number. Please double-check!
+                  </div>
+                );
+              }
+            }
+            return null;
+          })()}
         </div>
 
         <div>

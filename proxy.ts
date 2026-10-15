@@ -81,6 +81,14 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+// Vercel bills every proxy run as a function call + CPU, even for cached or static
+// responses, so skip requests that need none of the proxy's work (CSP/nonce for
+// pages, admin gates, closed-store screen, cross-origin check on POST/PUT/DELETE):
+//  - static files (images, css, js, json, txt, xml, fonts, html in /public)
+//  - public GET-only JSON endpoints that are CDN-cached (see lib/public-cache.ts)
+// This must stay an inline literal — Next.js reads it at build time.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon\\.ico).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon\\.ico|api/(?:announcements|orders/recent|promo-banner|bundles|mashup-bundles|network-status)$|.*\\.(?:png|jpe?g|gif|svg|ico|webp|avif|css|js|json|txt|xml|woff2?|map|html)$).*)",
+  ],
 };

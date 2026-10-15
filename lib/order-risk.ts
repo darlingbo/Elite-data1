@@ -29,7 +29,7 @@ function isWalletReference(reference: string): boolean {
 }
 
 function isYebeckReference(reference: string): boolean {
-  return /^(?:ybk|yebeck)-/i.test(reference);
+  return /^(?:ybk|yebeck)-/i.test(reference) || String(reference ?? "").toUpperCase().startsWith("YBK-");
 }
 
 export async function assessOrderRisk(reference: string): Promise<OrderRiskDecision> {
@@ -54,11 +54,13 @@ export async function assessOrderRisk(reference: string): Promise<OrderRiskDecis
   // the RPC that created the order before this row could exist at all.
   // Yebeck payments (direct Mobile Money) are similarly verified at checkout
   // before being saved to the orders table.
-  const verifiedMethods = new Set(["agent_wallet", "api_wallet", "yebeck", "yebeck_bulk", "paystack"]);
+  const verifiedMethods = new Set(["agent_wallet", "api_wallet", "yebeck", "yebeck_bulk", "paystack", "momo", "mobile_money"]);
   const paymentMethodLower = String(order.payment_method ?? "").toLowerCase();
   const isVerifiedWalletOrYebeck = verifiedMethods.has(paymentMethodLower);
   const isYebeckOrder =
     paymentMethodLower.startsWith("yebeck") ||
+    paymentMethodLower === "momo" ||
+    paymentMethodLower === "mobile_money" ||
     isYebeckReference(reference) ||
     isYebeckReference(String(order.paystack_reference ?? ""));
 

@@ -171,11 +171,16 @@ function TrackContent() {
     if (initialRef) searchByRef(initialRef);
   }, [initialRef, searchByRef]);
 
-  // Poll every 5s while single order is still active
+  // Poll every 15s while single order is still active — and only while the tab is
+  // visible: a forgotten background tab used to hit the server every 5s for hours,
+  // which is a big part of the Vercel free-plan CPU/invocation usage.
   useEffect(() => {
     const status = order?.status?.toLowerCase();
     if (status !== "processing" && status !== "pending" && status !== "pending_approval") return;
-    const id = setInterval(() => searchByRef(order!.reference, true), 5000);
+    const id = setInterval(() => {
+      if (document.hidden) return;
+      void searchByRef(order!.reference, true);
+    }, 15_000);
     return () => clearInterval(id);
   }, [order?.status, order?.reference, searchByRef]);
 
@@ -355,7 +360,7 @@ function TrackContent() {
               {[
                 { label: "Reference", value: <span style={{ fontFamily: "monospace", fontSize: 11, wordBreak: "break-all" }}>{order.reference}</span> },
                 order.network && order.bundle_size ? { label: "Bundle", value: `${order.network.toUpperCase()} ${order.bundle_size}` } : null,
-                order.phone ? { label: "Phone", value: order.phone } : null,
+                order.phone ? { label: "Data Sent To (Recipient)", value: <span style={{ color: "#34d399", fontWeight: 700 }}>{order.phone}</span> } : null,
                 { label: "Amount", value: `GH₵ ${Number(order.amount).toFixed(2)}` },
                 { label: "Date", value: fmtDate(order.created_at) },
               ].filter(Boolean).map((row, i) => row && (

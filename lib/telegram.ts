@@ -99,12 +99,12 @@ export async function sendOrderFailedAlert({
 }): Promise<void> {
   const bundle = [network?.toUpperCase(), bundleSize].filter(Boolean).join(" ");
   await sendAdminAlert(
-    `❌ <b>ORDER FAILED — DELIVER MANUALLY</b>\n\n` +
-    (bundle ? `📱 ${tgEscape(bundle)}\n` : "") +
-    `🎯 Recipient (Send Data To): <code>${tgEscape(phone)}</code>\n` +
-    `📎 Ref: <code>${tgEscape(reference)}</code>\n` +
-    `⚠️ Reason: ${tgEscape(reason || "No failure reason was provided")}\n\n` +
-    `<i>If automatic delivery failed, deliver the bundle manually to the recipient above.</i>`,
+    `❌ <b>DELIVERY FAILED — MANUAL FULFILLMENT REQUIRED</b>\n\n` +
+    (bundle ? `📱 <b>Package:</b> ${tgEscape(bundle)}\n` : "") +
+    `🎯 <b>SEND DATA TO (RECIPIENT):</b> <code>${tgEscape(phone)}</code>\n` +
+    `📎 <b>Order Ref:</b> <code>${tgEscape(reference)}</code>\n` +
+    `⚠️ <b>Failure Reason:</b> ${tgEscape(reason || "No failure reason was provided")}\n\n` +
+    `👉 <i>Copy the recipient number above to send the bundle manually via your vendor app or terminal.</i>`,
   );
 }
 
@@ -138,30 +138,33 @@ export function fmtOrder({
       ? `🔗 Agent: <b>${e(agentName)}</b>`
       : "🛒 Direct customer";
   return (
-    `🛒 <b>New Order</b>\n` +
-    `📱 ${e(network.toUpperCase())} ${e(size)}\n` +
-    `📞 Phone: <code>${e(phone)}</code>\n` +
-    `💰 Amount: GH₵${amount.toFixed(2)}\n` +
-    `📊 Profit: GH₵${profit.toFixed(2)}\n` +
+    `🛒 <b>NEW ORDER — APPROVAL QUEUE</b>\n` +
+    `📱 <b>Package:</b> ${e(network.toUpperCase())} ${e(size)}\n` +
+    `🎯 <b>SEND DATA TO (RECIPIENT):</b> <code>${e(phone)}</code>\n` +
+    `💰 <b>Amount:</b> GH₵${amount.toFixed(2)}\n` +
+    `📊 <b>Profit:</b> GH₵${profit.toFixed(2)}\n` +
     `${source}\n` +
-    `📎 Ref: <code>${e(ref)}</code>`
+    `📎 <b>Ref:</b> <code>${e(ref)}</code>`
   );
 }
 
 export function fmtDelivered(ref: string, phone: string, network: string, size: string) {
   return (
-    `✅ <b>Bundle Delivered</b>\n` +
-    `📱 ${e(network.toUpperCase())} ${e(size)} → <code>${e(phone)}</code>\n` +
+    `✅ <b>BUNDLE DELIVERED</b>\n` +
+    `📱 ${e(network.toUpperCase())} ${e(size)}\n` +
+    `🎯 <b>Delivered To:</b> <code>${e(phone)}</code>\n` +
     `📎 Ref: <code>${e(ref)}</code>`
   );
 }
 
 export function fmtFailed(ref: string, phone: string, network: string, size: string, amount: number) {
   return (
-    `❌ <b>Order Failed</b>\n` +
-    `📱 ${e(network.toUpperCase())} ${e(size)} → <code>${e(phone)}</code>\n` +
-    `💰 GH₵${amount.toFixed(2)}\n` +
-    `📎 Ref: <code>${e(ref)}</code>`
+    `❌ <b>ORDER FAILED — MANUAL ACTION NEEDED</b>\n` +
+    `📱 ${e(network.toUpperCase())} ${e(size)}\n` +
+    `🎯 <b>SEND DATA TO (RECIPIENT):</b> <code>${e(phone)}</code>\n` +
+    `💰 <b>Amount:</b> GH₵${amount.toFixed(2)}\n` +
+    `📎 Ref: <code>${e(ref)}</code>\n` +
+    `👉 <i>Copy recipient number above to complete manually.</i>`
   );
 }
 

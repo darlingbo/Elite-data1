@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { publicCache } from "@/lib/public-cache";
 
 export async function GET(request: NextRequest) {
   const target = request.nextUrl.searchParams.get("target") ?? "customers";
@@ -31,5 +32,5 @@ export async function GET(request: NextRequest) {
     return ghanaHour >= from || ghanaHour < to; // crosses midnight (e.g. 18→6)
   });
 
-  return Response.json({ announcements: filtered });
+  return Response.json({ announcements: filtered }, { headers: publicCache(60) });
 }

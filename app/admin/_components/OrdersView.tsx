@@ -362,9 +362,20 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                       ? o.customer_name
                       : o.phone}
                   </p>
-                  <p className="mt-1 font-mono text-xs font-semibold text-emerald-400 flex items-center gap-1">
-                    <span>🎯 Recipient:</span> <span className="underline">{o.phone}</span>
-                  </p>
+                  <div className="mt-1 font-mono text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                    <span>🎯 Recipient:</span> <span className="underline font-bold text-white">{o.phone}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(o.phone);
+                        alert(`Copied ${o.phone} to clipboard!`);
+                      }}
+                      className="ml-2 inline-flex items-center gap-1 rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300 hover:bg-emerald-500/40 active:scale-95 transition-transform"
+                    >
+                      📋 Copy
+                    </button>
+                  </div>
                 </div>
                 <p className="shrink-0 text-lg font-black text-white">GH₵{Number(o.amount).toFixed(2)}</p>
               </div>
@@ -531,8 +542,22 @@ export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVA
                     </td>
 
                     <td className="px-4 py-3.5 font-mono text-xs text-slate-300 font-semibold whitespace-nowrap">
-                      <span className="text-[10px] uppercase text-emerald-500 font-bold block">Deliver to:</span>
-                      <span className="text-white font-bold">{o.phone}</span>
+                      <span className="text-[10px] uppercase text-emerald-500 font-bold block">🎯 Deliver to:</span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-white font-bold text-sm tracking-wide">{o.phone}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(o.phone);
+                            alert(`Copied ${o.phone} to clipboard!`);
+                          }}
+                          title="Copy Recipient Number for manual delivery"
+                          className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300 hover:bg-emerald-500/40 active:scale-95"
+                        >
+                          📋 Copy
+                        </button>
+                      </div>
                     </td>
 
                     <td className="px-4 py-3.5 font-black text-white">GH₵{Number(o.amount).toFixed(2)}</td>
