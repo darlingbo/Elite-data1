@@ -27,23 +27,6 @@ async function checkInventorOrder(reference: string): Promise<"completed" | "pro
     return null;
   }
 }
-
-async function creditAgent(agentId: string, commission: number, revenue: number) {
-  if (!agentId || !commission) return;
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("commission_balance, total_sales, total_revenue")
-    .eq("id", agentId)
-    .maybeSingle();
-  if (!agent) return;
-  await supabase.from("agents").update({
-    commission_balance: (Number(agent.commission_balance) || 0) + commission,
-    total_sales: (Number(agent.total_sales) || 0) + 1,
-    total_revenue: (Number(agent.total_revenue) || 0) + revenue,
-    updated_at: new Date().toISOString(),
-  }).eq("id", agentId);
-}
-
 export async function POST(request: Request) {
   const cronSecret = process.env.CRON_SECRET ?? "";
   const isCron = cronSecret.length >= 24 && request.headers.get("x-cron-sync") === cronSecret;

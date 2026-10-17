@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
-import Link from "next/link";
 import { Bundle, networkConfig } from "@/lib/bundles";
 import { normalizeGhPhone, detectGhProvider } from "@/lib/phone";
 import { ALTERNATE_STORE_LABEL, ALTERNATE_STORE_URL, DEFAULT_CLOSED_MESSAGE } from "@/lib/store-closed";

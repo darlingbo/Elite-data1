@@ -7,6 +7,7 @@ import Footer from "@/components/Footer";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import WelcomePopup from "@/components/WelcomePopup";
 import FlowHide from "@/components/ed/FlowHide";
+import ThemeBoot from "@/components/ThemeBoot";
 import ChatWidget from "@/components/ChatWidget";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import { supabase } from "@/lib/supabase";
@@ -119,6 +120,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             ] }] : []),
           ],
         }).replace(/</g, "\\u003c") }} />
+        {!isStandalone && <ThemeBoot />}
         {!isStandalone && <FlowHide variant="top"><PromoBanner /></FlowHide>}
         {!isStandalone && <FlowHide variant="top"><PublicNav /></FlowHide>}
         {!isStandalone && <FlowHide><AnnouncementBanner target="customers" /></FlowHide>}

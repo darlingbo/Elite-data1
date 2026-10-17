@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { tooMany } from "@/lib/public-limit";
-import { completePaidDataOrder } from "@/lib/complete-paid-order";
+import { completePaidOrder } from "@/lib/complete-paid-order";
 
 export const maxDuration = 60;
 
@@ -90,7 +90,7 @@ export async function GET(
   // signal) can track by the payment reference: if the payment really went through, the order is
   // created now and shown straight away.
   if (!data && /^ybk-/i.test(reference)) {
-    const done = await completePaidDataOrder(reference).catch(() => null);
+    const done = await completePaidOrder(reference).catch(() => null);
     if (done?.state === "done") {
       const again = await supabase
         .from("orders")

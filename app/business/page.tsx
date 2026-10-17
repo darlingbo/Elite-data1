@@ -1,5 +1,6 @@
 "use client";
 import { PLATFORM_FEE_RATE } from "@/lib/pricing";
+import PaymentLate from "@/components/PaymentLate";
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import Link from "next/link";
 import type { Bundle } from "@/lib/bundles";
@@ -32,6 +33,8 @@ function BusinessContent() {
   const [confirmNetwork, setConfirmNetwork] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [lateRef, setLateRef] = useState<string | null>(null);
+  const [lateBody, setLateBody] = useState<Record<string, unknown>>({});
   const [results, setResults] = useState<{ pendingApproval: number; failed: number; total: number; outcomes: Outcome[] } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -62,10 +65,31 @@ function BusinessContent() {
   const labelOf = (id: MomoNetwork | null) => MOMO_NETWORKS.find((n) => n.id === id)?.label ?? "";
   const canPay = !!selectedBundle && uniquePhones.length >= 2 && !!cleanContact && !!momoNetwork && !!momoClean && (!wrong || confirmNetwork) && !loading;
 
+  /** The payment is confirmed: use the orders the server made, or ask the server to make them. */
+  async function finishPaid(answer: { order?: Record<string, unknown> }, ybkRef: string, createBody: Record<string, unknown>) {
+    setLateRef(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let d: any = answer.order;
+    if (!d || !d.success) {
+      const res = await fetch("/api/orders/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...createBody, paymentRef: ybkRef }),
+      });
+      d = await res.json();
+    }
+    setLoading(false);
+    if (d?.success) setResults(d);
+    else setError(d?.error || `The order failed. Contact support with reference ${ybkRef}.`);
+  }
+
   async function handlePay() {
     if (!canPay || !selectedBundle || !momoNetwork || !momoClean || !cleanContact) return;
     setError("");
     setLoading(true);
+    // What the bulk order needs. It is saved with the payment so the server can finish the order
+    // itself if this page never sees "paid".
+    const createBody = { phones: uniquePhones, bundleId: selectedBundle.id, companyName: companyName.trim() || null, contactPhone: cleanContact };
     try {
       const ybkRes = await fetch("/api/yebeck/charge", {
         method: "POST",
@@ -77,7 +101,7 @@ function BusinessContent() {
           confirmNetwork: wrong && confirmNetwork,
           type: "bulk_order",
           name: companyName.trim() || "Business Customer",
-          metadata: { phonesCount: uniquePhones.length, bundleId: selectedBundle.id, companyName: companyName.trim() || null },
+          metadata: { phonesCount: uniquePhones.length, bundleId: selectedBundle.id, companyName: companyName.trim() || null, create_body: createBody },
         }),
       });
       const ybkData = await ybkRes.json();
@@ -94,22 +118,14 @@ function BusinessContent() {
           const sData = await sRes.json();
           if (sData.status === "success") {
             stopPolling();
-            const res = await fetch("/api/orders/bulk", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ phones: uniquePhones, bundleId: selectedBundle.id, paymentRef: ybkRef, companyName: companyName.trim() || null, contactPhone: cleanContact }),
-            });
-            const d = await res.json();
-            setLoading(false);
-            if (d.success) setResults(d);
-            else setError(d.error || `The order failed. Contact support with reference ${ybkRef}.`);
+            await finishPaid(sData, ybkRef, createBody);
           } else if (sData.status === "failed") {
             stopPolling(); setLoading(false);
             setError("The payment was declined or cancelled on your phone. Please try again.");
           }
         } catch { /* keep polling */ }
-      }, 1800);
-      stopRef.current = setTimeout(() => { stopPolling(); setLoading(false); setError("The payment timed out. If you already approved it, contact support."); }, 180000);
+      }, 2000);
+      stopRef.current = setTimeout(() => { stopPolling(); setLoading(false); setLateBody(createBody); setLateRef(ybkRef); }, 300000);
     } catch {
       setLoading(false);
       setError("We could not start the payment. Check your connection and try again.");
@@ -242,6 +258,13 @@ function BusinessContent() {
               </div>
             )}
             {error && <div className="ed-note bad" role="alert">{error}</div>}
+            {lateRef && (
+              <PaymentLate
+                reference={lateRef}
+                onPaid={async (a) => { await finishPaid(a, lateRef, lateBody); }}
+                onFailed={() => { setLateRef(null); setError("The payment was declined or cancelled on your phone. Please try again."); }}
+              />
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8 }}>
               <button type="button" className="ed-btn o tall" style={{ color: "var(--ed-ink)", borderColor: "var(--ed-g300)" }} onClick={() => setStep(2)}>Back</button>
               <button type="button" className={`ed-btn tall ${canPay ? "b" : "dis paper"}`} disabled={!canPay} onClick={() => void handlePay()}>{loading ? "Waiting for your PIN…" : `Pay ${money(grandTotal)}`}</button>

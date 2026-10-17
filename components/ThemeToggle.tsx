@@ -69,6 +69,31 @@ const LIGHT_CSS = `
   html[data-theme="light"] .welcome-popup-card > button:last-child { color:#475569 !important; }
 `;
 
+export function applyTheme(isDark: boolean) {
+  document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+  let tag = document.getElementById("elite-light-css") as HTMLStyleElement | null;
+  if (!isDark) {
+    if (!tag) {
+      tag = document.createElement("style");
+      tag.id = "elite-light-css";
+      document.head.appendChild(tag);
+    }
+    tag.textContent = LIGHT_CSS;
+  } else {
+    tag?.remove();
+  }
+}
+
+/** Apply the theme this visitor chose last time (dark if they never chose). */
+export function applyStoredTheme(): void {
+  try {
+    const saved = localStorage.getItem("elite-theme");
+    applyTheme(saved ? saved === "dark" : true);
+  } catch {
+    applyTheme(true);
+  }
+}
+
 export default function ThemeToggle() {
   const [dark, setDark] = useState(true);
 
@@ -78,21 +103,6 @@ export default function ThemeToggle() {
     setDark(isDark);
     applyTheme(isDark);
   }, []);
-
-  function applyTheme(isDark: boolean) {
-    document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
-    let tag = document.getElementById("elite-light-css") as HTMLStyleElement | null;
-    if (!isDark) {
-      if (!tag) {
-        tag = document.createElement("style");
-        tag.id = "elite-light-css";
-        document.head.appendChild(tag);
-      }
-      tag.textContent = LIGHT_CSS;
-    } else {
-      tag?.remove();
-    }
-  }
 
   function toggle() {
     const next = !dark;

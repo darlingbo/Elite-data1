@@ -2,7 +2,6 @@ import { PLATFORM_FEE_RATE } from "@/lib/pricing";
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName } from "@/lib/bundles";
-import { sendAgentNotification } from "@/lib/telegram";
 import { generateDeepSeekReply } from "@/lib/deepseek";
 import { normaliseGhanaPhone, sendCustomerSMS } from "@/lib/sms";
 

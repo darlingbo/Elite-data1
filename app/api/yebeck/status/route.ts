@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { verifyYebeckPayment } from "@/lib/payment-attempt";
-import { completePaidDataOrder } from "@/lib/complete-paid-order";
+import { completePaidOrder } from "@/lib/complete-paid-order";
 import { tooMany } from "@/lib/public-limit";
 
 // Creating the order after a paid status can take a few seconds (alerts, approval).
@@ -20,12 +20,12 @@ export async function GET(request: NextRequest) {
   try {
     const verified = await verifyYebeckPayment(reference);
 
-    // Paid data order: the server makes sure the order exists, so the customer sees the
-    // confirmation even if the order step in their browser never runs.
+    // Paid: the server makes sure the order exists (data, voucher or bulk), so the customer sees
+    // the confirmation even if the order step in their browser never runs.
     let order: Record<string, unknown> | undefined;
     let orderError: string | undefined;
-    if (verified.status === "success" && verified.attempt.payment_type === "data_order") {
-      const done = await completePaidDataOrder(reference);
+    if (verified.status === "success") {
+      const done = await completePaidOrder(reference);
       if (done.state === "done") order = done.order;
       else if (done.state === "error") orderError = done.message;
     }

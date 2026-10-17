@@ -82,6 +82,7 @@ html[data-theme="light"] {
 .ed-btn.dis, .ed-btn:disabled { background: var(--ed-card); color: var(--ed-muted); border: 1px solid var(--ed-line); }
 .ed-btn.paper.dis, .ed-btn.paper:disabled { background: var(--ed-g200); color: var(--ed-g500); border: 0; }
 .ed-link { color: var(--ed-yellow); font-weight: 800; text-decoration: none; }
+html[data-theme="light"] .ed-link { color: #1d4ed8; }
 
 /* ── app bar ───────────────────────────────────────────── */
 .ed-appbar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 0 12px 0 14px; background: var(--ed-nav); border-bottom: 1px solid var(--ed-line2); }
@@ -297,6 +298,7 @@ html[data-theme="light"] .ed-buybar { background: #fff; }
 .ed-bn a, .ed-bn button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 10px; font-weight: 700; color: var(--ed-muted); text-decoration: none; background: transparent; border: 0; cursor: pointer; font-family: var(--ed-body); min-height: 56px; }
 .ed-bn .on { color: var(--ed-yellow); }
 html[data-theme="light"] .ed-bn .on { color: #92400e; }
+html[data-theme="light"] .ed-drawer-links a[aria-current="page"] { color: #92400e; }
 @media (min-width: 768px) { .ed-bn { display: none; } }
 
 /* global input rules (site-shell, mobile.css) must not draw a second box inside our own fields */

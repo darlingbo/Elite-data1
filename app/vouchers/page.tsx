@@ -1,5 +1,6 @@
 "use client";
 import { PLATFORM_FEE_RATE } from "@/lib/pricing";
+import PaymentLate from "@/components/PaymentLate";
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { detectGhProvider, normalizeGhPhone } from "@/lib/phone";
@@ -52,6 +53,8 @@ function VouchersPage() {
   const [phoneError, setPhoneError] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [lateRef, setLateRef] = useState<string | null>(null);
+  const [lateBody, setLateBody] = useState<Record<string, unknown>>({});
   const [success, setSuccess] = useState<{ reference: string; pendingApproval: boolean } | null>(null);
   const [momoNetwork, setMomoNetwork] = useState<MomoNetwork | null>(null);
   const [momoPhone, setMomoPhone] = useState("");
@@ -120,6 +123,23 @@ function VouchersPage() {
     }).catch(() => {});
   }
 
+  /** The payment is confirmed: use the order the server made, or ask the server to make it. */
+  async function finishPaid(answer: { order?: Record<string, unknown> }, ybkRef: string, createBody: Record<string, unknown>) {
+    setLateRef(null);
+    let d = answer.order as { success?: boolean; reference?: string; pendingApproval?: boolean; error?: string } | undefined;
+    if (!d || !d.success) {
+      const cr = await fetch("/api/vouchers/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...createBody, paymentRef: ybkRef }),
+      });
+      d = await cr.json();
+    }
+    setLoading(false);
+    if (d?.success) setSuccess({ reference: d.reference ?? ybkRef, pendingApproval: d.pendingApproval !== false });
+    else setError(d?.error || `Payment received. Please contact support with your reference: ${ybkRef}`);
+  }
+
   async function handlePay() {
     setError("");
     if (!canPay || !momoNetwork || !momoClean) return;
@@ -127,6 +147,26 @@ function VouchersPage() {
     if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setError("Enter a valid Ghana phone number, for example 0241234567."); return; }
     if (isAssisted && !candidateValid) { setError("Complete all candidate details, confirm the index number and accept the authorisation."); return; }
     setLoading(true);
+
+    // Everything the voucher order needs. It is saved with the payment so the server can finish
+    // the order itself if this page never sees "paid".
+    const createBody = {
+      name: candidateName.trim() || "Customer",
+      email: `${cleaned}@voucher.elitedata.com`,
+      phone: cleaned,
+      voucherType: selected.id,
+      quantity: isAssisted ? 1 : quantity,
+      promoCode: !isAssisted && promoApplied ? promoCode.trim() : undefined,
+      serviceMode,
+      candidateName: candidateName.trim(),
+      candidateType,
+      examYear,
+      indexNumber: indexNumber.trim(),
+      confirmIndexNumber: confirmIndexNumber.trim(),
+      dateOfBirth: needsDob ? dateOfBirth : undefined,
+      whatsapp: cleaned,
+      consent,
+    };
 
     try {
       const ybkRes = await fetch("/api/yebeck/charge", {
@@ -139,7 +179,7 @@ function VouchersPage() {
           confirmNetwork: networkLooksWrong && confirmNetwork,
           type: "voucher_order",
           name: candidateName.trim() || "Customer",
-          metadata: { voucherType: selected.id, quantity: isAssisted ? 1 : quantity, phone: cleaned },
+          metadata: { voucherType: selected.id, quantity: isAssisted ? 1 : quantity, phone: cleaned, create_body: createBody },
         }),
       });
       const ybkData = await ybkRes.json();
@@ -157,39 +197,14 @@ function VouchersPage() {
           const sData = await sRes.json();
           if (sData.status === "success") {
             stopPolling();
-            const cr = await fetch("/api/vouchers/create", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                name: candidateName.trim() || "Customer",
-                email: `${cleaned}@voucher.elitedata.com`,
-                phone: cleaned,
-                voucherType: selected.id,
-                quantity: isAssisted ? 1 : quantity,
-                paymentRef: ybkRef,
-                promoCode: !isAssisted && promoApplied ? promoCode.trim() : undefined,
-                serviceMode,
-                candidateName: candidateName.trim(),
-                candidateType,
-                examYear,
-                indexNumber: indexNumber.trim(),
-                confirmIndexNumber: confirmIndexNumber.trim(),
-                dateOfBirth: needsDob ? dateOfBirth : undefined,
-                whatsapp: cleaned,
-                consent,
-              }),
-            });
-            const d = await cr.json();
-            setLoading(false);
-            if (d.success) setSuccess({ reference: d.reference, pendingApproval: d.pendingApproval !== false });
-            else setError(d.error || `Payment received. Please contact support with your reference: ${ybkRef}`);
+            await finishPaid(sData, ybkRef, createBody);
           } else if (sData.status === "failed") {
             stopPolling(); setLoading(false);
             setError("The payment was declined or cancelled on your phone. Please try again.");
           }
         } catch { /* keep polling */ }
-      }, 1800);
-      stopRef.current = setTimeout(() => { stopPolling(); setLoading(false); setError("The payment timed out. If you already approved it, contact support with your phone number."); }, 180000);
+      }, 2000);
+      stopRef.current = setTimeout(() => { stopPolling(); setLoading(false); setLateBody(createBody); setLateRef(ybkRef); }, 300000);
     } catch {
       setLoading(false);
       setError("We could not start the payment. Check your connection and try again.");
@@ -367,6 +382,13 @@ function VouchersPage() {
             <div className="ed-note">The payment prompt goes to <b>{spaced(momoClean)}</b>. The {isAssisted ? "result goes to WhatsApp on" : "voucher codes go to"} <b>{spaced(normalizedPhone)}</b>.</div>
           )}
           {error && <div className="ed-note bad" role="alert">{error}</div>}
+          {lateRef && (
+            <PaymentLate
+              reference={lateRef}
+              onPaid={async (a) => { await finishPaid(a, lateRef, lateBody); }}
+              onFailed={() => { setLateRef(null); setError("The payment was declined or cancelled on your phone. Please try again."); }}
+            />
+          )}
           <button type="button" className={`ed-btn tall block ${canPay ? "b" : "dis paper"}`} disabled={!canPay} onClick={() => void handlePay()}>
             {loading ? "Waiting for your PIN…" : `Pay ${money(total)}`}
           </button>
