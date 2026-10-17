@@ -1,11 +1,15 @@
 import { NextRequest } from "next/server";
 import { getPaymentAttempt, markPaymentAttemptStatus } from "@/lib/payment-attempt";
 import { getCollection, normalizeCollectionStatus } from "@/lib/yebeck";
+import { tooMany } from "@/lib/public-limit";
 
 /**
  * Endpoint receiving Yebeck webhook events (either directly or forwarded by Silent Echo router).
  */
 export async function POST(request: NextRequest) {
+  const blocked = await tooMany(request, "momo-webhook", 900, 60000);
+  if (blocked) return blocked;
+
   let body: { event?: unknown; data?: { reference?: unknown; type?: unknown; status?: unknown } };
   try {
     body = await request.json();

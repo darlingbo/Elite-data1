@@ -9,7 +9,6 @@ const MODE_PROMPTS = {
   business_health: "Report business health, problems, opportunities, and 3 actions today.",
   pricing: "Analyze profitability and demand. Recommend pricing reviews with evidence; never claim to change prices.",
   voucher_forecast: "Forecast BECE/WASSCE stock needs using available data and give conservative restock thresholds.",
-  agent_analysis: "Analyze aggregate agent performance and suggest coaching, incentives, and re-engagement ideas.",
   marketing: "Write 3 Ghana-focused promotions for SMS, WhatsApp, and social media. Avoid false claims and unsupported prices.",
   customer_reply: "Draft a polite customer-support reply for the situation supplied by the admin. Never promise an unverified refund or delivery.",
   twi_translation: "Translate the admin's text into clear, respectful Ghanaian Twi, followed by an English back-translation.",
@@ -29,10 +28,9 @@ async function isAdmin(): Promise<boolean> {
 
 async function buildSummary() {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString();
-  const [ordersResult, vouchersResult, agentsResult] = await Promise.all([
+  const [ordersResult, vouchersResult] = await Promise.all([
     supabase.from("orders").select("network, bundle_size, amount, admin_commission, status, created_at").gte("created_at", since).limit(10_000),
     supabase.from("voucher_inventory").select("voucher_type, status"),
-    supabase.from("agents").select("status, total_sales, total_revenue, commission_balance").limit(10_000),
   ]);
   if (ordersResult.error) throw new Error(ordersResult.error.message);
   const orders = ordersResult.data ?? [];
@@ -45,7 +43,6 @@ async function buildSummary() {
     networks: {} as Record<string, { orders: number; revenue: number; profit: number }>,
     bestBundles: {} as Record<string, number>,
     voucherStock: { BECE: 0, WASSCE: 0 },
-    agents: { total: agentsResult.data?.length ?? 0, approved: 0, pending: 0, totalSales: 0, totalRevenue: 0 },
   };
   for (const order of orders) {
     const status = String(order.status ?? "unknown");
@@ -63,12 +60,6 @@ async function buildSummary() {
   for (const voucher of vouchersResult.data ?? []) {
     const type = String(voucher.voucher_type);
     if (voucher.status === "available" && (type === "BECE" || type === "WASSCE")) summary.voucherStock[type] += 1;
-  }
-  for (const agent of agentsResult.data ?? []) {
-    if (agent.status === "approved") summary.agents.approved += 1;
-    if (agent.status === "pending") summary.agents.pending += 1;
-    summary.agents.totalSales += Number(agent.total_sales ?? 0);
-    summary.agents.totalRevenue += Number(agent.total_revenue ?? 0);
   }
   return summary;
 }

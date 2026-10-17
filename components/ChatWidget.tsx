@@ -27,11 +27,11 @@ const FAQ: Array<{ patterns: RegExp[]; answer: string; quickReplies?: string[] }
   {
     patterns: [/hello|hi|hey|good (morning|afternoon|evening|night)|start/i],
     answer: "Hi there! Welcome to Elite Data 👋\nI'm your 24/7 assistant. How can I help you today?",
-    quickReplies: ["Buy data", "Track order", "Delivery time", "Payment methods", "Become agent", "Talk to human"],
+    quickReplies: ["Buy data", "Track order", "Delivery time", "Payment methods", "Talk to human"],
   },
   {
     patterns: [/buy|purchase|order data|get data|data bundle/i],
-    answer: "You can buy data bundles for MTN, Telecel, and AirtelTigo right here on the site!\n\nJust click <b>Buy Data</b> in the menu, pick your network, choose a size, and pay securely via Paystack. 🚀",
+    answer: "You can buy data bundles for MTN, Telecel, and AirtelTigo right here on the site!\n\nJust click <b>Buy Data</b> in the menu, pick your network, choose a size, and pay securely with Mobile Money. 🚀",
     quickReplies: ["Delivery time", "Payment methods", "Track order", "Talk to human"],
   },
   {
@@ -45,24 +45,14 @@ const FAQ: Array<{ patterns: RegExp[]; answer: string; quickReplies?: string[] }
     quickReplies: ["Payment methods", "Track order", "Talk to human"],
   },
   {
-    patterns: [/pay(ment)?|momo|mobile money|card|visa|paystack|how.*pay/i],
-    answer: "We accept:\n• MTN MoMo\n• Telecel Cash\n• AirtelTigo Money\n• Visa / Mastercard\n\nAll payments go through <b>Paystack</b> — Ghana's most trusted payment gateway 🔒",
+    patterns: [/pay(ment)?|momo|mobile money|card|visa|how.*pay/i],
+    answer: "We accept Mobile Money only:\n• MTN MoMo\n• Telecel Cash\n• AirtelTigo Money\n\nThere is no card payment. A prompt is sent to your phone and you approve it with your PIN.",
     quickReplies: ["Delivery time", "Track order", "Talk to human"],
   },
   {
-    patterns: [/agent|refer(ral)?|earn|commission|profit|resell|partner/i],
-    answer: "Become an Elite Data Agent and <b>earn 80% profit</b> on every sale made through your referral link!\n\n✅ Free to join\n✅ Your own referral link\n✅ Real-time dashboard\n\nClick <b>Become Agent</b> in the menu to apply.",
-    quickReplies: ["How to apply", "Talk to human"],
-  },
-  {
-    patterns: [/how.*apply|sign.*up.*agent|register.*agent|apply.*agent/i],
-    answer: "Applying is easy:\n1. Click <b>Become Agent</b> in the navigation\n2. Fill the short form with your details\n3. We review within 24 hours\n4. Once approved, share your link and start earning!",
-    quickReplies: ["Commission rates", "Talk to human"],
-  },
-  {
-    patterns: [/commission|how much.*earn|profit.*rate|percentage/i],
-    answer: "Agents earn <b>80% of every sale profit</b> made through their referral link!\n\nExample: If someone buys a GH₵10 bundle with GH₵2 profit, you earn GH₵1.60 automatically.",
-    quickReplies: ["Become agent", "Talk to human"],
+    patterns: [/agent|resell|partner|earn|commission/i],
+    answer: "We do not have an agent programme. You can buy data for yourself or for anyone else straight from the <b>Buy data</b> page.",
+    quickReplies: ["Buy data", "Talk to human"],
   },
   {
     patterns: [/refund|money back|failed.*pay|didn't arrive|not.*received/i],
@@ -133,9 +123,9 @@ const nextId = () => ++idCounter;
 const WELCOME: Message = {
   id: nextId(),
   from: "bot",
-  text: "Hi! I'm the Elite Data assistant 👋\nAsk me anything about data bundles, payments, delivery, or becoming an agent!",
+  text: "Hi! I'm the Elite Data assistant 👋\nAsk me anything about data bundles, payments, delivery, or tracking an order!",
   time: now(),
-  quickReplies: ["Buy data", "Track order", "Delivery time", "Payment methods", "Become agent", "Talk to human"],
+  quickReplies: ["Buy data", "Track order", "Delivery time", "Payment methods", "Talk to human"],
 };
 
 export default function ChatWidget() {

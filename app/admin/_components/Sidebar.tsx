@@ -1,18 +1,21 @@
 "use client";
+import { useState } from "react";
 import type { Tab } from "./shared/types";
 import { Ic } from "./shared/Icons";
 
 type Item = { id: Tab; icon: React.ReactNode; label: string; badge?: number };
 
-export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingApproval, onLogout, onChangePassword, mobileOpen, onMobileClose }: {
-  tab: Tab; setTab: (t: Tab) => void; pendingOrders: number; pendingAgents: number; pendingApproval: number;
+export function Sidebar({ tab, setTab, pendingOrders, pendingApproval, onLogout, onChangePassword, mobileOpen, onMobileClose, onFindOrder }: {
+  tab: Tab; setTab: (t: Tab) => void; pendingOrders: number; pendingApproval: number;
   onLogout: () => void; onChangePassword: () => void; mobileOpen: boolean; onMobileClose: () => void;
+  /** Jump to the order list filtered by a phone number or reference. */
+  onFindOrder?: (query: string) => void;
 }) {
+  const [query, setQuery] = useState("");
   const quickAccess: Item[] = [
     { id: "result-checker", icon: <Ic.check />, label: "Result Checks" },
     { id: "approval-queue", icon: <Ic.clock />, label: "Approval Queue", badge: pendingApproval || undefined },
     { id: "processing", icon: <Ic.sync />, label: "Processing" },
-    { id: "manual", icon: <Ic.edit />, label: "Manual Orders" },
     { id: "transactions", icon: <Ic.trend />, label: "Finance Analytics" },
     { id: "reconciliation", icon: <Ic.cash />, label: "Reconciliation" },
   ];
@@ -25,30 +28,19 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
     ] },
     { label: "MANAGE", items: [
       { id: "customers", icon: <Ic.agents />, label: "Customers" },
-      { id: "mtn-verification", icon: <Ic.check />, label: "MTN Verification" },
+      { id: "mtn-verification", icon: <Ic.check />, label: "Number check" },
       { id: "data-bundles", icon: <Ic.bundle />, label: "Data Bundles" },
       { id: "mashup-bundles", icon: <Ic.bundle />, label: "Mashup Bundles" },
       { id: "all-orders", icon: <Ic.orders />, label: "Orders" },
       { id: "transactions", icon: <Ic.trend />, label: "Finance Analytics" },
       { id: "network-providers", icon: <Ic.sync />, label: "Network Providers" },
       { id: "coupons", icon: <Ic.tag />, label: "Coupons" },
-      { id: "commissions", icon: <Ic.cash />, label: "Commissions" },
-      { id: "referrals", icon: <Ic.trophy />, label: "Referrals" },
       { id: "compensate", icon: <Ic.wallet />, label: "Compensate" },
-    ] },
-    { label: "AGENTS", items: [
-      { id: "all-agents", icon: <Ic.agents />, label: "All Agents" },
-      { id: "agent-applications", icon: <Ic.add />, label: "Applications", badge: pendingAgents || undefined },
-      { id: "agent-wallets", icon: <Ic.wallet />, label: "Agent Wallets" },
-      { id: "withdrawals", icon: <Ic.cash />, label: "Withdrawals" },
-      { id: "agent-ranks", icon: <Ic.trophy />, label: "Agent Ranks" },
-      { id: "bundle-prices", icon: <Ic.tag />, label: "Agent Prices" },
     ] },
     { label: "ORDERS", items: [
       { id: "approval-queue", icon: <Ic.clock />, label: "Approval Queue", badge: pendingApproval || undefined },
       { id: "pending-orders", icon: <Ic.clock />, label: "Pending", badge: pendingOrders || undefined },
       { id: "processing", icon: <Ic.sync />, label: "Processing" },
-      { id: "manual", icon: <Ic.edit />, label: "Manual Orders" },
       { id: "result-checker", icon: <Ic.check />, label: "Result Checks" },
       { id: "refund-numbers", icon: <Ic.wallet />, label: "Refunds" },
     ] },
@@ -60,15 +52,21 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
     ] },
     { label: "SETTINGS", items: [
       { id: "developer-api", icon: <Ic.key />, label: "Developer API" },
-      { id: "paystack-split", icon: <Ic.cash />, label: "Paystack Split" },
       { id: "settings", icon: <Ic.gear />, label: "Settings" },
     ] },
   ];
 
   function open(item: Item) {
     setTab(item.id);
+    setQuery("");
     onMobileClose();
   }
+
+  // Search the menu by name. A phone number or order reference jumps to the order list.
+  const q = query.trim().toLowerCase();
+  const allItems = [...new Map([{ id: "overview" as Tab, icon: <Ic.home />, label: "Today" } as Item, ...sections.flatMap(s => s.items)].map(i => [i.id, i])).values()];
+  const matches = q ? allItems.filter(i => i.label.toLowerCase().includes(q)) : [];
+  const looksLikeOrder = q.length >= 4 && (/^[0-9+\s]{4,}$/.test(q) || /^[a-z]{2,8}-?[a-z0-9]*\d{3,}[a-z0-9]*$/i.test(q));
 
   function NavItem({ item, compact = false }: { item: Item; compact?: boolean }) {
     const active = tab === item.id;
@@ -98,19 +96,38 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
         </div>
       </div>
 
-      <div className="px-3 pt-3 pb-1">
+      <div className="px-3 pt-3">
+        <label className="ad-search" style={{ minHeight: 44 }}>
+          <svg width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M11 18a7 7 0 100-14 7 7 0 000 14zM20 20l-4-4" /></svg>
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search a section, number or order" aria-label="Search the admin"
+            onKeyDown={e => { if (e.key === "Enter" && looksLikeOrder && onFindOrder) { onFindOrder(query.trim()); setQuery(""); onMobileClose(); } }} />
+        </label>
+        {q && (
+          <div className="mt-2 space-y-0.5" role="listbox" aria-label="Search results">
+            {looksLikeOrder && onFindOrder && (
+              <button onClick={() => { onFindOrder(query.trim()); setQuery(""); onMobileClose(); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-bold text-left" style={{ background: "rgba(251,191,36,0.14)", color: "#fbbf24" }}>
+                Find orders for &ldquo;{query.trim()}&rdquo;
+              </button>
+            )}
+            {matches.map(item => <NavItem key={`find-${item.id}`} item={item} />)}
+            {matches.length === 0 && !looksLikeOrder && <p className="px-3 py-2 text-xs text-slate-500">Nothing matches. Type a phone number or order reference to find an order.</p>}
+          </div>
+        )}
+      </div>
+
+      <div className="px-3 pt-3 pb-1" hidden={!!q}>
         <button onClick={() => { setTab("overview"); onMobileClose(); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all"
           style={tab === "overview" ? { background: "linear-gradient(90deg,rgba(37,99,235,0.24),rgba(37,99,235,0.08))", color: "#bfdbfe", boxShadow: "inset 0 0 0 1px rgba(96,165,250,0.16)" } : { color: "#738099" }}>
-          <Ic.home /> Dashboard
+          <Ic.home /> Today
         </button>
       </div>
 
-      <div className="md:hidden mx-3 mt-2 rounded-2xl border p-2" style={{ borderColor: "rgba(59,130,246,0.28)", background: "rgba(37,99,235,0.07)" }}>
+      <div hidden={!!q} className="md:hidden mx-3 mt-2 rounded-2xl border p-2" style={{ borderColor: "rgba(59,130,246,0.28)", background: "rgba(37,99,235,0.07)" }}>
         <p className="px-2 pb-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-blue-400">Quick Access</p>
         <div className="grid grid-cols-2 gap-1">{quickAccess.map(item => <NavItem key={`quick-${item.id}`} item={item} compact />)}</div>
       </div>
 
-      <nav className="flex-1 px-3 py-3 overflow-y-auto space-y-4 overscroll-contain">
+      <nav hidden={!!q} className="flex-1 px-3 py-3 overflow-y-auto space-y-4 overscroll-contain">
         {sections.map(sec => (
           <div key={sec.label}>
             <div className="flex items-center gap-2 px-3 mb-1.5"><div className="h-px flex-1" style={{ background: "#202b3d" }} /><p className="text-[9px] font-black text-slate-600 uppercase tracking-[0.18em]">{sec.label}</p><div className="h-px flex-1" style={{ background: "#202b3d" }} /></div>
@@ -126,7 +143,6 @@ export function Sidebar({ tab, setTab, pendingOrders, pendingAgents, pendingAppr
           <span className="ml-auto text-[8px] font-black px-1.5 py-0.5 rounded-full text-green-900 bg-green-400 shrink-0">LIVE</span>
         </div>
         <div className="px-3 pb-3 space-y-0.5">
-          <a href="/admin/sub-admins" className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"><Ic.agents /> Sub-admin Teams</a>
           <a href="/" target="_blank" rel="noreferrer" className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all text-slate-500 hover:text-slate-300 hover:bg-white/5"><Ic.website /> View Website</a>
           <button onClick={onChangePassword} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all"><Ic.key /> Change Password</button>
           <button onClick={onLogout} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all hover:bg-red-900/20" style={{ color: "#f87171" }}><Ic.logout /> Sign Out</button>

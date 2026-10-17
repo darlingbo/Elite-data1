@@ -12,7 +12,6 @@ const BULK_THRESHOLD = 10; // qty > 10 gets bulk price
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code")?.trim() ?? "";
-  const agentCode = url.searchParams.get("agent")?.trim().toUpperCase() ?? "";
 
   const [priceRes, discountStatus] = await Promise.all([
     supabase.from("system_settings").select("value").eq("key", "voucher_prices").maybeSingle(),
@@ -30,25 +29,14 @@ export async function GET(request: NextRequest) {
 
   const promoApplied = discountStatus.valid;
 
-  let agentId: string | null = null;
-  if (agentCode) {
-    const { data: agent } = await supabase.from("agents").select("id").eq("referral_code", agentCode).eq("status", "approved").maybeSingle();
-    agentId = agent?.id ?? null;
-  }
-  const { data: agentPrices } = agentId
-    ? await supabase.from("agent_voucher_prices").select("voucher_type,sell_price").eq("agent_id", agentId).eq("active", true)
-    : { data: [] as { voucher_type: string; sell_price: number }[] };
-  const agentPriceMap = new Map((agentPrices ?? []).map(row => [row.voucher_type, Number(row.sell_price)]));
-
-  const result: Record<string, { sellPrice: number; bulkPrice: number; bulkThreshold: number; promoApplied: boolean; wholesalePrice?: number }> = {};
+  const result: Record<string, { sellPrice: number; bulkPrice: number; bulkThreshold: number; promoApplied: boolean }> = {};
   for (const key of ["BECE", "WASSCE"] as const) {
     const def = DEFAULT_PRICES[key];
     result[key] = {
-      sellPrice: agentPriceMap.get(key) ?? stored?.[key]?.sellPrice ?? def.sellPrice,
-      bulkPrice: agentPriceMap.get(key) ?? def.bulkPrice,
+      sellPrice: stored?.[key]?.sellPrice ?? def.sellPrice,
+      bulkPrice: def.bulkPrice,
       bulkThreshold: BULK_THRESHOLD,
-      promoApplied: agentId ? false : promoApplied,
-      ...(agentId ? { wholesalePrice: 17 } : {}),
+      promoApplied,
     };
   }
   return Response.json(result);

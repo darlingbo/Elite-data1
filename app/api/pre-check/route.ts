@@ -1,8 +1,12 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { datacityVerify } from "@/lib/datacity";
+import { tooMany } from "@/lib/public-limit";
 
 export async function GET(request: NextRequest) {
+  const blocked = await tooMany(request, "pre-check", 40, 60000);
+  if (blocked) return blocked;
+
   const phone = request.nextUrl.searchParams.get("phone")?.trim();
   const network = request.nextUrl.searchParams.get("network")?.trim() ?? "";
   if (!phone) return Response.json({ blocked: false });

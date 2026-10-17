@@ -1,3 +1,4 @@
+import { cronAuthorized } from "@/lib/cron-auth";
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import {
@@ -38,8 +39,7 @@ function previousUtcDate() {
 }
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!cronAuthorized(request)) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -55,25 +55,12 @@ export async function GET(request: NextRequest) {
   const voucherStockPromise = supabase
     .from("voucher_inventory")
     .select("voucher_type,status");
-  const approvedAgentsPromise = supabase
-    .from("agents")
-    .select("id,name")
-    .eq("status", "approved")
-    .limit(10_000);
-  const recentAgentOrdersPromise = supabase
-    .from("orders")
-    .select("agent_id")
-    .not("agent_id", "is", null)
-    .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString())
-    .limit(10_000);
 
   const [
     { data: orders, error: ordersError },
     balance,
     reconciliationResult,
     { data: voucherRows },
-    { data: approvedAgents },
-    { data: recentAgentOrders },
   ] = await Promise.all([
     ordersPromise,
     fetchInventorBalance(),
@@ -85,8 +72,6 @@ export async function GET(request: NextRequest) {
       }),
     ),
     voucherStockPromise,
-    approvedAgentsPromise,
-    recentAgentOrdersPromise,
   ]);
 
   if (ordersError) {
@@ -133,27 +118,6 @@ export async function GET(request: NextRequest) {
     voucherStock.WASSCE <= wassceThreshold ? `WASSCE: ${voucherStock.WASSCE}` : "",
   ].filter(Boolean);
 
-  const activeAgentIds = new Set((recentAgentOrders ?? []).map(order => String(order.agent_id)));
-  const inactiveAgents = (approvedAgents ?? []).filter(agent => !activeAgentIds.has(String(agent.id)));
-
-  const agentEarned: Record<string, number> = {};
-  for (const order of completedOrders) {
-    if (order.agent_id) {
-      agentEarned[order.agent_id] =
-        (agentEarned[order.agent_id] ?? 0) + Number(order.agent_commission ?? 0);
-    }
-  }
-  const topAgentEntry = Object.entries(agentEarned).sort((a, b) => b[1] - a[1])[0] ?? null;
-  let topAgentName = "";
-  if (topAgentEntry) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("name")
-      .eq("id", topAgentEntry[0])
-      .maybeSingle();
-    topAgentName = agent?.name ?? "";
-  }
-
   const lowBalance = Number(process.env.INVENTOR_LOW_BALANCE_GHS ?? 50);
   const balanceLine = balance !== null
     ? `Inventor balance: <b>GHS ${balance.toFixed(2)}</b>${balance < lowBalance ? " - LOW, top up now." : ""}`
@@ -176,12 +140,10 @@ export async function GET(request: NextRequest) {
     `Delivered: ${completed} | Processing: ${processing} | Failed: ${failed} | Rejected: ${rejected} | Pending approval: ${pending}\n\n` +
     `Failure rate: <b>${failureRate.toFixed(1)}%</b>${total >= 5 && failureRate >= 10 ? " - HIGH, investigate before retrying anything." : ""}\n` +
     `Voucher stock: <b>BECE ${voucherStock.BECE}</b> | <b>WASSCE ${voucherStock.WASSCE}</b>${lowVoucherTypes.length ? " - LOW STOCK" : ""}\n` +
-    `Inactive approved agents (30 days): <b>${inactiveAgents.length}</b>\n\n` +
     `Delivered revenue: <b>GHS ${revenue.toFixed(2)}</b>\n` +
     `Recorded admin profit: <b>GHS ${profit.toFixed(2)}</b>\n` +
     `Agent commissions: GHS ${commissions.toFixed(2)}\n` +
     (topBundle ? `\nTop bundle: <b>${e(topBundle[0])}</b> x ${topBundle[1]}\n` : "") +
-    (topAgentName ? `Top agent: <b>${e(topAgentName)}</b> - GHS ${topAgentEntry![1].toFixed(2)} earned\n` : "") +
     `\n${reconciliationLine}\n` +
     `Open Admin &gt; Reconciliation before retrying or refunding flagged orders.\n\n` +
     balanceLine;
@@ -222,7 +184,6 @@ export async function GET(request: NextRequest) {
     profit,
     balance,
     voucherStock,
-    inactiveAgents: inactiveAgents.length,
     reconciliation: reconciliationResult.value?.snapshot ?? null,
     reconciliationError: reconciliationResult.error,
   });

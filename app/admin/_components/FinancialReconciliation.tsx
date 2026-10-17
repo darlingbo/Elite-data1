@@ -87,7 +87,7 @@ export default function FinancialReconciliation() {
   const metrics = report?.snapshot.metrics;
   const state = report ? statusStyle(report.snapshot.status) : null;
   const evidenceTotal = Number(metrics?.grossOrderValue ?? 0);
-  const evidenceCovered = Number(metrics?.paystackConfirmedValue ?? 0) + Number(metrics?.internalPaymentValue ?? 0);
+  const evidenceCovered = Number(metrics?.providerConfirmedValue ?? 0) + Number(metrics?.internalPaymentValue ?? 0);
   const evidencePct = evidenceTotal > 0 ? Math.min(100, (evidenceCovered / evidenceTotal) * 100) : 100;
 
   return (
@@ -137,7 +137,7 @@ export default function FinancialReconciliation() {
               <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-400" style={{ width: `${evidencePct}%` }} />
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2">
-              <div className="rounded-xl border p-3"><p className="text-lg font-black text-white">{metrics.paystackConfirmedCount}</p><p className="text-[10px] text-slate-500">Paystack</p><p className="mt-1 text-xs text-blue-300">{ghs(metrics.paystackConfirmedValue)}</p></div>
+              <div className="rounded-xl border p-3"><p className="text-lg font-black text-white">{metrics.providerConfirmedCount}</p><p className="text-[10px] text-slate-500">Payment provider</p><p className="mt-1 text-xs text-blue-300">{ghs(metrics.providerConfirmedValue)}</p></div>
               <div className="rounded-xl border p-3"><p className="text-lg font-black text-white">{metrics.internalPaymentCount}</p><p className="text-[10px] text-slate-500">Wallet/manual/API</p><p className="mt-1 text-xs text-cyan-300">{ghs(metrics.internalPaymentValue)}</p></div>
               <div className="rounded-xl border p-3"><p className="text-lg font-black text-white">{metrics.unverifiedPaymentCount}</p><p className="text-[10px] text-slate-500">Unverified</p><p className="mt-1 text-xs text-red-300">{ghs(metrics.unverifiedPaymentValue)}</p></div>
             </div>

@@ -55,10 +55,6 @@ export async function sendRefundRequestAlert(message: string): Promise<void> {
   await tgSend(SWIFT_TOKEN!, message);
 }
 
-export async function sendWithdrawalRequestAlert(message: string): Promise<void> {
-  await tgSend(SWIFT_TOKEN!, message);
-}
-
 // ── Send to a specific agent's Telegram chat via Elite_dataAgentbot ───────────
 export async function sendAgentNotification(agentChatId: string, message: string): Promise<void> {
   if (!ADMIN_BOT_TOKEN || !agentChatId) return;
@@ -168,26 +164,6 @@ export function fmtFailed(ref: string, phone: string, network: string, size: str
   );
 }
 
-export function fmtAgentApplied(name: string, email: string, phone: string, business?: string) {
-  return (
-    `👤 <b>New Agent Application</b>\n` +
-    `Name: ${e(name)}\n` +
-    `Email: ${e(email)}\n` +
-    `Phone: <code>${e(phone)}</code>\n` +
-    (business ? `Business: ${e(business)}\n` : "") +
-    `\n⚡ Use the buttons below to approve or reject instantly.`
-  );
-}
-
-export function agentApprovalKeyboard(agentId: string) {
-  return {
-    inline_keyboard: [[
-      { text: "✅ Approve", callback_data: `approve_agent:${agentId}` },
-      { text: "❌ Reject", callback_data: `reject_agent:${agentId}` },
-    ]],
-  };
-}
-
 export function orderApprovalKeyboard(ref: string) {
   return {
     inline_keyboard: [[
@@ -195,10 +171,6 @@ export function orderApprovalKeyboard(ref: string) {
       { text: "❌ Reject", callback_data: `reject_order:${ref}` },
     ]],
   };
-}
-
-export function fmtAgentApproved(name: string, code: string) {
-  return `✅ <b>Agent Approved</b>\nName: ${e(name)}\nReferral code: <code>${e(code)}</code>`;
 }
 
 export function retryKeyboard(ref: string) {

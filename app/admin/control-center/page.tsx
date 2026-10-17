@@ -5,16 +5,14 @@ import { useRouter } from "next/navigation";
 
 type Settings = Record<string, string>;
 type Voucher = { id: number; voucher_type: string; code: string; status: string; order_reference?: string | null; created_at: string; assigned_at?: string | null; sent_at?: string | null };
-type ManualOrder = { id: string; agent_name?: string | null; agent_code?: string | null; customer_phone: string; network: string; bundle_size: string; amount_paid: number; cost_price: number; agent_commission: number; admin_profit: number; status: string; admin_note?: string | null; created_at: string };
 type Activity = { id: string; scope: string; role: string; content_redacted: string; status: string; latency_ms?: number | null; estimated_tokens?: number | null; estimated_cost_usd?: number | null; created_at: string };
 type Escalation = { id: string; session_id: string; summary_redacted: string; status: string; created_at: string; resolved_at?: string | null };
-type Payload = { settings: Settings; vouchers: Voucher[]; manualOrders: ManualOrder[]; activity: Activity[]; escalations: Escalation[] };
+type Payload = { settings: Settings; vouchers: Voucher[]; activity: Activity[]; escalations: Escalation[] };
 
 const toggleSettings = [
   ["customer_ai_enabled", "Customer AI Assistant"],
   ["whatsapp_ai_enabled", "WhatsApp AI Assistant"],
   ["ai_order_guard_enabled", "AI Order Guard"],
-  ["agent_ai_auto_approve_enabled", "Agent AI Auto Approval"],
   ["auto_approve_orders", "Automatic Order Processing"],
 ] as const;
 
@@ -29,7 +27,7 @@ export default function AdminControlCenter() {
   const [error, setError] = useState("");
   const [voucherType, setVoucherType] = useState("BECE");
   const [voucherCodes, setVoucherCodes] = useState("");
-  const [tab, setTab] = useState<"automation" | "vouchers" | "manual" | "ai">("automation");
+  const [tab, setTab] = useState<"automation" | "vouchers" | "ai">("automation");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,14 +65,6 @@ export default function AdminControlCenter() {
     setSaving(null);
   }
 
-  async function updateManualOrder(id: string, status: string) {
-    setSaving(id);
-    const res = await fetch("/api/admin/control-center", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "manual-order", id, status }) });
-    const json = await res.json();
-    if (!res.ok) setError(json.error || "Order update failed"); else await load();
-    setSaving(null);
-  }
-
   async function resolveEscalation(id: string) {
     setSaving(id);
     const res = await fetch("/api/admin/control-center", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "escalation", id, status: "resolved" }) });
@@ -86,7 +76,6 @@ export default function AdminControlCenter() {
   const counts = useMemo(() => ({
     availableBECE: data?.vouchers.filter(v => v.voucher_type === "BECE" && v.status === "available").length ?? 0,
     availableWASSCE: data?.vouchers.filter(v => v.voucher_type === "WASSCE" && v.status === "available").length ?? 0,
-    pendingManual: data?.manualOrders.filter(v => ["pending", "processing"].includes(v.status.toLowerCase())).length ?? 0,
     openEscalations: data?.escalations.filter(v => v.status !== "resolved").length ?? 0,
   }), [data]);
 
@@ -100,7 +89,7 @@ export default function AdminControlCenter() {
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-400">Elite Data Admin</p>
             <h1 className="mt-1 text-2xl font-black sm:text-3xl">Automation & Voucher Center</h1>
-            <p className="mt-1 text-sm text-slate-400">AI, automatic processing, manual orders, BECE and WASSCE inventory.</p>
+            <p className="mt-1 text-sm text-slate-400">AI, automatic processing, BECE and WASSCE inventory.</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => router.push("/admin")} className={`${button} border border-slate-700 bg-slate-900 text-slate-200`}>Back to Admin</button>
@@ -113,14 +102,13 @@ export default function AdminControlCenter() {
         <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <div className={card}><p className="text-xs text-slate-400">BECE Available</p><p className="mt-1 text-2xl font-black text-emerald-400">{counts.availableBECE}</p></div>
           <div className={card}><p className="text-xs text-slate-400">WASSCE Available</p><p className="mt-1 text-2xl font-black text-cyan-400">{counts.availableWASSCE}</p></div>
-          <div className={card}><p className="text-xs text-slate-400">Manual Queue</p><p className="mt-1 text-2xl font-black text-amber-400">{counts.pendingManual}</p></div>
           <div className={card}><p className="text-xs text-slate-400">AI Escalations</p><p className="mt-1 text-2xl font-black text-rose-400">{counts.openEscalations}</p></div>
         </div>
 
         <div className="mb-5 flex gap-2 overflow-x-auto pb-1">
-          {(["automation", "vouchers", "manual", "ai"] as const).map(item => (
+          {(["automation", "vouchers", "ai"] as const).map(item => (
             <button key={item} onClick={() => setTab(item)} className={`${button} whitespace-nowrap ${tab === item ? "bg-blue-600 text-white" : "border border-slate-800 bg-slate-900 text-slate-300"}`}>
-              {item === "automation" ? "Automation" : item === "vouchers" ? "Vouchers" : item === "manual" ? "Manual Orders" : "AI Activity"}
+              {item === "automation" ? "Automation" : item === "vouchers" ? "Vouchers" : "AI Activity"}
             </button>
           ))}
         </div>
@@ -146,7 +134,6 @@ export default function AdminControlCenter() {
                   <h2 className="text-lg font-black">Limits and schedule</h2>
                   <div className="mt-4 space-y-4">
                     {[
-                      ["agent_ai_min_score", "Agent AI minimum score", "number"],
                       ["ai_daily_request_limit", "AI daily request limit", "number"],
                       ["store_auto_start", "Automatic processing starts", "time"],
                       ["store_auto_end", "Automatic processing ends", "time"],
@@ -178,16 +165,6 @@ export default function AdminControlCenter() {
                   </div>
                 </section>
               </div>
-            )}
-
-            {tab === "manual" && (
-              <section className={`${card} overflow-hidden`}>
-                <h2 className="mb-4 text-lg font-black">Manual processing queue</h2>
-                <div className="space-y-3">{data.manualOrders.length === 0 ? <p className="text-slate-400">No manual orders found.</p> : data.manualOrders.map(order => <div key={order.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-black">{order.network} · {order.bundle_size}</p><p className="text-sm text-slate-400">{order.customer_phone} · {order.agent_name || order.agent_code || "Direct"}</p><p className="mt-1 text-xs text-slate-500">{new Date(order.created_at).toLocaleString()}</p></div><div className="text-right"><p className="font-black text-emerald-400">{money(order.amount_paid)}</p><p className="text-xs text-slate-500">Profit {money(order.admin_profit)}</p></div></div>
-                  <div className="mt-3 flex flex-wrap gap-2"><span className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold">{order.status}</span>{["processing","completed","failed"].map(status => <button key={status} disabled={saving === order.id} onClick={() => void updateManualOrder(order.id, status)} className={`${button} border border-slate-700 bg-slate-900 capitalize text-slate-200`}>{status}</button>)}</div>
-                </div>)}</div>
-              </section>
             )}
 
             {tab === "ai" && (

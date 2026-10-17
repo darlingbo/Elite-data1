@@ -16,33 +16,6 @@ export function isValidGhanaPhone(phone: string): boolean {
   return GHANA_PHONE_RE.test(normalizePhone(phone));
 }
 
-const ghanaPhone = z
-  .string()
-  .transform(normalizePhone)
-  .refine((v) => GHANA_PHONE_RE.test(v), { message: "Enter a valid Ghana phone number (e.g. 0241234567)." });
-
-// Body schema for POST /api/agents/wallet-purchase
-export const walletPurchaseSchema = z.object({
-  agentId: z.string().min(1),
-  referralCode: z.string().min(1),
-  phone: ghanaPhone,
-  bundleId: z.string().min(1),
-  network: z.string().min(1),
-  bundleSize: z.string().optional(),
-  sizeGB: z.number().optional(),
-});
-
-// Body schema for POST /api/agents/withdraw
-export const withdrawSchema = z.object({
-  agentId: z.string().min(1),
-  referralCode: z.string().min(1),
-  name: z.string().min(1),
-  amount: z.coerce.number().positive(),
-  method: z.string().min(1),
-  accountNumber: z.string().min(1),
-  accountName: z.string().min(1),
-});
-
 /** Parse a request body against a schema. Returns data or a flat error message. */
 export function parseBody<T>(schema: z.ZodType<T>, body: unknown):
   | { ok: true; data: T }

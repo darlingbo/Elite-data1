@@ -49,7 +49,7 @@ export async function assessOrderRisk(reference: string): Promise<OrderRiskDecis
   const commission = Number(order.agent_commission ?? 0);
 
   // Hard blocks — never auto-deliver these, even with automatic approval on.
-  // Wallet-funded orders (agent_wallet, api_wallet) never get a Paystack
+  // Wallet-funded orders (agent_wallet, api_wallet) never get a payment-provider
   // reference — the money was already verified and reserved atomically by
   // the RPC that created the order before this row could exist at all.
   // Yebeck payments (direct Mobile Money) are similarly verified at checkout

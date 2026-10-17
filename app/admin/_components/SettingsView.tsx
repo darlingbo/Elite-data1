@@ -453,7 +453,7 @@ function SettingToggle({ checked, onChange, saving }: { checked: boolean; onChan
 
 const AI_TOOLS = [
   ["business_health", "Business Health"], ["pricing", "Pricing & Profit"], ["voucher_forecast", "Voucher Forecast"],
-  ["agent_analysis", "Agent Analysis"], ["marketing", "Promotion Writer"], ["customer_reply", "Customer Reply"],
+  ["marketing", "Promotion Writer"], ["customer_reply", "Customer Reply"],
   ["twi_translation", "Twi Translator"], ["complaint_plan", "Complaint Helper"], ["daily_actions", "Daily Action Plan"],
   ["risk_review", "Risk Review"], ["campaign_calendar", "7-Day Campaign"], ["faq_builder", "FAQ Builder"],
 ] as const;

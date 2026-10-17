@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
-import { formatCurrency, fromMinorUnits, toMinorUnits } from "@/lib/finance";
+import { formatCurrency } from "@/lib/finance";
 import { sendAgentNotification, sendRefundRequestAlert, tgEscape } from "@/lib/telegram";
 import { orderRefundedSMS, sendCustomerSMS } from "@/lib/sms";
 
@@ -14,7 +14,7 @@ async function isAdmin() {
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { reference, amount } = await req.json() as { reference: string; amount?: number };
+  const { reference } = await req.json() as { reference: string };
   if (!reference) return Response.json({ error: "reference required" }, { status: 400 });
 
   // Fetch the order
@@ -56,99 +56,55 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const paystackRef = order.paystack_reference ?? reference;
-  const refundAmount = amount ? toMinorUnits(amount) : undefined; // Paystack uses kobo (pesewas)
-
-  // Call Paystack Refunds API
-  const paystackRes = await fetch("https://api.paystack.co/refund", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      transaction: paystackRef,
-      ...(refundAmount ? { amount: refundAmount } : {}),
-    }),
-  });
-
-  const paystackData = await paystackRes.json() as { status: boolean; message: string; data?: { id: number; status: string; amount: number } };
-
-  if (!paystackRes.ok || !paystackData.status) {
+  // This route only puts money back into an agent wallet. Mobile Money refunds are
+  // sent by hand and recorded with the "record refund" step in the order sheet.
+  const isAgentWallet = order.reference.startsWith("AGTWALLET-") && Boolean(order.agent_id);
+  if (!isAgentWallet) {
     return Response.json(
-      { error: `Paystack refund failed: ${paystackData.message}` },
-      { status: 502 }
+      { error: "Only agent wallet orders are refunded here. Send Mobile Money refunds by hand, then record them on the order." },
+      { status: 400 },
     );
   }
 
-  // Mark order as refunded in DB
-  const refundedAmount = fromMinorUnits(paystackData.data?.amount ?? 0);
+  const orderAmount = Number(order.amount ?? order.cost_price ?? 0);
   const { error: updateError } = await supabase.from("orders").update({
     refunded: true,
     refunded_at: new Date().toISOString(),
-    refund_amount: refundedAmount,
+    refund_amount: orderAmount,
     status: "refunded",
   }).eq("reference", reference);
   if (updateError) {
-    return Response.json({ error: `Refund succeeded, but recording it needs attention: ${updateError.message}` }, { status: 500 });
+    return Response.json({ error: `Could not record the refund: ${updateError.message}` }, { status: 500 });
   }
 
-  const isAgentWallet = order.reference.startsWith("AGTWALLET-") && Boolean(order.agent_id);
-  if (isAgentWallet) {
-    const { data: walletRefund, error: walletError } = await supabase.rpc("refund_agent_wallet_order", {
-      p_reference: reference,
-    });
-    if (walletError) return Response.json({ error: `Agent wallet refund failed: ${walletError.message}` }, { status: 500 });
-    const result = walletRefund as { result?: string; amount?: number; balance?: number } | null;
-    if (result?.result !== "refunded" && result?.result !== "already_refunded") {
-      return Response.json({ error: `Agent wallet refund was not completed (${result?.result ?? "unknown"})` }, { status: 409 });
-    }
-    const refundedAmount = Number(result.amount ?? order.amount ?? order.cost_price ?? 0);
-    const { error: reversalError } = await supabase.rpc("reverse_team_commission", {
-      p_reference: reference,
-      p_reason: "agent_wallet_refund",
-    });
-    const { data: agent } = await supabase.from("agents")
-      .select("telegram_chat_id")
-      .eq("id", order.agent_id)
-      .maybeSingle();
-    if (agent?.telegram_chat_id) {
-      sendAgentNotification(agent.telegram_chat_id,
-        `💰 <b>Wallet Refund</b>\n\nGH₵${refundedAmount.toFixed(2)} was credited back to your wallet.\nOrder: <code>${tgEscape(reference)}</code>\nNew balance: GH₵${Number(result.balance ?? 0).toFixed(2)}`,
-      ).catch(() => {});
-    }
-    sendCustomerSMS(order.phone, orderRefundedSMS(order.customer_name ?? "Customer", refundedAmount, reference)).catch(() => {});
-    await sendRefundRequestAlert(
-      `✅ <b>AGENT WALLET REFUNDED</b>\n\n💵 Amount: <b>${formatCurrency(refundedAmount)}</b>\n📎 Order ref: <code>${tgEscape(reference)}</code>`,
-    ).catch(() => {});
-    if (reversalError) {
-      return Response.json({ error: `Wallet was refunded, but commission reversal needs attention: ${reversalError.message}` }, { status: 500 });
-    }
-    return Response.json({ success: true, method: "agent_wallet", amount: refundedAmount, walletBalance: result.balance, message: "Agent wallet credited" });
+  const { data: walletRefund, error: walletError } = await supabase.rpc("refund_agent_wallet_order", {
+    p_reference: reference,
+  });
+  if (walletError) return Response.json({ error: `Agent wallet refund failed: ${walletError.message}` }, { status: 500 });
+  const result = walletRefund as { result?: string; amount?: number; balance?: number } | null;
+  if (result?.result !== "refunded" && result?.result !== "already_refunded") {
+    return Response.json({ error: `Agent wallet refund was not completed (${result?.result ?? "unknown"})` }, { status: 409 });
   }
+  const refundedAmount = Number(result.amount ?? order.amount ?? order.cost_price ?? 0);
   const { error: reversalError } = await supabase.rpc("reverse_team_commission", {
     p_reference: reference,
-    p_reason: "paystack_refund",
+    p_reason: "agent_wallet_refund",
   });
+  const { data: agent } = await supabase.from("agents")
+    .select("telegram_chat_id")
+    .eq("id", order.agent_id)
+    .maybeSingle();
+  if (agent?.telegram_chat_id) {
+    sendAgentNotification(agent.telegram_chat_id,
+      `💰 <b>Wallet Refund</b>\n\nGH₵${refundedAmount.toFixed(2)} was credited back to your wallet.\nOrder: <code>${tgEscape(reference)}</code>\nNew balance: GH₵${Number(result.balance ?? 0).toFixed(2)}`,
+    ).catch(() => {});
+  }
+  sendCustomerSMS(order.phone, orderRefundedSMS(order.customer_name ?? "Customer", refundedAmount, reference)).catch(() => {});
   await sendRefundRequestAlert(
-    `✅ <b>REFUND SUBMITTED TO PAYSTACK</b>\n\n` +
-    `💵 Amount: <b>${formatCurrency(refundedAmount)}</b>\n` +
-    `📎 Order ref: <code>${tgEscape(reference)}</code>\n` +
-    `📎 Paystack ref: <code>${tgEscape(paystackRef)}</code>\n` +
-    `✅ Purpose: Customer order refund`,
-  ).catch(() => {});
-  sendCustomerSMS(
-    order.phone,
-    orderRefundedSMS(order.customer_name ?? "Customer", refundedAmount, reference),
+    `✅ <b>AGENT WALLET REFUNDED</b>\n\n💵 Amount: <b>${formatCurrency(refundedAmount)}</b>\n📎 Order ref: <code>${tgEscape(reference)}</code>`,
   ).catch(() => {});
   if (reversalError) {
-    return Response.json({ error: `Refund succeeded and the customer was notified, but team commission reversal needs attention: ${reversalError.message}` }, { status: 500 });
+    return Response.json({ error: `Wallet was refunded, but commission reversal needs attention: ${reversalError.message}` }, { status: 500 });
   }
-
-  return Response.json({
-    success: true,
-    refundId: paystackData.data?.id,
-    amount: refundedAmount,
-    message: paystackData.message,
-  });
+  return Response.json({ success: true, method: "agent_wallet", amount: refundedAmount, walletBalance: result.balance, message: "Agent wallet credited" });
 }

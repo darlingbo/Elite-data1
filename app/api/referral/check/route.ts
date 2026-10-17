@@ -29,8 +29,12 @@
 
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { tooMany } from "@/lib/public-limit";
 
 export async function GET(request: NextRequest) {
+  const blocked = await tooMany(request, "referral-check", 30, 60000);
+  if (blocked) return blocked;
+
   const phone = request.nextUrl.searchParams.get("phone");
   if (!phone) return Response.json({ credits: 0 });
 

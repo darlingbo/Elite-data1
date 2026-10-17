@@ -33,29 +33,48 @@ export async function inventorPurchase(
   sizeGB: number,
   reference: string,
   timeoutMs = 25_000,
+  maxRetries = 1,
 ): Promise<PurchaseResult> {
-  try {
-    const res = await fetch(`${base()}/api/developer/purchase`, {
-      method: "POST",
-      headers: authHeader(),
-      body: JSON.stringify({ network, Phone: phone, Datasize: sizeGB, reference }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-    const ok = res.ok && body.success === true;
-    const data = (body.data as Record<string, unknown>) ?? {};
-    const order = (data.order as Record<string, unknown>) ?? {};
-    const balance = data.currentBalance !== undefined ? Number(data.currentBalance) : null;
-    const providerReference = order.reference ?? data.reference;
-    return {
-      ok,
-      balance: balance !== null && Number.isFinite(balance) ? balance : null,
-      reference: typeof providerReference === "string" && providerReference ? providerReference : null,
-      body,
-    };
-  } catch (err) {
-    return { ok: false, balance: null, reference: null, body: { error: String(err) } };
+  let lastBody: Record<string, unknown> = {};
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+    }
+    try {
+      const res = await fetch(`${base()}/api/developer/purchase`, {
+        method: "POST",
+        headers: authHeader(),
+        body: JSON.stringify({ network, Phone: phone, Datasize: sizeGB, reference }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+      lastBody = body;
+
+      // Only retry on server-side 5xx errors
+      if (res.status >= 500 && attempt < maxRetries) {
+        continue;
+      }
+
+      const ok = res.ok && body.success === true;
+      const data = (body.data as Record<string, unknown>) ?? {};
+      const order = (data.order as Record<string, unknown>) ?? {};
+      const balance = data.currentBalance !== undefined ? Number(data.currentBalance) : null;
+      const providerReference = order.reference ?? data.reference;
+      return {
+        ok,
+        balance: balance !== null && Number.isFinite(balance) ? balance : null,
+        reference: typeof providerReference === "string" && providerReference ? providerReference : null,
+        body,
+      };
+    } catch (err) {
+      if (attempt === maxRetries) {
+        return { ok: false, balance: null, reference: null, body: { error: String(err) } };
+      }
+    }
   }
+
+  return { ok: false, balance: null, reference: null, body: lastBody };
 }
 
 /** Purchase a BECE or WASSCE voucher. */
@@ -113,5 +132,39 @@ export async function inventorVerifyNumber(phone: string): Promise<{ verified: b
     return { verified: false, error: String(data.message ?? d.message ?? data.error ?? "Not on beneficiary list") };
   } catch {
     return { verified: true }; // network error — allow through
+  }
+}
+
+/**
+ * Strict three-way answer for the checkout number check.
+ *
+ * Unlike inventorVerifyNumber (which lets a number through whenever the
+ * service is down), this tells a real "not on the list" apart from "could not
+ * be reached", so the caller can apply the admin's chosen policy.
+ *   verified     -> Inventor confirmed the number is on its beneficiary list
+ *   not_verified -> Inventor answered and the number is not on the list
+ *   unknown      -> no key, timeout, 5xx, rate limit, or any unclear answer
+ */
+export async function inventorNumberStatus(
+  phone: string,
+  isNotOnListMessage: (message: string) => boolean,
+): Promise<"verified" | "not_verified" | "unknown"> {
+  if (!process.env.INVENTOR_API_KEY?.trim()) return "unknown";
+  try {
+    const res = await fetch(`${base()}/api/developer/verify-number`, {
+      method: "POST",
+      headers: authHeader(),
+      body: JSON.stringify({ phone, is_ported_number: false }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    });
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+    const d = (data.data as Record<string, unknown>) ?? {};
+    if (res.ok && data.success === true && d.exists === true) return "verified";
+    if (res.status >= 500 || res.status === 429 || res.status === 401 || res.status === 403) return "unknown";
+    const message = String(data.message ?? d.message ?? data.error ?? "");
+    return isNotOnListMessage(message) ? "not_verified" : "unknown";
+  } catch {
+    return "unknown";
   }
 }

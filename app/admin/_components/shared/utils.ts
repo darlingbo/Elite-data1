@@ -19,7 +19,6 @@ export function get7DayComparison(orders: Order[]) {
     pending:   pct(curr.filter(o => o.status.toLowerCase() === "pending").length,   prev.filter(o => o.status.toLowerCase() === "pending").length),
     failed:    pct(curr.filter(o => o.status.toLowerCase() === "failed").length,    prev.filter(o => o.status.toLowerCase() === "failed").length),
     revenue:   pct(rev(curr), rev(prev)),
-    agents:    0,
   };
 }
 
@@ -74,7 +73,6 @@ export function getTodayStats(orders: Order[]) {
     delivered: delivered.length,
     revenue: delivered.reduce((s, o) => s + Number(o.amount), 0),
     profit: delivered.reduce((s, o) => s + Number(o.admin_commission ?? 0), 0),
-    viaAgents: today.filter(o => o.agent_id).length,
   };
 }
 

@@ -10,8 +10,8 @@ async function isAdmin() {
   return verifyAdminSessionValue(c.get("admin_session")?.value);
 }
 
-// POST — deliver missing data + credit agent commission
-// Body: { phone, network, sizeGB, agentCode, commission, note, originalRef? }
+// POST — deliver missing data to a customer
+// Body: { phone, network, sizeGB, note, originalRef? }
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -19,13 +19,11 @@ export async function POST(req: NextRequest) {
     phone: string;
     network: string;
     sizeGB: number;
-    agentCode?: string;
-    commission?: number;
     note?: string;
     originalRef?: string;
   };
 
-  const { phone, network, sizeGB, agentCode, commission, note, originalRef } = body;
+  const { phone, network, sizeGB, note, originalRef } = body;
   if (!phone || !network || !sizeGB) return Response.json({ error: "phone, network, sizeGB required" }, { status: 400 });
 
   const ref = originalRef
@@ -58,28 +56,6 @@ export async function POST(req: NextRequest) {
     deliveryLog = String(e);
   }
 
-  // Credit agent commission if provided
-  let agentCredited = false;
-  let agentId: string | null = null;
-  if (deliveryOk && agentCode && commission && commission > 0) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("id, name")
-      .eq("referral_code", agentCode.toUpperCase())
-      .maybeSingle();
-
-    if (agent) {
-      agentId = agent.id;
-      const { error: creditError } = await supabase.rpc("admin_credit_agent_commission", {
-        p_agent_id: agentId,
-        p_amount: commission,
-        p_idempotency_key: `compensation:${originalRef ?? ref}:${agentId}`,
-        p_description: note ?? `Compensation for ${originalRef ?? ref}`,
-      });
-      agentCredited = !creditError;
-    }
-  }
-
   // Log compensate order
   await supabase.from("orders").insert({
     reference: ref,
@@ -88,16 +64,15 @@ export async function POST(req: NextRequest) {
     bundle_size: `${sizeGB}GB (compensation)`,
     amount: 0,
     status: deliveryOk ? "completed" : "delivery_unknown",
-    agent_id: agentId,
-    agent_commission: commission ?? 0,
+    agent_commission: 0,
     admin_commission: 0,
     cost_price: 0,
     customer_name: "Compensation",
   }).maybeSingle();
 
   await sendAdminAlert(
-    `🔧 COMPENSATION\n📞 ${phone} → ${network.toUpperCase()} ${sizeGB}GB\n💰 Agent commission: GH₵${commission ?? 0}\n✅ Delivery: ${deliveryOk ? "OK" : "FAILED"}\n💼 Agent credited: ${agentCredited ? "Yes" : "No"}\nRef: ${ref}\n${note ? `Note: ${note}\n` : ""}${deliveryLog}`
+    `🔧 COMPENSATION\n📞 ${phone} → ${network.toUpperCase()} ${sizeGB}GB\n✅ Delivery: ${deliveryOk ? "OK" : "FAILED"}\nRef: ${ref}\n${note ? `Note: ${note}\n` : ""}${deliveryLog}`
   ).catch(() => {});
 
-  return Response.json({ success: deliveryOk, agentCredited, deliveryLog, ref });
+  return Response.json({ success: deliveryOk, deliveryLog, ref });
 }

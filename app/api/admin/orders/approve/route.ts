@@ -8,6 +8,7 @@ import { verifyAdminSessionValue } from "@/lib/adminAuth";
 import { auditLog } from "@/lib/audit";
 import { approveOrder } from "@/lib/order-approval";
 import { rejectOrder } from "@/lib/order-rejection";
+import { isRejectReason, rejectionSms } from "@/lib/admin-sms-templates";
 
 async function isAdmin(): Promise<boolean> {
   const cookieStore = await cookies();
@@ -199,7 +200,16 @@ export async function POST(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { references, action } = await request.json() as { references: string[]; action: "approve" | "reject" };
+  const { references, action, reason, notifyCustomer, willRefund } = await request.json() as {
+    references: string[];
+    action: "approve" | "reject";
+    /** Why a reject happened. One of REJECT_REASONS. Stored in the audit record and used in the customer text. */
+    reason?: string;
+    /** Text the customer about the rejection. */
+    notifyCustomer?: boolean;
+    /** True when the admin will send the money back, so the text can say so. */
+    willRefund?: boolean;
+  };
 
   if (!Array.isArray(references) || references.length === 0) {
     return Response.json({ error: "No references provided" }, { status: 400 });
@@ -210,6 +220,7 @@ export async function POST(request: Request) {
   if (action !== "approve" && action !== "reject") {
     return Response.json({ error: "Invalid action" }, { status: 400 });
   }
+  const willRefundFlag = willRefund === true;
 
   // Process deliberately in sequence. Provider bursts can create ambiguous
   // timeouts and accidental duplicate deliveries.
@@ -219,6 +230,20 @@ export async function POST(request: Request) {
       ? await approveOrder(reference, "admin_dashboard")
       : await rejectOrder(reference, "admin_dashboard");
     results.push({ reference, ...result });
+
+    if (action === "reject" && result.ok) {
+      const reasonId = isRejectReason(reason) ? reason : "other";
+      await auditLog("order_reject_reason", { reference, reason: reasonId, notified: notifyCustomer === true });
+      if (notifyCustomer === true) {
+        const { data: o } = await supabase.from("orders").select("phone, amount").eq("reference", reference).maybeSingle();
+        if (o?.phone) {
+          sendCustomerSMS(
+            String(o.phone),
+            rejectionSms({ reference, reason: reasonId, amount: Number(o.amount ?? 0), willRefund: willRefundFlag }),
+          ).catch(() => {});
+        }
+      }
+    }
   }
 
   const succeeded = results.filter(r => r.ok).length;

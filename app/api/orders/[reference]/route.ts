@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { tooMany } from "@/lib/public-limit";
 
 async function getInventorStatus(reference: string): Promise<{
   status: string | null;
@@ -53,6 +54,9 @@ export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ reference: string }> }
 ) {
+  const blocked = await tooMany(_req, "track-ref", 60, 600000);
+  if (blocked) return blocked;
+
   const { reference } = await ctx.params;
 
   // Fetch DB order + Inventor live status in parallel
@@ -101,10 +105,18 @@ export async function GET(
     supabase.from("orders").update({ status: inventorResult.status }).eq("reference", reference).then(() => {});
   }
 
+  // Anyone holding a reference can call this, so send only what the tracking page shows:
+  // no customer name, and the phone number with its middle digits hidden.
+  const { customer_name: _name, phone: rawPhone, ...publicFields } = data as Record<string, unknown> & { customer_name?: unknown; phone?: unknown };
+  void _name;
+  const phoneDigits = String(rawPhone ?? "").replace(/\s/g, "");
+  const maskedPhone = phoneDigits.length >= 7 ? `${phoneDigits.slice(0, 3)}***${phoneDigits.slice(-4)}` : phoneDigits;
+
   return Response.json({
     success: true,
     order: {
-      ...data,
+      ...publicFields,
+      phone: maskedPhone,
       status: finalStatus,
       inventor_status: inventorResult.inventorStatus,
       inventor_message: inventorResult.inventorMessage,

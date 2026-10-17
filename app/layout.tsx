@@ -6,15 +6,21 @@ import MobileBottomNav from "@/components/MobileBottomNav";
 import Footer from "@/components/Footer";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import WelcomePopup from "@/components/WelcomePopup";
-import ThemeToggle from "@/components/ThemeToggle";
+import FlowHide from "@/components/ed/FlowHide";
 import ChatWidget from "@/components/ChatWidget";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import { supabase } from "@/lib/supabase";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Archivo } from "next/font/google";
 import "./globals.css";
+import "./elite.css";
 import "./mobile.css";
 import "./mobile-header.css";
+
+// Display face for headings, prices and big numbers. Self-hosted by next/font, so it
+// adds no third-party request and nothing for the CSP to allow.
+const archivo = Archivo({ subsets: ["latin"], variable: "--font-display", display: "swap", axes: ["wdth"] });
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -24,17 +30,14 @@ export const viewport: Viewport = {
 };
 
 const PAGE_SEO: Record<string, { title: string; description: string; keywords: string[] }> = {
-  "/": { title: "Buy Data Bundles & Result Checker Vouchers in Ghana | Elite Data", description: "Buy affordable MTN, Telecel and AirtelTigo data bundles plus BECE and WASSCE result checker vouchers online in Ghana. Secure Paystack payment and order tracking.", keywords: ["buy data bundle Ghana", "cheap data bundles Ghana", "result checker Ghana", "BECE result checker", "WASSCE result checker"] },
+  "/": { title: "Buy Data Bundles & Result Checker Vouchers in Ghana | Elite Data", description: "Buy affordable MTN, Telecel and AirtelTigo data bundles plus BECE and WASSCE result checker vouchers online in Ghana. Secure Mobile Money payment and order tracking.", keywords: ["buy data bundle Ghana", "cheap data bundles Ghana", "result checker Ghana", "BECE result checker", "WASSCE result checker"] },
   "/buy": { title: "Buy MTN, Telecel & AirtelTigo Data Bundles Ghana | Elite Data", description: "Buy affordable MTN, Telecel and AirtelTigo data bundles online in Ghana. Choose a bundle, pay securely with Mobile Money or card, and track your order.", keywords: ["buy MTN data Ghana", "buy Telecel data Ghana", "buy AirtelTigo data Ghana", "data bundle Ghana"] },
   "/prices": { title: "Data Bundle Prices in Ghana — MTN, Telecel & AirtelTigo", description: "Compare current Elite Data bundle prices for MTN, Telecel and AirtelTigo in Ghana, then choose and buy the bundle that fits your budget.", keywords: ["MTN data bundle prices Ghana", "Telecel data prices", "AirtelTigo bundle prices", "cheap data Ghana"] },
   "/vouchers": { title: "Buy BECE & WASSCE Result Checker Vouchers Online Ghana", description: "Buy BECE and WASSCE result checker vouchers online in Ghana. Pay securely and receive available voucher details by SMS after order approval.", keywords: ["buy BECE result checker", "buy WASSCE result checker", "result checker voucher Ghana", "WAEC result checker Ghana"] },
   "/track": { title: "Track Your Data Bundle Order | Elite Data Ghana", description: "Track your Elite Data order in real time. Enter your order reference to check delivery status for MTN, Telecel and AirtelTigo bundles.", keywords: ["track data bundle order Ghana", "Elite Data order tracking", "data order status Ghana"] },
   "/business": { title: "Business & Bulk Data Top-Up Ghana | Elite Data", description: "Affordable bulk data top-up for businesses and resellers in Ghana. MTN, Telecel and AirtelTigo data bundles at the best wholesale prices.", keywords: ["bulk data Ghana", "business data bundles Ghana", "wholesale data bundles Ghana", "data reseller Ghana"] },
-  "/agent": { title: "Become a Data Bundle Agent in Ghana | Elite Data", description: "Join Elite Data as an agent and earn commission on every data bundle you sell. Free and Pro plans available. Apply today.", keywords: ["become data agent Ghana", "data reseller agent Ghana", "earn selling data Ghana", "Elite Data agent"] },
-  "/leaderboard": { title: "Top Agent Leaderboard | Elite Data Ghana", description: "See Elite Data's top-performing agents ranked by total sales. Join our agent programme and get on the board.", keywords: ["Elite Data leaderboard", "top agents Ghana", "data agent ranking Ghana"] },
   "/privacy": { title: "Privacy Policy | Elite Data Ghana", description: "Read how Elite Data collects, uses and protects your personal information when you buy data bundles in Ghana.", keywords: ["Elite Data privacy policy", "data privacy Ghana"] },
   "/refund-policy": { title: "Refund Policy | Elite Data Ghana", description: "Understand Elite Data's refund policy for failed or undelivered data bundle orders in Ghana.", keywords: ["Elite Data refund policy", "data bundle refund Ghana"] },
-  "/agent-agreement": { title: "Agent Agreement | Elite Data Ghana", description: "Read the full terms and conditions for Elite Data agents in Ghana before signing up.", keywords: ["Elite Data agent terms", "data agent agreement Ghana"] },
 };
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -91,14 +94,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const pathname = headersList.get("x-pathname") ?? "";
   const nonce = headersList.get("x-nonce") ?? undefined;
   const isAdmin = pathname.startsWith("/admin");
-  const isAgent = pathname.startsWith("/agent");
-  const isSubAdmin = pathname.startsWith("/subadmin");
   // Set by proxy.ts while the admin "Close Store" switch is on: show the bare
   // closed screen with no nav, banners, chat or bottom bar pointing at the shop.
   const storeClosed = headersList.get("x-store-closed") === "1";
-  const isStandalone = isAdmin || isAgent || isSubAdmin || storeClosed;
+  const isStandalone = isAdmin || storeClosed;
   const helplineEnabled = isStandalone ? false : await getHelplineEnabled();
-  const bodyModeClass = isAdmin ? "admin-site" : isAgent ? "agent-site" : isSubAdmin ? "subadmin-site" : "public-site";
+  const bodyModeClass = isAdmin ? "admin-site" : "public-site";
 
   return (
     <html lang="en">
@@ -106,7 +107,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <meta name="mobile-web-app-capable" content="yes" />
         <link rel="apple-touch-icon" href="/logo.png" />
       </head>
-      <body className={`min-h-screen flex flex-col bg-gray-50 text-gray-900 ${bodyModeClass} ${isStandalone ? "workspace-shell" : "site-shell"}`} data-helpline={helplineEnabled ? "on" : "off"}>
+      <body className={`${archivo.variable} min-h-screen flex flex-col bg-gray-50 text-gray-900 ${bodyModeClass} ${isStandalone ? "workspace-shell" : "site-shell"}`} data-helpline={helplineEnabled ? "on" : "off"}>
         <script nonce={nonce} type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
           "@context": "https://schema.org",
           "@graph": [
@@ -118,20 +119,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             ] }] : []),
           ],
         }).replace(/</g, "\\u003c") }} />
-        {!isStandalone && <PromoBanner />}
-        {!isStandalone && <PublicNav />}
-        {!isStandalone && <AnnouncementBanner target="customers" />}
+        {!isStandalone && <FlowHide variant="top"><PromoBanner /></FlowHide>}
+        {!isStandalone && <FlowHide variant="top"><PublicNav /></FlowHide>}
+        {!isStandalone && <FlowHide><AnnouncementBanner target="customers" /></FlowHide>}
         <main className="flex-1">{children}</main>
-        {!isStandalone && <Footer />}
-        {!isStandalone && helplineEnabled && <WhatsAppButton />}
-        {!isStandalone && <WelcomePopup />}
-        {!isStandalone && <ChatWidget />}
-        {!isStandalone && <MobileBottomNav />}
-        {isAgent && (
-          <div className="agent-theme-toggle" style={{ position: "fixed", top: 14, right: 16, zIndex: 99999 }}>
-            <ThemeToggle />
-          </div>
-        )}
+        {!isStandalone && <FlowHide variant="footer"><Footer /></FlowHide>}
+        {!isStandalone && helplineEnabled && <FlowHide><WhatsAppButton /></FlowHide>}
+        {!isStandalone && <FlowHide><WelcomePopup /></FlowHide>}
+        {!isStandalone && <FlowHide><ChatWidget /></FlowHide>}
+        {!isStandalone && <FlowHide><MobileBottomNav /></FlowHide>}
         <Analytics />
         <SpeedInsights />
       </body>

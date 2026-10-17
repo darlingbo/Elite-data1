@@ -1,778 +1,284 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Order, OrderStatus } from "./shared/types";
-import { PAGE_SIZE, BG, CARD, BORDER, BORDER2 } from "./shared/constants";
-import { getNetBadge } from "./shared/utils";
-import { Ic } from "./shared/Icons";
+import { PAGE_SIZE } from "./shared/constants";
+import Icon from "@/components/ed/Icon";
+import HoldButton from "./ui/HoldButton";
+import OrderSheet from "./OrderSheet";
+import { NETWORK_META, parseNetwork } from "@/lib/ed-networks";
 import { getOrderReviewSecondsRemaining } from "@/lib/order-review-window";
+import { REJECT_REASONS, rejectionSms, type RejectReasonId } from "@/lib/admin-sms-templates";
 
-const NOT_ON_LIST_WINDOW_HOURS = 72;
+const money = (n: number) => `GH₵${Number(n).toFixed(2)}`;
+const spaced = (p: string) => (p ?? "").replace(/\s/g, "").replace(/^(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3");
 
-/** A "New Number (72h)" order stays untouched during its delivery window —
- * only once that's passed with no resolution can it be refunded or deleted. */
-function pastNotOnListWindow(order: Order): boolean {
-  if (!order.not_on_list_at) return false;
-  const elapsedHours = (Date.now() - new Date(order.not_on_list_at).getTime()) / 3_600_000;
-  return elapsedHours >= NOT_ON_LIST_WINDOW_HOURS;
+function ago(iso: string, now: number): string {
+  const mins = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return `${h} h ago`;
+  return new Date(iso).toLocaleDateString("en-GH", { day: "numeric", month: "short" });
 }
 
-export function OrdersView({ orders, onRefresh, defaultFilter = "PENDING_APPROVAL" }: { orders: Order[]; onRefresh: () => void; defaultFilter?: OrderStatus }) {
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<OrderStatus>(defaultFilter);
-  const [networkFilter, setNetworkFilter] = useState<string>("ALL");
+const TABS: { key: OrderStatus; label: string }[] = [
+  { key: "PENDING_APPROVAL", label: "Waiting" },
+  { key: "ALL", label: "All orders" },
+  { key: "PROCESSING", label: "Sending" },
+  { key: "FAILED", label: "Failed" },
+  { key: "COMPLETED", label: "Completed" },
+  { key: "PENDING", label: "Pending" },
+  { key: "NOT_ON_LIST", label: "New number (72h)" },
+  { key: "REJECTED", label: "Rejected" },
+  { key: "REFUNDED", label: "Refunded" },
+  { key: "FRAUD", label: "Fraud" },
+];
+
+const STATUS_PILL: Record<string, { bg: string; color: string; text: string }> = {
+  COMPLETED: { bg: "rgba(34,197,94,.14)", color: "#22c55e", text: "Delivered" },
+  PROCESSING: { bg: "rgba(251,191,36,.14)", color: "#fbbf24", text: "Sending" },
+  PENDING: { bg: "rgba(148,163,184,.16)", color: "#94a3b8", text: "Pending" },
+  PENDING_APPROVAL: { bg: "rgba(245,158,11,.16)", color: "#f59e0b", text: "Waiting" },
+  FAILED: { bg: "rgba(239,68,68,.16)", color: "#ef4444", text: "Failed" },
+  NOT_ON_LIST: { bg: "rgba(249,115,22,.16)", color: "#f97316", text: "New number" },
+  REJECTED: { bg: "rgba(239,68,68,.1)", color: "#f87171", text: "Rejected" },
+  REFUNDED: { bg: "rgba(52,211,153,.14)", color: "#34d399", text: "Refunded" },
+  FRAUD: { bg: "rgba(220,38,38,.16)", color: "#dc2626", text: "Fraud" },
+};
+
+export function OrdersView({
+  orders,
+  onRefresh,
+  defaultFilter = "PENDING_APPROVAL",
+  initialSearch = "",
+}: {
+  orders: Order[];
+  onRefresh: () => void;
+  defaultFilter?: OrderStatus;
+  initialSearch?: string;
+}) {
+  const [search, setSearch] = useState(initialSearch);
+  const [statusFilter, setStatusFilter] = useState<OrderStatus>(initialSearch ? "ALL" : defaultFilter);
+  const [networkFilter, setNetworkFilter] = useState("ALL");
   const [page, setPage] = useState(1);
-
-  // Optimistically hide orders that have just been approved/rejected (before stats refresh lands)
   const [handledRefs, setHandledRefs] = useState<Set<string>>(new Set());
-
-  // Per-row action state
-  const [selectedRefs, setSelectedRefs] = useState<Set<string>>(new Set());
-  const [approving, setApproving] = useState<Set<string>>(new Set());
-  const [approveMsg, setApproveMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
-  const [retrying, setRetrying] = useState<string | null>(null);
-  const [movingToProcessing, setMovingToProcessing] = useState<string | null>(null);
-  const [completing, setCompleting] = useState<string | null>(null);
-  const [deletingOne, setDeletingOne] = useState<string | null>(null);
-  const [refunding, setRefunding] = useState<string | null>(null);
-  const [refundMenu, setRefundMenu] = useState<string | null>(null);
-  const [actionMsg, setActionMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useState<Order | null>(null);
+  const [bulk, setBulk] = useState<"approve" | "reject" | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [reason, setReason] = useState<RejectReasonId>("network_down");
+  const [textCustomers, setTextCustomers] = useState(true);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
   }, []);
 
-  // SMS modal
-  const [smsModal, setSmsModal] = useState<{ phone: string; name: string; message: string } | null>(null);
-  const [smsSending, setSmsSending] = useState(false);
-  const [smsResult, setSmsResult] = useState<{ ok: boolean; text: string } | null>(null);
-
-  // ─── Filtering ───────────────────────────────────────────────────────────────
   const q = search.toLowerCase().trim();
-  const filtered = orders
+  const filtered = useMemo(() => orders
     .slice()
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .filter(o => {
-      if (handledRefs.has(o.reference)) return false; // optimistically removed after approve/reject
+    .filter((o) => {
+      if (handledRefs.has(o.reference)) return false;
       if (statusFilter === "PENDING_APPROVAL" && o.status !== "pending_approval") return false;
       if (statusFilter !== "ALL" && statusFilter !== "PENDING_APPROVAL" && o.status.toUpperCase() !== statusFilter.toUpperCase()) return false;
       if (networkFilter !== "ALL" && (o.network ?? "").toLowerCase() !== networkFilter.toLowerCase()) return false;
       if (!q) return true;
       return (
         (o.customer_name ?? "").toLowerCase().includes(q) ||
-        (o.phone ?? "").includes(q) ||
+        (o.phone ?? "").replace(/\s/g, "").includes(q.replace(/\s/g, "")) ||
         (o.reference ?? "").toLowerCase().includes(q) ||
-        (o.network ?? "").toLowerCase().includes(q) ||
-        (o.agent_name ?? "").toLowerCase().includes(q)
+        (o.network ?? "").toLowerCase().includes(q)
       );
-    });
+    }), [orders, handledRefs, statusFilter, networkFilter, q]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageOrders = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const isReviewReady = (order: Order) => getOrderReviewSecondsRemaining(order.created_at, now) === 0;
+  const reviewReady = (o: Order) => getOrderReviewSecondsRemaining(o.created_at, now) === 0;
 
-  const counts: Record<OrderStatus, number> = {
-    PENDING_APPROVAL: orders.filter(o => o.status === "pending_approval").length,
-    ALL:              orders.length,
-    COMPLETED:        orders.filter(o => o.status.toUpperCase() === "COMPLETED").length,
-    PROCESSING:       orders.filter(o => o.status.toUpperCase() === "PROCESSING").length,
-    FAILED:           orders.filter(o => o.status.toUpperCase() === "FAILED").length,
-    PENDING:          orders.filter(o => o.status.toUpperCase() === "PENDING").length,
-    NOT_ON_LIST:      orders.filter(o => o.status.toUpperCase() === "NOT_ON_LIST").length,
-    FRAUD:            orders.filter(o => o.status.toUpperCase() === "FRAUD").length,
-    REJECTED:         orders.filter(o => o.status.toUpperCase() === "REJECTED").length,
-    REFUNDED:         orders.filter(o => o.status.toUpperCase() === "REFUNDED").length,
-  };
+  const counts = useMemo(() => {
+    const c: Record<OrderStatus, number> = { PENDING_APPROVAL: 0, ALL: orders.length, COMPLETED: 0, PROCESSING: 0, FAILED: 0, PENDING: 0, NOT_ON_LIST: 0, FRAUD: 0, REJECTED: 0, REFUNDED: 0 };
+    for (const o of orders) {
+      if (o.status === "pending_approval") c.PENDING_APPROVAL++;
+      else { const k = o.status.toUpperCase() as OrderStatus; if (k in c) c[k]++; }
+    }
+    return c;
+  }, [orders]);
 
-  // Tab order: Awaiting → All → Completed → Processing → Failed → Pending → Not On List → Fraud
-  const tabDefs: { key: OrderStatus; color: string; label: string }[] = [
-    { key: "PENDING_APPROVAL", color: "#f59e0b", label: "Awaiting Approval" },
-    { key: "ALL",              color: "#3b82f6", label: "All Orders" },
-    { key: "COMPLETED",        color: "#10b981", label: "Completed" },
-    { key: "PROCESSING",       color: "#3b82f6", label: "Processing" },
-    { key: "FAILED",           color: "#f87171", label: "Failed" },
-    { key: "PENDING",          color: "#94a3b8", label: "Pending" },
-    { key: "NOT_ON_LIST",      color: "#f97316", label: "New Number · Manual (72h)" },
-    { key: "FRAUD",            color: "#dc2626", label: "🕵️ Fraud" },
-  ];
-
-  const statusStyle: Record<string, { bg: string; color: string }> = {
-    COMPLETED:        { bg: "rgba(16,185,129,0.1)",  color: "#10b981" },
-    PROCESSING:       { bg: "rgba(59,130,246,0.1)",  color: "#3b82f6" },
-    PENDING:          { bg: "rgba(148,163,184,0.1)", color: "#94a3b8" },
-    PENDING_APPROVAL: { bg: "rgba(245,158,11,0.12)", color: "#f59e0b" },
-    FAILED:           { bg: "rgba(248,113,113,0.1)", color: "#f87171" },
-    NOT_ON_LIST:      { bg: "rgba(249,115,22,0.15)", color: "#f97316" },
-    REJECTED:         { bg: "rgba(239,68,68,0.08)",  color: "#ef4444" },
-    REFUNDED:         { bg: "rgba(16,185,129,0.1)",  color: "#34d399" },
-    FRAUD:            { bg: "rgba(220,38,38,0.12)",  color: "#dc2626" },
-  };
-
-  function flashMsg(ref: string, ok: boolean, text: string, ms = 5000) {
-    setActionMsg(prev => ({ ...prev, [ref]: { ok, text } }));
-    setTimeout(() => setActionMsg(prev => { const n = { ...prev }; delete n[ref]; return n; }), ms);
+  function toggle(ref: string) {
+    setSelected((prev) => { const n = new Set(prev); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; });
   }
 
-  // ─── Actions ──────────────────────────────────────────────────────────────
-  async function handleApproveOrReject(references: string[], action: "approve" | "reject") {
-    const refSet = new Set(references);
-    setApproving(prev => new Set([...prev, ...references]));
-    setSelectedRefs(new Set());
+  const selectable = pageOrders.filter((o) => o.status === "pending_approval" && reviewReady(o));
+
+  async function runBulk(action: "approve" | "reject") {
+    const references = [...selected];
+    setBulkBusy(true); setBulkMsg(null);
     try {
       const res = await fetch("/api/admin/orders/approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ references, action }),
+        body: JSON.stringify(action === "reject" ? { references, action, reason, notifyCustomer: textCustomers, willRefund: textCustomers } : { references, action }),
       });
-      const d = await res.json() as { results: { reference: string; ok: boolean; message: string }[] };
-      const msgs: Record<string, { ok: boolean; text: string }> = {};
-      for (const r of d.results ?? []) {
-        msgs[r.reference] = { ok: r.ok, text: r.ok ? (action === "approve" ? "✓ Approved!" : "✓ Rejected") : `✗ ${r.message}` };
-      }
-      setApproveMsg(prev => ({ ...prev, ...msgs }));
-      // Optimistically hide successfully handled orders immediately
-      const succeeded = d.results?.filter((r: { ok: boolean }) => r.ok).map((r: { reference: string }) => r.reference) ?? [];
-      if (succeeded.length > 0) setHandledRefs(prev => new Set([...prev, ...succeeded]));
+      const d = (await res.json()) as { results?: { reference: string; ok: boolean; message: string }[]; error?: string };
+      const results = d.results ?? [];
+      const okRefs = results.filter((r) => r.ok).map((r) => r.reference);
+      const bad = results.filter((r) => !r.ok);
+      if (okRefs.length) setHandledRefs((prev) => new Set([...prev, ...okRefs]));
+      setBulkMsg({
+        ok: bad.length === 0 && !d.error,
+        text: d.error ?? (bad.length === 0 ? `${okRefs.length} order${okRefs.length === 1 ? "" : "s"} ${action === "approve" ? "approved" : "rejected"}.` : `${okRefs.length} done, ${bad.length} not done: ${bad[0].message}`),
+      });
+      setSelected(new Set());
+      setBulk(null);
       onRefresh();
-      setTimeout(() => setApproveMsg(prev => { const n = { ...prev }; for (const ref of refSet) delete n[ref]; return n; }), 6000);
     } catch {
-      for (const ref of references) flashMsg(ref, false, "Network error");
+      setBulkMsg({ ok: false, text: "Network error. Nothing was changed." });
     } finally {
-      setApproving(prev => { const n = new Set(prev); for (const ref of references) n.delete(ref); return n; });
+      setBulkBusy(false);
     }
-  }
-
-  async function handleRetry(reference: string) {
-    setRetrying(reference);
-    try {
-      const res = await fetch("/api/admin/orders/retry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference }) });
-      const d = await res.json();
-      if (d.success) { flashMsg(reference, true, "✓ Retried"); onRefresh(); }
-      else flashMsg(reference, false, "Retry failed");
-    } catch { flashMsg(reference, false, "Network error"); }
-    finally { setRetrying(null); }
-  }
-
-  async function handleMoveToProcessing(reference: string) {
-    if (!window.confirm("Move this order to Processing? This skips the Inventor API — use when you've manually sent the data.")) return;
-    setMovingToProcessing(reference);
-    try {
-      const res = await fetch("/api/admin/orders/patch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reference, status: "processing" }),
-      });
-      const d = await res.json();
-      if (d.success) { flashMsg(reference, true, "✓ Moved to Processing"); setHandledRefs(prev => new Set([...prev, reference])); onRefresh(); }
-      else flashMsg(reference, false, d.error ?? "Failed");
-    } catch { flashMsg(reference, false, "Network error"); }
-    finally { setMovingToProcessing(null); }
-  }
-
-  async function handleForceComplete(reference: string) {
-    if (!window.confirm("Mark this order as Completed? Agent commission will be credited.")) return;
-    setCompleting(reference);
-    try {
-      const res = await fetch("/api/admin/orders/force-complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference }) });
-      const d = await res.json();
-      if (d.success) { flashMsg(reference, true, "✓ Marked complete"); onRefresh(); }
-      else flashMsg(reference, false, d.error ?? "Failed");
-    } catch { flashMsg(reference, false, "Network error"); }
-    finally { setCompleting(null); }
-  }
-
-  async function handleDeleteOne(reference: string, status: string) {
-    if (!window.confirm(`Delete this ${status} order permanently?`)) return;
-    setDeletingOne(reference);
-    try {
-      const res = await fetch("/api/admin/orders/patch", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reference }),
-      });
-      const d = await res.json();
-      if (d.success) { onRefresh(); }
-      else flashMsg(reference, false, d.error ?? "Delete failed");
-    } catch { flashMsg(reference, false, "Network error"); }
-    finally { setDeletingOne(null); }
-  }
-
-  async function handlePaystackRefund(reference: string, amount: number) {
-    if (!window.confirm(`Process a GH₵${amount.toFixed(2)} refund via Paystack? The money will go back to the customer automatically.`)) return;
-    setRefunding(reference);
-    try {
-      const res = await fetch("/api/admin/orders/refund", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reference }) });
-      const d = await res.json();
-      if (d.success) { flashMsg(reference, true, d.method === "agent_wallet" ? "✓ Credited back to agent wallet" : "✓ Refunded via Paystack"); onRefresh(); }
-      else flashMsg(reference, false, d.error ?? "Refund failed");
-    } catch { flashMsg(reference, false, "Network error"); }
-    finally { setRefunding(null); setRefundMenu(null); }
-  }
-
-  async function handleMarkRefunded(reference: string) {
-    if (!window.confirm("Mark as manually refunded? Use this only if you already sent the money back yourself (e.g. via MoMo). This just records it in the system.")) return;
-    setRefunding(reference);
-    try {
-      const res = await fetch("/api/admin/orders/patch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reference, refunded: true }),
-      });
-      const d = await res.json();
-      if (d.success) { flashMsg(reference, true, "✓ Marked as refunded"); onRefresh(); }
-      else flashMsg(reference, false, d.error ?? "Failed");
-    } catch { flashMsg(reference, false, "Network error"); }
-    finally { setRefunding(null); setRefundMenu(null); }
-  }
-
-  async function handleSendSMS() {
-    if (!smsModal) return;
-    setSmsSending(true); setSmsResult(null);
-    try {
-      const res = await fetch("/api/admin/send-sms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: smsModal.phone, message: smsModal.message }) });
-      const d = await res.json() as { success?: boolean; error?: string };
-      if (d.success) {
-        setSmsResult({ ok: true, text: "SMS sent!" });
-        setTimeout(() => { setSmsModal(null); setSmsResult(null); }, 1800);
-      } else {
-        setSmsResult({ ok: false, text: d.error ?? "Failed to send" });
-      }
-    } catch { setSmsResult({ ok: false, text: "Network error" }); }
-    finally { setSmsSending(false); }
   }
 
   function handleExport() {
     const rows = [
-      ["Reference", "Status", "Customer", "Phone", "Network", "Bundle", "Amount (GH₵)", "Agent", "Date"],
-      ...filtered.map(o => [
-        o.reference, o.status, o.customer_name ?? "", o.phone ?? "",
-        (o.network ?? "").toUpperCase(), o.bundle_size ?? "",
-        Number(o.amount).toFixed(2), o.agent_name ?? "Direct",
-        new Date(o.created_at).toLocaleString("en-GH"),
-      ]),
+      ["Reference", "Status", "Customer", "Phone", "Network", "Bundle", "Amount (GH₵)", "Date"],
+      ...filtered.map((o) => [o.reference, o.status, o.customer_name ?? "", o.phone ?? "", (o.network ?? "").toUpperCase(), o.bundle_size ?? "", Number(o.amount).toFixed(2), new Date(o.created_at).toLocaleString("en-GH")]),
     ];
-    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
+    const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const a = document.createElement("a");
     a.href = url; a.download = `orders-${statusFilter.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click(); URL.revokeObjectURL(url);
   }
 
-  // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="admin-section space-y-4">
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className="admin-section ad-orders">
+      <div className="ad-orders-head">
         <div>
-          <h1 className="text-xl font-black text-white">Orders</h1>
-          <p className="text-sm text-slate-500">{orders.length.toLocaleString()} total · {filtered.length.toLocaleString()} shown</p>
+          <h2 className="ed-h2" style={{ fontSize: 22 }}>Orders</h2>
+          <p className="ed-muted" style={{ margin: 0, fontSize: 13 }}>{orders.length.toLocaleString()} in total, {filtered.length.toLocaleString()} shown</p>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:flex-wrap">
-          <div className="relative col-span-2 sm:col-span-1">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"><Ic.search /></span>
-            <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search name, phone, ref…"
-              className="w-full pl-9 pr-4 py-2.5 text-base sm:w-52 sm:py-2 sm:text-sm rounded-xl border focus:outline-none focus:border-blue-500 text-white placeholder-slate-600"
-              style={{ background: CARD, borderColor: BORDER }} />
-          </div>
-          <select value={networkFilter} onChange={e => { setNetworkFilter(e.target.value); setPage(1); }}
-            className="min-w-0 px-3 py-2.5 text-base sm:py-2 sm:text-sm rounded-xl border focus:outline-none text-white"
-            style={{ background: networkFilter !== "ALL" ? "rgba(251,191,36,0.1)" : CARD, borderColor: networkFilter !== "ALL" ? "rgba(251,191,36,0.5)" : BORDER }}>
-            <option value="ALL">All Networks</option>
+        <div className="ad-orders-tools">
+          <label className="ad-search"><Icon name="search" small /><input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search name, number or reference" aria-label="Search orders" /></label>
+          <select value={networkFilter} onChange={(e) => { setNetworkFilter(e.target.value); setPage(1); }} className="ad-select" aria-label="Network">
+            <option value="ALL">All networks</option>
             <option value="mtn">MTN</option>
             <option value="telecel">Telecel</option>
             <option value="airteltigo">AirtelTigo</option>
             <option value="voucher">Voucher</option>
           </select>
-          <button onClick={onRefresh} className="text-sm font-medium text-slate-400 hover:text-white border px-3 py-2 rounded-xl transition-colors" style={{ background: CARD, borderColor: BORDER }}>↻ Refresh</button>
-          <button onClick={handleExport} className="text-sm font-medium border px-3 py-2 rounded-xl" style={{ background: "rgba(34,197,94,0.1)", borderColor: "#22c55e60", color: "#4ade80" }}>⬇ CSV</button>
+          <button type="button" className="ed-btn o" style={{ minHeight: 44 }} onClick={onRefresh}><Icon name="retry" small />Refresh</button>
+          <button type="button" className="ed-btn o" style={{ minHeight: 44 }} onClick={handleExport}>Export CSV</button>
         </div>
       </div>
 
-      {/* Status tabs */}
-      <div className="flex gap-1 overflow-x-auto pb-1">
-        {tabDefs.map(({ key, color, label }) => {
-          const active = statusFilter === key;
-          return (
-            <button key={key} onClick={() => { setStatusFilter(key); setPage(1); setSelectedRefs(new Set()); setRefundMenu(null); }}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap border transition-all"
-              style={active ? { background: `${color}20`, color, borderColor: `${color}50` } : { background: CARD, color: "#64748b", borderColor: BORDER }}>
-              {label}
-              <span className="text-[11px] px-1.5 py-0.5 rounded-full font-black" style={{ background: active ? `${color}30` : BORDER2, color: active ? color : "#475569" }}>{counts[key]}</span>
-            </button>
-          );
-        })}
+      <div className="ed-chips ad-tabs" role="tablist" aria-label="Order status">
+        {TABS.map(({ key, label }) => (
+          <button key={key} type="button" role="tab" aria-selected={statusFilter === key} className={`ed-chip${statusFilter === key ? " on" : ""}`} style={{ whiteSpace: "nowrap" }}
+            onClick={() => { setStatusFilter(key); setPage(1); setSelected(new Set()); }}>
+            {label} <b className="ed-num" style={{ marginLeft: 6 }}>{counts[key]}</b>
+          </button>
+        ))}
       </div>
 
-      {/* Bulk approve/reject bar — only on awaiting approval tab */}
-      {statusFilter === "PENDING_APPROVAL" && (
-        <div className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-2xl border" style={{ background: "rgba(245,158,11,0.06)", borderColor: "rgba(245,158,11,0.25)" }}>
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input type="checkbox"
-              checked={selectedRefs.size > 0 && selectedRefs.size === pageOrders.filter(o => o.status === "pending_approval").length}
-              ref={el => { if (el) el.indeterminate = selectedRefs.size > 0 && selectedRefs.size < pageOrders.filter(o => o.status === "pending_approval").length; }}
-              onChange={e => {
-                const approvalOrders = pageOrders.filter(o => o.status === "pending_approval" && isReviewReady(o));
-                setSelectedRefs(e.target.checked ? new Set(approvalOrders.map(o => o.reference)) : new Set());
-              }}
-              className="w-4 h-4 accent-amber-400 cursor-pointer" />
-            <span className="text-sm font-semibold text-amber-400">
-              {selectedRefs.size > 0 ? `${selectedRefs.size} selected` : "Select all on page"}
-            </span>
+      {bulkMsg && <p className={`ad-msg ${bulkMsg.ok ? "ok" : "bad"}`} role="status">{bulkMsg.text}</p>}
+
+      {statusFilter === "PENDING_APPROVAL" && selectable.length > 0 && (
+        <div className="ad-selectall">
+          <label>
+            <input type="checkbox" checked={selected.size > 0 && selected.size === selectable.length} onChange={(e) => setSelected(e.target.checked ? new Set(selectable.map((o) => o.reference)) : new Set())} />
+            {selected.size > 0 ? `${selected.size} selected` : "Select all ready orders on this page"}
           </label>
-          {selectedRefs.size > 0 ? (
-            <div className="grid w-full grid-cols-2 gap-2 sm:ml-auto sm:flex sm:w-auto sm:items-center">
-              <button onClick={() => handleApproveOrReject([...selectedRefs], "approve")} disabled={approving.size > 0}
-                className="text-sm font-bold px-4 py-2 rounded-xl disabled:opacity-50"
-                style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid rgba(16,185,129,0.4)" }}>
-                {approving.size > 0 ? "Sending…" : `✅ Approve ${selectedRefs.size}`}
-              </button>
-              <button onClick={() => { if (window.confirm(`Reject ${selectedRefs.size} order(s)?`)) handleApproveOrReject([...selectedRefs], "reject"); }}
-                disabled={approving.size > 0}
-                className="text-sm font-bold px-4 py-2 rounded-xl disabled:opacity-50"
-                style={{ background: "rgba(239,68,68,0.12)", color: "#f87171", border: "1px solid rgba(239,68,68,0.35)" }}>
-                ❌ Reject {selectedRefs.size}
-              </button>
-            </div>
-          ) : (
-            <span className="text-xs text-amber-400/60 font-medium ml-auto">{counts.PENDING_APPROVAL} order{counts.PENDING_APPROVAL !== 1 ? "s" : ""} waiting</span>
-          )}
         </div>
       )}
 
-      {/* Mobile order cards avoid a wide table and keep review details together. */}
-      <div className="space-y-3 sm:hidden">
-        {pageOrders.map((o, idx) => {
-          const waiting = o.status === "pending_approval" ? getOrderReviewSecondsRemaining(o.created_at, now) : 0;
-          const busy = approving.has(o.reference);
-          const statusLower = (o.status ?? "").toLowerCase();
-          const canComplete = ["processing", "pending", "pending_approval", "failed", "not_on_list"].includes(statusLower);
-          const notOnListExpired = statusLower === "not_on_list" && pastNotOnListWindow(o);
-          const canDelete = ["failed", "pending", "pending_approval", "processing"].includes(statusLower) || notOnListExpired;
-          const canRefund = (["failed", "rejected"].includes(statusLower) || notOnListExpired) && !o.refunded && Number(o.amount) > 0;
-          const refundBlocked = ["processing", "completed"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
+      <div className="ad-orows">
+        {pageOrders.map((o) => {
+          const meta = NETWORK_META[parseNetwork(o.network)];
+          const isWaiting = o.status === "pending_approval";
+          const waitLeft = isWaiting ? getOrderReviewSecondsRemaining(o.created_at, now) : 0;
+          const pill = STATUS_PILL[isWaiting ? "PENDING_APPROVAL" : o.status.toUpperCase()];
+          const flag = o.risk_flags?.[0];
           return (
-            <article key={o.reference ?? idx} className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-bold text-white">
-                    {o.customer_name && o.customer_name.toLowerCase() !== "customer" && o.customer_name !== o.phone
-                      ? o.customer_name
-                      : o.phone}
-                  </p>
-                  <div className="mt-1 font-mono text-xs font-semibold text-emerald-400 flex items-center gap-1">
-                    <span>🎯 Recipient:</span> <span className="underline font-bold text-white">{o.phone}</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigator.clipboard.writeText(o.phone);
-                        alert(`Copied ${o.phone} to clipboard!`);
-                      }}
-                      className="ml-2 inline-flex items-center gap-1 rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300 hover:bg-emerald-500/40 active:scale-95 transition-transform"
-                    >
-                      📋 Copy
-                    </button>
-                  </div>
-                </div>
-                <p className="shrink-0 text-lg font-black text-white">GH₵{Number(o.amount).toFixed(2)}</p>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                <div className="rounded-xl bg-slate-950/60 p-3"><p className="text-[10px] uppercase text-slate-500">Bundle</p><p className="mt-1 font-bold text-slate-200">{(o.network ?? "").toUpperCase()} {o.bundle_size}</p></div>
-                <div className="rounded-xl bg-slate-950/60 p-3"><p className="text-[10px] uppercase text-slate-500">Source</p><p className="mt-1 truncate font-bold text-slate-200">{o.agent_name || "Direct"}</p></div>
-              </div>
-              {o.risk_flags?.length ? <div className="mt-3 flex flex-wrap gap-1">{o.risk_flags.map(flag => <span key={flag} className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] font-semibold text-red-300">{flag}</span>)}</div> : null}
-              <p className="mt-3 break-all font-mono text-[11px] text-blue-400">{o.reference}</p>
-              {o.status === "pending_approval" && (
-                waiting > 0 ? (
-                  <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-center text-sm font-bold text-amber-300">Review order — actions unlock in {waiting}s</div>
-                ) : (
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    <button onClick={() => { if (window.confirm(`Approve and send data to ${o.phone}?`)) handleApproveOrReject([o.reference], "approve"); }} disabled={busy} className="min-h-11 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 font-bold text-emerald-300 disabled:opacity-50">✅ Approve</button>
-                    <button onClick={() => { if (window.confirm("Reject this order?")) handleApproveOrReject([o.reference], "reject"); }} disabled={busy} className="min-h-11 rounded-xl border border-red-500/40 bg-red-500/15 px-3 font-bold text-red-300 disabled:opacity-50">❌ Reject</button>
-                  </div>
-                )
-              )}
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                {statusLower === "pending_approval" && (
-                  <button onClick={() => handleMoveToProcessing(o.reference)} disabled={movingToProcessing === o.reference}
-                    className="min-h-11 rounded-xl border border-blue-500/30 bg-blue-500/15 px-3 text-sm font-bold text-blue-300 disabled:opacity-50">
-                    {movingToProcessing === o.reference ? "Processing…" : "Move to Processing"}
-                  </button>
-                )}
-                {["pending", "processing", "failed", "not_on_list"].includes(statusLower) && (
-                  <button onClick={() => handleRetry(o.reference)} disabled={retrying === o.reference}
-                    className="min-h-11 rounded-xl border border-orange-500/30 bg-orange-500/15 px-3 text-sm font-bold text-orange-300 disabled:opacity-50">
-                    {retrying === o.reference ? "Retrying…" : "Retry"}
-                  </button>
-                )}
-                {canComplete && (
-                  <button onClick={() => handleForceComplete(o.reference)} disabled={completing === o.reference}
-                    className="min-h-11 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-3 text-sm font-bold text-emerald-300 disabled:opacity-50">
-                    {completing === o.reference ? "Saving…" : "Mark Done"}
-                  </button>
-                )}
-                {canRefund && (
-                  refundMenu === o.reference ? (
-                    <div className="col-span-2 grid grid-cols-2 gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-2">
-                      <button onClick={() => handlePaystackRefund(o.reference, Number(o.amount))} disabled={refunding === o.reference}
-                        className="min-h-11 rounded-lg border border-amber-500/30 bg-amber-500/15 px-2 text-sm font-bold text-amber-300 disabled:opacity-50">
-                        {refunding === o.reference ? "Refunding…" : "Via Paystack"}
-                      </button>
-                      <button onClick={() => handleMarkRefunded(o.reference)} disabled={refunding === o.reference}
-                        className="min-h-11 rounded-lg border border-slate-500/30 bg-slate-500/15 px-2 text-sm font-bold text-slate-300 disabled:opacity-50">
-                        {refunding === o.reference ? "Saving…" : "Already Sent"}
-                      </button>
-                      <button onClick={() => setRefundMenu(null)} className="col-span-2 min-h-10 text-sm font-bold text-slate-400">Cancel</button>
-                    </div>
-                  ) : (
-                    <button onClick={() => setRefundMenu(o.reference)}
-                      className="min-h-11 rounded-xl border border-amber-500/30 bg-amber-500/15 px-3 text-sm font-bold text-amber-300">
-                      Refund
-                    </button>
-                  )
-                )}
-                {o.refunded && <div className="flex min-h-11 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 text-sm font-bold text-emerald-300">Refunded</div>}
-                {refundBlocked && <div className="flex min-h-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-900/60 px-3 text-center text-xs font-bold text-slate-500">{statusLower === "processing" ? "Still processing" : "Delivered"}</div>}
-                {canDelete && (
-                  <button onClick={() => handleDeleteOne(o.reference, statusLower)} disabled={deletingOne === o.reference}
-                    className="min-h-11 rounded-xl border border-red-500/25 bg-red-500/10 px-3 text-sm font-bold text-red-300 disabled:opacity-50">
-                    {deletingOne === o.reference ? "Archiving…" : "Archive"}
-                  </button>
-                )}
-                <button onClick={() => {
-                  const firstName = (o.customer_name ?? "Customer").split(" ")[0];
-                  const shortRef = o.reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
-                  setSmsModal({ phone: o.phone ?? "", name: firstName, message: `Hi ${firstName}! Your ${(o.network ?? "").toUpperCase()} ${o.bundle_size ?? ""} order (Ref: ${shortRef}) has been processed. Thank you for choosing Elite Data!` });
-                  setSmsResult(null);
-                }} className="min-h-11 rounded-xl border border-green-500/30 bg-green-500/10 px-3 text-sm font-bold text-green-300">
-                  Send SMS
+            <div key={o.reference} className={`ad-orow${selected.has(o.reference) ? " sel" : ""}`}>
+              {statusFilter === "PENDING_APPROVAL" ? (
+                <button type="button" className="ad-ck" role="checkbox" aria-checked={selected.has(o.reference)} aria-label={`Select ${o.reference}`} disabled={!isWaiting || waitLeft > 0} onClick={() => toggle(o.reference)}>
+                  {selected.has(o.reference) && <Icon name="check" small />}
                 </button>
-              </div>
-              {(approveMsg[o.reference] ?? actionMsg[o.reference]) && <p className="mt-3 text-sm font-bold text-slate-200">{(approveMsg[o.reference] ?? actionMsg[o.reference]).text}</p>}
-            </article>
-          );
-        })}
-      </div>
-
-      {/* Table */}
-      <div className="hidden rounded-2xl border overflow-hidden sm:block" style={{ background: CARD, borderColor: BORDER }}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-xs text-slate-500 uppercase tracking-wider" style={{ background: BG, borderColor: BORDER }}>
-                {statusFilter === "PENDING_APPROVAL" && <th className="px-4 py-3 w-10" />}
-                <th className="px-4 py-3 text-left font-semibold">#</th>
-                <th className="px-4 py-3 text-left font-semibold">Recipient / Customer</th>
-                <th className="px-4 py-3 text-left font-semibold">Bundle</th>
-                <th className="px-4 py-3 text-left font-semibold">Send To (Phone)</th>
-                <th className="px-4 py-3 text-left font-semibold">Amount</th>
-                <th className="px-4 py-3 text-left font-semibold">Source</th>
-                <th className="px-4 py-3 text-left font-semibold">Status</th>
-                <th className="px-4 py-3 text-left font-semibold">Date</th>
-                <th className="px-4 py-3 text-left font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pageOrders.map((o, idx) => {
-                const nb = getNetBadge(o.network);
-                const isPendingApproval = o.status === "pending_approval";
-                const statusKey = isPendingApproval ? "PENDING_APPROVAL" : o.status.toUpperCase();
-                const st = statusStyle[statusKey] ?? { bg: "transparent", color: "#94a3b8" };
-                const cleanSize = (o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel)\s+/i, "").trim();
-                const isSelected = selectedRefs.has(o.reference);
-                const isApprovingThis = approving.has(o.reference);
-                const approveMsgThis = approveMsg[o.reference];
-                const msgThis = actionMsg[o.reference];
-                const statusLower = (o.status ?? "").toLowerCase();
-                const canComplete = ["processing", "pending", "pending_approval", "failed", "not_on_list"].includes(statusLower);
-                const notOnListExpired = statusLower === "not_on_list" && pastNotOnListWindow(o);
-                const canDelete   = ["failed", "pending", "pending_approval", "processing"].includes(statusLower) || notOnListExpired;
-                const canRefund   = (["failed", "rejected"].includes(statusLower) || notOnListExpired) && !o.refunded && Number(o.amount) > 0;
-                const refundBlocked = ["processing", "completed"].includes(statusLower) && !o.refunded && Number(o.amount) > 0;
-                const reviewSeconds = isPendingApproval ? getOrderReviewSecondsRemaining(o.created_at, now) : 0;
-
-                return (
-                  <tr key={o.reference ?? idx} className="border-b hover:bg-white/2 transition-colors last:border-0"
-                    style={{ borderColor: BORDER, background: isSelected ? "rgba(245,158,11,0.04)" : undefined }}>
-
-                    {statusFilter === "PENDING_APPROVAL" && (
-                      <td className="pl-4 py-3.5 pr-1 w-10">
-                        {isPendingApproval && (
-                          <input type="checkbox" checked={isSelected}
-                            onChange={e => setSelectedRefs(prev => { const n = new Set(prev); e.target.checked ? n.add(o.reference) : n.delete(o.reference); return n; })}
-                            className="w-4 h-4 accent-amber-400 cursor-pointer" />
-                        )}
-                      </td>
-                    )}
-
-                    <td className="px-4 py-3.5 text-slate-600 text-xs font-mono">{(page - 1) * PAGE_SIZE + idx + 1}</td>
-
-                    <td className="px-4 py-3.5">
-                      <p className="font-semibold text-white whitespace-nowrap">
-                        {o.customer_name && o.customer_name.toLowerCase() !== "customer" && o.customer_name !== o.phone
-                          ? o.customer_name
-                          : o.phone}
-                      </p>
-                      {o.risk_flags && o.risk_flags.length > 0 && (
-                        <div className="mt-1 flex max-w-[220px] flex-wrap gap-1">
-                          {o.risk_flags.map(flag => (
-                            <span key={flag} className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-300">
-                              {flag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      <a href={`/track?ref=${encodeURIComponent(o.reference ?? "")}`} target="_blank" rel="noreferrer"
-                        className="text-[11px] text-blue-400 hover:text-blue-300 font-mono mt-0.5 block">{o.reference ? o.reference.slice(0, 16) + "…" : "—"}</a>
-                    </td>
-
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded" style={{ background: nb.bg, color: nb.color }}>{nb.label}</span>
-                        <span className="text-slate-300 text-xs font-semibold">{cleanSize}</span>
-                      </div>
-                      {o.network === "voucher" && isPendingApproval && (
-                        <p className="text-[11px] font-bold mt-1" style={{ color: "#a78bfa" }}>
-                          SMS → <span className="font-mono">{o.phone}</span>
-                        </p>
-                      )}
-                    </td>
-
-                    <td className="px-4 py-3.5 font-mono text-xs text-slate-300 font-semibold whitespace-nowrap">
-                      <span className="text-[10px] uppercase text-emerald-500 font-bold block">🎯 Deliver to:</span>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-white font-bold text-sm tracking-wide">{o.phone}</span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigator.clipboard.writeText(o.phone);
-                            alert(`Copied ${o.phone} to clipboard!`);
-                          }}
-                          title="Copy Recipient Number for manual delivery"
-                          className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300 hover:bg-emerald-500/40 active:scale-95"
-                        >
-                          📋 Copy
-                        </button>
-                      </div>
-                    </td>
-
-                    <td className="px-4 py-3.5 font-black text-white">GH₵{Number(o.amount).toFixed(2)}</td>
-
-                    <td className="px-4 py-3.5">
-                      {o.agent_name
-                        ? <span className="text-xs font-semibold px-2 py-0.5 rounded-full truncate max-w-24 block" style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }} title={o.agent_name}>{o.agent_name}</span>
-                        : <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: BORDER2, color: "#64748b" }}>Direct</span>}
-                    </td>
-
-                    <td className="px-4 py-3.5">
-                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: st.bg, color: st.color }}>
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.color }} />
-                        {isPendingApproval ? "Awaiting Approval"
-                          : statusLower === "not_on_list" ? "New Number (72h)"
-                          : statusLower === "rejected" ? "Rejected"
-                          : (o.status ?? "").charAt(0).toUpperCase() + (o.status ?? "").slice(1).toLowerCase()}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3.5 text-slate-500 text-xs whitespace-nowrap">
-                      {new Date(o.created_at).toLocaleDateString("en-GH", { day: "2-digit", month: "short", year: "numeric" })}
-                    </td>
-
-                    {/* Actions */}
-                    <td className="px-4 py-3.5">
-                      {(msgThis ?? approveMsgThis) ? (
-                        <span className={`text-xs font-bold ${(msgThis ?? approveMsgThis)?.ok ? "text-green-400" : "text-red-400"}`}>
-                          {(msgThis ?? approveMsgThis)?.text}
-                        </span>
-                      ) : (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-
-                          {/* Approve / Reject */}
-                          {isPendingApproval && o.reference && reviewSeconds > 0 && (
-                            <span className="text-xs font-bold text-amber-400">Review: {reviewSeconds}s</span>
-                          )}
-                          {isPendingApproval && o.reference && reviewSeconds === 0 && (
-                            <>
-                              <button onClick={() => { if (window.confirm(`Approve and send data to ${o.phone}?`)) handleApproveOrReject([o.reference], "approve"); }}
-                                disabled={isApprovingThis}
-                                className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
-                                style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid rgba(16,185,129,0.4)" }}>
-                                {isApprovingThis ? "…" : "✅ Approve"}
-                              </button>
-                              <button onClick={() => { if (window.confirm("Reject this order?")) handleApproveOrReject([o.reference], "reject"); }}
-                                disabled={isApprovingThis}
-                                className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
-                                style={{ background: "rgba(239,68,68,0.12)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }}>
-                                ❌ Reject
-                              </button>
-                            </>
-                          )}
-
-                          {/* Move to Processing — for stuck pending_approval orders */}
-                          {statusLower === "pending_approval" && o.reference && (
-                            <button onClick={() => handleMoveToProcessing(o.reference)} disabled={movingToProcessing === o.reference}
-                              className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
-                              style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.3)" }}>
-                              {movingToProcessing === o.reference ? "…" : "⏳ Processing"}
-                            </button>
-                          )}
-
-                          {/* Retry */}
-                          {["pending", "processing", "failed", "not_on_list"].includes(statusLower) && o.reference && (
-                            <button onClick={() => handleRetry(o.reference)} disabled={retrying === o.reference}
-                              className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
-                              style={{ background: "rgba(251,146,60,0.15)", color: "#fb923c", border: "1px solid rgba(251,146,60,0.3)" }}>
-                              {retrying === o.reference ? "…" : "🔄 Retry"}
-                            </button>
-                          )}
-
-                          {/* Mark as Completed */}
-                          {canComplete && o.reference && (
-                            <button onClick={() => handleForceComplete(o.reference)} disabled={completing === o.reference}
-                              className="text-xs font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50"
-                              style={{ background: "rgba(16,185,129,0.12)", color: "#34d399", border: "1px solid rgba(16,185,129,0.3)" }}>
-                              {completing === o.reference ? "…" : "✓ Done"}
-                            </button>
-                          )}
-
-                          {/* Refund — expand into two choices when clicked */}
-                          {canRefund && o.reference && (
-                            refundMenu === o.reference ? (
-                              <div className="flex items-center gap-1">
-                                <button onClick={() => handlePaystackRefund(o.reference, Number(o.amount))} disabled={refunding === o.reference}
-                                  className="text-xs font-bold px-2 py-1.5 rounded-lg disabled:opacity-50 whitespace-nowrap"
-                                  style={{ background: "rgba(251,191,36,0.12)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.3)" }}>
-                                  {refunding === o.reference ? "…" : "Via Paystack"}
-                                </button>
-                                <button onClick={() => handleMarkRefunded(o.reference)} disabled={refunding === o.reference}
-                                  className="text-xs font-bold px-2 py-1.5 rounded-lg disabled:opacity-50 whitespace-nowrap"
-                                  style={{ background: "rgba(148,163,184,0.12)", color: "#94a3b8", border: "1px solid rgba(148,163,184,0.25)" }}>
-                                  {refunding === o.reference ? "…" : "Already Sent"}
-                                </button>
-                                <button onClick={() => setRefundMenu(null)} className="text-slate-600 hover:text-slate-400 text-xs px-1">✕</button>
-                              </div>
-                            ) : (
-                              <button onClick={() => setRefundMenu(o.reference)}
-                                className="text-xs font-bold px-2.5 py-1.5 rounded-lg"
-                                style={{ background: "rgba(251,191,36,0.12)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.3)" }}>
-                                ↩ Refund
-                              </button>
-                            )
-                          )}
-                          {o.refunded && (
-                            <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: "rgba(251,191,36,0.08)", color: "#fbbf24" }}>Refunded</span>
-                          )}
-                          {refundBlocked && (
-                            <span className="text-xs font-bold px-2 py-1 rounded-lg"
-                              title={statusLower === "processing" ? "Cannot refund while order is still processing" : "Order was delivered — no refund"}
-                              style={{ background: "rgba(100,116,139,0.1)", color: "#64748b", border: "1px solid rgba(100,116,139,0.2)", cursor: "help" }}>
-                              {statusLower === "processing" ? "Still processing" : "Delivered"}
-                            </span>
-                          )}
-
-                          {/* Delete */}
-                          {canDelete && o.reference && (
-                            <button onClick={() => handleDeleteOne(o.reference, statusLower)} disabled={deletingOne === o.reference}
-                              className="text-xs font-bold px-2 py-1.5 rounded-lg disabled:opacity-50"
-                              style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>
-                              {deletingOne === o.reference ? "…" : "🗑"}
-                            </button>
-                          )}
-
-                          {/* SMS */}
-                          <button
-                            onClick={() => {
-                              const firstName = (o.customer_name ?? "Customer").split(" ")[0];
-                              const shortRef = o.reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
-                              setSmsModal({ phone: o.phone ?? "", name: firstName, message: `Hi ${firstName}! Your ${(o.network ?? "").toUpperCase()} ${cleanSize} order (Ref: ${shortRef}) has been processed. Thank you for choosing Elite Data!` });
-                              setSmsResult(null);
-                            }}
-                            title="Send SMS"
-                            className="text-xs font-bold px-2.5 py-1.5 rounded-lg"
-                            style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)" }}>
-                            💬
-                          </button>
-
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {pageOrders.length === 0 && (
-            <div className="py-20 text-center">
-              <p className="text-4xl mb-3">📭</p>
-              <p className="font-semibold text-slate-500">No orders match your filter</p>
-            </div>
-          )}
-        </div>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="px-4 py-3 border-t flex items-center justify-between" style={{ background: BG, borderColor: BORDER }}>
-            <p className="text-xs text-slate-500">{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length.toLocaleString()}</p>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg border text-slate-400 hover:text-white disabled:opacity-40"
-                style={{ background: CARD, borderColor: BORDER }}>← Prev</button>
-              {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
-                const pg = totalPages <= 7 ? i + 1 : page <= 4 ? i + 1 : page >= totalPages - 3 ? totalPages - 6 + i : page - 3 + i;
-                return (
-                  <button key={pg} onClick={() => setPage(pg)}
-                    className="w-8 h-8 text-xs font-semibold rounded-lg transition-colors"
-                    style={pg === page ? { background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", color: "#fff" } : { background: CARD, color: "#64748b", border: `1px solid ${BORDER}` }}>
-                    {pg}
-                  </button>
-                );
-              })}
-              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg border text-slate-400 hover:text-white disabled:opacity-40"
-                style={{ background: CARD, borderColor: BORDER }}>Next →</button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* SMS Modal */}
-      {smsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={() => { setSmsModal(null); setSmsResult(null); }}>
-          <div className="rounded-2xl shadow-2xl w-full max-w-md border" style={{ background: "#0e1928", borderColor: BORDER2 }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: BORDER }}>
-              <div>
-                <p className="font-black text-white">Send SMS</p>
-                <p className="text-xs text-slate-500 mt-0.5">To: {smsModal.phone}</p>
-              </div>
-              <button onClick={() => { setSmsModal(null); setSmsResult(null); }} className="text-slate-500 hover:text-white text-lg">✕</button>
-            </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 mb-1.5">Phone</label>
-                <input value={smsModal.phone} onChange={e => setSmsModal(m => m ? { ...m, phone: e.target.value } : m)}
-                  className="w-full px-3 py-2 text-sm rounded-xl border text-white focus:outline-none"
-                  style={{ background: "#162032", borderColor: BORDER }} />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 mb-1.5">Message</label>
-                <textarea rows={4} value={smsModal.message} onChange={e => setSmsModal(m => m ? { ...m, message: e.target.value } : m)}
-                  className="w-full px-3 py-2 text-sm rounded-xl border text-white focus:outline-none resize-none"
-                  style={{ background: "#162032", borderColor: BORDER }} />
-                <p className="text-right text-[11px] text-slate-600 mt-1">{smsModal.message.length}/500</p>
-              </div>
-              {smsResult && <p className={`text-sm font-bold text-center ${smsResult.ok ? "text-green-400" : "text-red-400"}`}>{smsResult.text}</p>}
-              <button onClick={() => void handleSendSMS()} disabled={smsSending || !smsModal.phone || !smsModal.message}
-                className="w-full py-2.5 rounded-xl text-sm font-black text-white disabled:opacity-50"
-                style={{ background: "linear-gradient(90deg,#16a34a,#22c55e)" }}>
-                {smsSending ? "Sending…" : "Send SMS"}
+              ) : null}
+              <button type="button" className="ad-orow-main" onClick={() => setOpen(o)} aria-label={`Open order ${o.reference}`}>
+                <span className="t">
+                  <b><i style={{ background: meta.color }} />{(o.network ?? "").toUpperCase()} {(o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel)\s+/i, "")}</b>
+                  <span className="ed-num">{spaced(o.phone)}, {ago(o.created_at, now)}</span>
+                </span>
+                <span className="p">
+                  {money(o.amount)}
+                  {isWaiting && waitLeft > 0 ? <small>Review {waitLeft}s</small> : flag ? <small>{flag}</small> : null}
+                </span>
+                {statusFilter !== "PENDING_APPROVAL" && pill && <span className="ad-pill" style={{ background: pill.bg, color: pill.color }}>{pill.text}</span>}
               </button>
             </div>
+          );
+        })}
+        {pageOrders.length === 0 && <p className="ed-muted" style={{ textAlign: "center", padding: "48px 0" }}>No orders match.</p>}
+      </div>
+
+      {totalPages > 1 && (
+        <div className="ad-pager">
+          <span className="ed-muted ed-num" style={{ fontSize: 12 }}>{(page - 1) * PAGE_SIZE + 1} to {Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length.toLocaleString()}</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="ed-btn o" style={{ minHeight: 44 }} disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</button>
+            <button type="button" className="ed-btn o" style={{ minHeight: 44 }} disabled={page === totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Next</button>
           </div>
         </div>
+      )}
+
+      {selected.size > 0 && (
+        <div className="ad-selbar">
+          <button type="button" className="ed-btn r" onClick={() => setBulk("reject")}>Reject {selected.size}</button>
+          <button type="button" className="ed-btn g" onClick={() => setBulk("approve")}>Approve {selected.size}</button>
+        </div>
+      )}
+
+      {bulk && (
+        <div className="ed-overlay" onClick={() => !bulkBusy && setBulk(null)}>
+          <div className="ed-sheet dk" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="ed-grab" />
+            <div className="ad-sheet-title">
+              <b>{bulk === "approve" ? `Approve ${selected.size} order${selected.size === 1 ? "" : "s"}?` : `Reject ${selected.size} order${selected.size === 1 ? "" : "s"}?`}</b>
+              <button type="button" className="ad-x" onClick={() => setBulk(null)} aria-label="Close"><Icon name="x" /></button>
+            </div>
+            {bulk === "approve" ? (
+              <>
+                <p className="ad-info">The data for these orders is sent to the network now. This is the same step Telegram uses.</p>
+                <button type="button" className="ed-btn g tall block" disabled={bulkBusy} onClick={() => void runBulk("approve")}>{bulkBusy ? "Sending…" : `Approve ${selected.size}`}</button>
+              </>
+            ) : (
+              <>
+                <div className="ad-chips2" role="radiogroup" aria-label="Reason">
+                  {REJECT_REASONS.map((r) => <button key={r.id} type="button" role="radio" aria-checked={reason === r.id} className={`ad-ch2${reason === r.id ? " on" : ""}`} onClick={() => setReason(r.id)}>{r.label}</button>)}
+                </div>
+                <div className="ad-trow"><div className="t"><b>Text each customer</b>You send the refunds by hand afterwards</div>
+                  <button type="button" role="switch" aria-checked={textCustomers} aria-label="Text each customer" className="ad-sw" onClick={() => setTextCustomers((v) => !v)} /></div>
+                {textCustomers && <p className="ad-preview">{rejectionSms({ reference: "YBK-123456", reason, amount: 25, willRefund: true })}</p>}
+                <HoldButton label={`Hold to reject ${selected.size}`} disabled={bulkBusy} onConfirm={() => void runBulk("reject")} />
+              </>
+            )}
+            <button type="button" className="ed-btn o block" onClick={() => setBulk(null)} disabled={bulkBusy}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {open && (
+        <OrderSheet
+          key={open.reference}
+          order={open}
+          onClose={() => setOpen(null)}
+          onChanged={onRefresh}
+          onHandled={(ref) => setHandledRefs((prev) => new Set([...prev, ref]))}
+        />
       )}
     </div>
   );

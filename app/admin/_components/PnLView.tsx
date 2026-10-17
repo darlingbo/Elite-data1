@@ -6,7 +6,7 @@ import type { FinanceAnalyticsResponse } from "@/lib/finance-analytics";
 import styles from "./FinanceDashboard.module.css";
 
 type Preset = "today" | "yesterday" | "7d" | "30d" | "month" | "lastMonth" | "custom";
-type ReportTab = "daily" | "weekly" | "monthly" | "agents" | "customers";
+type ReportTab = "daily" | "weekly" | "monthly" | "customers";
 type SortKey = "date" | "sellingPrice" | "actualCost" | "profit" | "agentCommission";
 type ChartDatum = { label: string; value: number; secondary?: number };
 
@@ -242,18 +242,15 @@ export default function PnLView() {
   if (!data) return <div className={styles.errorState}><strong>Finance dashboard unavailable</strong><p>{error}</p><button onClick={() => void load()}>Try again</button></div>;
 
   const summaryCards = [
-    ["Your Admin Profit", MONEY.format(data.periods.selected.profit), "profit", undefined, "green", "Selected period · after refunds, provider cost and agent commission"],
+    ["Your Admin Profit", MONEY.format(data.periods.selected.profit), "profit", undefined, "green", "Selected period · after refunds and provider cost"],
     ["Net Revenue", MONEY.format(data.periods.selected.revenue), "revenue", undefined, "blue", "Selected completed orders after refunds"],
     ["Provider Cost", MONEY.format(data.periods.selected.cost), "wallet", undefined, "amber", "Selected completed-order delivery cost"],
-    ["Direct-Sale Profit", MONEY.format(data.periods.selected.directProfit), "profit", undefined, "violet", "Your profit from orders without an agent"],
-    ["Admin Profit via Agents", MONEY.format(data.periods.selected.agentSaleProfit), "profit", undefined, "cyan", "Your share from agent-linked orders"],
-    ["Agent Commissions", MONEY.format(data.periods.selected.commission), "agents", undefined, "pink", "Secondary · agent earnings on selected orders"],
     ["Selected Completed", INTEGER.format(data.periods.selected.orders), "completed", undefined, "green", "Completed orders in the selected period"],
-    ["Today's Admin Profit", MONEY.format(data.summary.todayProfit), "profit", data.summary.trends.profit, "green", "Today · after cost and commission"],
+    ["Today's Admin Profit", MONEY.format(data.summary.todayProfit), "profit", data.summary.trends.profit, "green", "Today · after cost"],
     ["Pending Orders", INTEGER.format(data.summary.pendingOrders), "pending", undefined, "amber", "Awaiting action or delivery"],
     ["Failed Orders", INTEGER.format(data.summary.failedOrders), "failed", undefined, "red", "Failed and rejected"],
     ["Total Customers", INTEGER.format(data.summary.totalCustomers), "customers", undefined, "blue", "Unique completed buyers"],
-    ["Wallet Liability", MONEY.format(data.summary.walletBalance), "wallet", undefined, "cyan", "Money held for agent + developer wallets"],
+    ["Wallet Liability", MONEY.format(data.summary.walletBalance), "wallet", undefined, "cyan", "Money still held in old agent wallets and developer wallets"],
   ] as const;
 
   const dailyChart = data.charts.daily.map((point) => ({ label: point.label, value: point.revenue, secondary: point.profit }));
@@ -267,7 +264,7 @@ export default function PnLView() {
       <div>
         <span className={styles.eyebrow}>Admin profit center</span>
         <h2>Your money comes first.</h2>
-        <p>Admin profit is completed-order net revenue minus provider cost and agent commission. Agent figures stay separate and secondary. Updated {DATE.format(new Date(data.generatedAt))}.</p>
+        <p>Admin profit is completed-order net revenue minus provider cost and agent commission. Updated {DATE.format(new Date(data.generatedAt))}.</p>
       </div>
       <div className={styles.heroActions}>
         <button className={styles.themeButton} onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")} aria-label="Toggle finance dashboard theme">
@@ -285,7 +282,6 @@ export default function PnLView() {
       <div className={styles.filterGrid}>
         <label><span>From</span><input type="date" value={from} onChange={(event) => { setPreset("custom"); setFrom(event.target.value); }} /></label>
         <label><span>To</span><input type="date" value={to} onChange={(event) => { setPreset("custom"); setTo(event.target.value); }} /></label>
-        <label><span>Agent</span><select value={agent} onChange={(event) => setAgent(event.target.value)}><option value="all">All agents</option>{data.options.agents.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></label>
         <label><span>Network</span><select value={network} onChange={(event) => setNetwork(event.target.value)}><option value="all">All networks</option>{data.options.networks.map((option) => <option key={option ?? ""}>{option}</option>)}</select></label>
         <label><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option>{data.options.statuses.map((option) => <option key={option}>{option}</option>)}</select></label>
         <label><span>Payment</span><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="all">All methods</option>{data.options.paymentMethods.map((option) => <option key={option}>{option}</option>)}</select></label>
@@ -326,22 +322,19 @@ export default function PnLView() {
     <section className={styles.rankingsGrid}>
       <BarRanking title="Top selling bundles" subtitle="Products customers choose most" rows={data.charts.topBundles} valueLabel="orders" />
       <BarRanking title="Top customers" subtitle="Completed customer spend" rows={data.reports.monthly.topCustomers} />
-      <BarRanking title="Agent contribution" subtitle="Secondary view of agent-linked revenue" rows={data.charts.topAgents} />
     </section>
 
     <section className={styles.reports}>
       <div className={styles.sectionHeading}><div><span>Business reports</span><h2>From daily pulse to lifetime value</h2></div></div>
-      <div className={styles.reportTabs}>{(["daily", "weekly", "monthly", "agents", "customers"] as const).map((tab) =>
+      <div className={styles.reportTabs}>{(["daily", "weekly", "monthly", "customers"] as const).map((tab) =>
         <button key={tab} onClick={() => setReportTab(tab)} className={reportTab === tab ? styles.activeReport : ""}>{tab}</button>)}</div>
       <div className={styles.reportBody}>
         {reportTab === "daily" ? <>
           <ReportMetric label="Revenue" value={MONEY.format(data.reports.daily.revenue)} />
           <ReportMetric label="Expenses" value={MONEY.format(data.reports.daily.expenses)} />
           <ReportMetric label="Admin profit" value={MONEY.format(data.reports.daily.profit)} accent />
-          <ReportMetric label="Agent commission" value={MONEY.format(data.reports.daily.commission)} />
           <ReportMetric label="Average order value" value={MONEY.format(data.reports.daily.averageOrderValue)} />
           <ReportMetric label="Best selling bundle" value={data.reports.daily.bestSellingBundle} />
-          <ReportMetric label="Most active agent" value={data.reports.daily.mostActiveAgent} />
           <ReportMetric label="Best customer" value={data.reports.daily.bestCustomer} />
           <ReportMetric label="Completion rate" value={`${data.reports.daily.completionRate.toFixed(1)}%`} />
           <ReportMetric label="Success rate" value={`${data.reports.daily.successRate.toFixed(1)}%`} />
@@ -353,27 +346,14 @@ export default function PnLView() {
           <ReportMetric label="Orders completed" value={INTEGER.format(data.reports.weekly.orders)} />
           <ReportMetric label="Orders failed" value={INTEGER.format(data.reports.weekly.failed)} />
           <ReportMetric label="Refunds" value={INTEGER.format(data.reports.weekly.refunds)} />
-          <ReportMetric label="Top agent" value={data.reports.weekly.topAgent} />
           <ReportMetric label="Top customer" value={data.reports.weekly.topCustomer} />
         </> : null}
         {reportTab === "monthly" ? <>
           <ReportMetric label="Revenue" value={MONEY.format(data.reports.monthly.revenue)} />
           <ReportMetric label="Admin profit" value={MONEY.format(data.reports.monthly.profit)} accent />
           <ReportMetric label="Growth" value={`${data.reports.monthly.growth.toFixed(1)}%`} />
-          <ReportMetric label="Agent commission" value={MONEY.format(data.reports.monthly.commission)} />
           <ReportMetric label="Best product" value={data.reports.monthly.bestSellingProducts[0]?.name ?? "No sales"} />
-          <ReportMetric label="Top agent" value={data.reports.monthly.topAgents[0]?.name ?? "No agent sales"} />
           <ReportMetric label="Top customer" value={data.reports.monthly.topCustomers[0]?.name ?? "No customers"} />
-        </> : null}
-        {reportTab === "agents" ? <>
-          <ReportMetric label="Total agents" value={INTEGER.format(data.agents.total)} />
-          <ReportMetric label="Active agents" value={INTEGER.format(data.agents.active)} />
-          <ReportMetric label="Inactive agents" value={INTEGER.format(data.agents.inactive)} />
-          <ReportMetric label="Highest earning agent" value={data.agents.highestEarning?.name ?? "No agent sales"} />
-          <ReportMetric label="Commission paid" value={MONEY.format(data.agents.commissionPaid)} accent />
-          <ReportMetric label="Top agent orders" value={INTEGER.format(data.agents.rows[0]?.orders ?? 0)} />
-          <ReportMetric label="Top agent revenue" value={MONEY.format(data.agents.rows[0]?.revenue ?? 0)} />
-          <ReportMetric label="Profit generated" value={MONEY.format(data.agents.rows[0]?.profit ?? 0)} />
         </> : null}
         {reportTab === "customers" ? <>
           <ReportMetric label="New customers" value={INTEGER.format(data.customers.newCustomers)} />
@@ -385,14 +365,8 @@ export default function PnLView() {
         </> : null}
       </div>
       {reportTab === "monthly" ? <div className={styles.reportRankings}>
-        <ReportList title="Top 10 agents" rows={data.reports.monthly.topAgents.slice(0, 10)} />
         <ReportList title="Top customers" rows={data.reports.monthly.topCustomers.slice(0, 10)} />
         <ReportList title="Best selling products" rows={data.reports.monthly.bestSellingProducts.slice(0, 10)} />
-      </div> : null}
-      {reportTab === "agents" ? <div className={styles.reportRankings}>
-        <ReportList title="Revenue per agent" rows={data.agents.rows.slice(0, 10).map((row) => ({ name: row.name, value: row.revenue }))} />
-        <ReportList title="Profit per agent" rows={data.agents.rows.slice(0, 10).map((row) => ({ name: row.name, value: row.profit }))} />
-        <ReportList title="Orders per agent" rows={data.agents.rows.slice(0, 10).map((row) => ({ name: row.name, value: row.orders }))} money={false} />
       </div> : null}
       {reportTab === "customers" ? <div className={styles.reportRankings}>
         <ReportList title="Top customers by spend" rows={data.reports.monthly.topCustomers.slice(0, 10)} />

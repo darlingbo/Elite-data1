@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
-import { sendRefundRequestAlert } from "@/lib/telegram";
+import { sendRefundRequestAlert, tgEscape } from "@/lib/telegram";
+import { getPaymentAttempt } from "@/lib/payment-attempt";
 import { sendAdminWhatsApp } from "@/lib/whatsapp";
 import { supabase } from "@/lib/supabase";
+import { tooMany } from "@/lib/public-limit";
 
 async function upsertRefundLog(reference: string, patch: Record<string, unknown>) {
   const { data } = await supabase
@@ -25,6 +27,9 @@ async function upsertRefundLog(reference: string, patch: Record<string, unknown>
 }
 
 export async function POST(req: NextRequest) {
+  const blocked = await tooMany(req, "refund-request", 6, 3600000);
+  if (blocked) return blocked;
+
   const { reference, customerPhone, customerName, network, bundleSize, refundName, refundPhone } = await req.json();
 
   // Validate that the reference + phone actually exist in the orders table before accepting
@@ -74,13 +79,42 @@ export async function POST(req: NextRequest) {
     .eq("reference", cleanRef)
     .then(() => {});
 
+  // Where did the money come from? A refund to a different number is a classic scam,
+  // so the alert says so plainly. Everything the customer typed is escaped first.
+  let payerNote = "";
+  try {
+    const { data: full } = await supabase.from("orders").select("paystack_reference").eq("reference", cleanRef).maybeSingle();
+    const attempt = await getPaymentAttempt(String(full?.paystack_reference ?? cleanRef)).catch(() => null);
+    const payer = String((attempt?.metadata as { payerPhone?: string } | undefined)?.payerPhone ?? "").replace(/\s/g, "");
+    const asked = String(refundPhone).replace(/\s/g, "");
+    if (payer) {
+      payerNote = payer === asked
+        ? `✅ Same number that paid: <code>${tgEscape(payer)}</code>
+
+`
+        : `⚠️ <b>DIFFERENT NUMBER.</b> The payment came from <code>${tgEscape(payer)}</code>. Check with the customer before sending.
+
+`;
+    }
+  } catch { /* the note is optional */ }
+
   const msg =
-    `💸 <b>REFUND REQUEST</b>\n\n` +
-    `👤 Customer: ${customerName ?? "N/A"} · <code>${customerPhone}</code>\n` +
-    `📦 Order: ${String(network).toUpperCase()} ${bundleSize}\n` +
-    `📎 Ref: <code>${reference}</code>\n\n` +
-    `📱 MoMo Name: <b>${refundName}</b>\n` +
-    `📲 MoMo Number: <code>${refundPhone}</code>\n\n` +
+    `💸 <b>REFUND REQUEST</b>
+
+` +
+    `👤 Customer: ${tgEscape(String(customerName ?? "N/A"))} · <code>${tgEscape(String(customerPhone))}</code>
+` +
+    `📦 Order: ${tgEscape(String(network ?? "").toUpperCase())} ${tgEscape(String(bundleSize ?? ""))}
+` +
+    `📎 Ref: <code>${tgEscape(cleanRef)}</code>
+
+` +
+    payerNote +
+    `📱 MoMo Name: <b>${tgEscape(String(refundName ?? ""))}</b>
+` +
+    `📲 MoMo Number: <code>${tgEscape(String(refundPhone))}</code>
+
+` +
     `➡️ Send refund via Mobile Money within 12 hours.`;
 
   sendRefundRequestAlert(msg).catch(() => {});

@@ -1,10 +1,14 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { tooMany } from "@/lib/public-limit";
 
 // Only block completed orders — everything else can request a refund
 const NOT_REFUNDABLE = ["completed"];
 
 export async function POST(req: NextRequest) {
+  const blocked = await tooMany(req, "refund-verify", 12, 600000);
+  if (blocked) return blocked;
+
   const body = await req.json().catch(() => ({}));
   const reference = String(body.reference ?? "").trim();
   const phone = String(body.phone ?? "").replace(/\s/g, "");

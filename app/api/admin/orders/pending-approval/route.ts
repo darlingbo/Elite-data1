@@ -19,16 +19,6 @@ export async function GET() {
 
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
-  const agentIds = [...new Set((ordersData ?? []).map(o => o.agent_id).filter(Boolean))] as string[];
-  const agentMap = new Map<string, { name: string; referral_code: string }>();
-  if (agentIds.length > 0) {
-    const { data: agents } = await supabase
-      .from("agents")
-      .select("id, name, referral_code")
-      .in("id", agentIds);
-    for (const a of agents ?? []) agentMap.set(a.id, { name: a.name, referral_code: a.referral_code });
-  }
-
   const orders = (ordersData ?? []).map((order, index, allOrders) => {
     const createdAt = new Date(order.created_at).getTime();
     const nearbyOrders = allOrders.filter(candidate =>
@@ -52,8 +42,6 @@ export async function GET() {
       ...order,
       queue_position: index + 1,
       risk_flags: riskFlags,
-      agent_name: order.agent_id ? (agentMap.get(order.agent_id)?.name ?? null) : null,
-      agent_code: order.agent_id ? (agentMap.get(order.agent_id)?.referral_code ?? null) : null,
     };
   });
 

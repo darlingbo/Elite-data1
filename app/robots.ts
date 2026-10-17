@@ -6,7 +6,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/admin", "/api/", "/agent/dashboard"],
+        disallow: ["/admin", "/api/"],
       },
     ],
     sitemap: "https://elitedata1.com/sitemap.xml",

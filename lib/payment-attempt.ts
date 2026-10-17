@@ -112,7 +112,12 @@ export async function markPaymentAttemptStatus(
   await saveAllAttempts(attempts);
 }
 
-export async function verifyYebeckPayment(reference: string): Promise<{
+/**
+ * Ask Yebeck whether a payment went through.
+ * `expectedType` stops one payment being spent on something else: money paid for a
+ * wallet top-up cannot also be used to create a data order, and the reverse.
+ */
+export async function verifyYebeckPayment(reference: string, expectedType?: StoredPaymentAttempt["payment_type"]): Promise<{
   attempt: StoredPaymentAttempt;
   status: "success" | "pending" | "failed";
   collection?: YebeckCollection;
@@ -120,6 +125,9 @@ export async function verifyYebeckPayment(reference: string): Promise<{
   const attempt = await getPaymentAttempt(reference);
   if (!attempt) {
     throw new Error(`Payment attempt not found: ${reference}`);
+  }
+  if (expectedType && attempt.payment_type !== expectedType) {
+    throw new Error("This payment was made for something else.");
   }
 
   if (attempt.status === "success") {

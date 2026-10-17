@@ -15,16 +15,16 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
 
-  const { name, email, phone, bundleId, paystackRef } = body as Record<string, string>;
-  if (!name || !email || !phone || !bundleId || !paystackRef) {
-    return NextResponse.json({ error: "Missing fields: name, email, phone, bundleId, paystackRef are required." }, { status: 400 });
+  const { name, email, phone, bundleId, paymentRef } = body as Record<string, string>;
+  if (!name || !email || !phone || !bundleId || !paymentRef) {
+    return NextResponse.json({ error: "Missing fields: name, email, phone, bundleId, paymentRef are required." }, { status: 400 });
   }
 
   // Idempotency
   const { data: existing } = await supabase
     .from("orders")
     .select("reference, status")
-    .eq("reference", paystackRef)
+    .eq("reference", paymentRef)
     .maybeSingle();
   if (existing) return NextResponse.json({ success: true, reference: existing.reference, status: existing.status });
 
@@ -48,32 +48,28 @@ export async function POST(request: NextRequest) {
   const price = dbBundle?.price ?? staticBundle?.price ?? 0;
   const costPrice = dbBundle?.cost_price ?? staticBundle?.costPrice ?? 0;
 
-  // Verify Paystack
+  // Verify the Mobile Money payment (Yebeck) for this reference.
   const chargedAmount = addCurrency(Number(price), percentageOf(Number(price), PLATFORM_FEE_RATE));
   const expectedKobo = toMinorUnits(chargedAmount);
-  let psData: Record<string, unknown> = {};
+  let paid = false;
   try {
-    const psRes = await fetch(
-      `https://api.paystack.co/transaction/verify/${encodeURIComponent(paystackRef)}`,
-      { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` } }
-    );
-    psData = await psRes.json();
+    const { verifyYebeckPayment } = await import("@/lib/payment-attempt");
+    const ybk = await verifyYebeckPayment(String(paymentRef), "data_order");
+    paid = ybk.status === "success" && ybk.attempt.amount_pesewas >= expectedKobo;
   } catch (err) {
-    return NextResponse.json({ error: `Paystack unreachable: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
+    return NextResponse.json({ error: `Payment check unavailable: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
   }
-
-  const txnData = psData.data as Record<string, unknown>;
-  const paid = psData.status === true && txnData?.status === "success" && Number(txnData?.amount ?? 0) >= expectedKobo;
   if (!paid) {
-    return NextResponse.json({ error: "Payment verification failed. Check paystackRef and amount." }, { status: 400 });
+    return NextResponse.json({ error: "Payment verification failed. Check paymentRef and amount." }, { status: 400 });
   }
 
   const profit = Math.max(0, roundCurrency(Number(price) - Number(costPrice)));
 
   // Save order
   const { error: dbErr } = await supabase.from("orders").insert({
-    reference: paystackRef,
-    paystack_reference: paystackRef,
+    reference: paymentRef,
+    paystack_reference: paymentRef,
+    payment_method: "yebeck",
     customer_name: name,
     customer_email: email,
     phone,
@@ -92,7 +88,7 @@ export async function POST(request: NextRequest) {
   await sendNewOrderAlert(
     `🔌 <b>API ORDER — APPROVE TO DELIVER</b>\n\n` +
     fmtOrder({
-      ref: paystackRef,
+      ref: paymentRef,
       network: bundleMeta.network,
       size: bundleMeta.size,
       phone,
@@ -100,13 +96,13 @@ export async function POST(request: NextRequest) {
       profit,
       sourceLabel: `API customer: ${auth.name}`,
     }),
-    orderApprovalKeyboard(paystackRef),
+    orderApprovalKeyboard(paymentRef),
   ).catch(() => {});
 
-  const autoApproval = await maybeAutoApprove(paystackRef);
+  const autoApproval = await maybeAutoApprove(paymentRef);
   return NextResponse.json({
     success: true,
-    reference: paystackRef,
+    reference: paymentRef,
     status: autoApproval.ok ? "processing" : "pending_approval",
     message: autoApproval.ok ? "Payment verified. Order was approved automatically." : "Payment verified. Order is awaiting admin approval.",
   });

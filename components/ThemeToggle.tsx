@@ -61,52 +61,6 @@ const LIGHT_CSS = `
   html[data-theme="light"] .bg-blue-950  { background:#dbeafe !important; }
   html[data-theme="light"] .text-gray-300, html[data-theme="light"] .text-gray-400 { color:#475569 !important; }
 
-  /* Agent portal: use a coherent light palette without changing brand-button text. */
-  html[data-theme="light"] .agent-app-shell { background:#f1f5f9 !important; color:#0f172a !important; }
-  html[data-theme="light"] .agent-app-shell .main-with-sidebar { background:#f1f5f9 !important; }
-  html[data-theme="light"] .agent-app-shell .agent-desktop-header,
-  html[data-theme="light"] .agent-app-shell .mobile-header {
-    background:rgba(255,255,255,.96) !important;
-    border-color:#dbe3ee !important;
-    box-shadow:0 8px 28px rgba(15,23,42,.08);
-  }
-  html[data-theme="light"] .agent-app-shell .agent-desktop-header h1 { color:#0f172a !important; }
-  html[data-theme="light"] .agent-app-shell .agent-desktop-header p { color:#526174 !important; }
-  html[data-theme="light"] .agent-app-shell .agent-header-actions button:not(.agent-header-avatar) {
-    color:#475569 !important; border-color:#dbe3ee !important; background:#fff !important;
-  }
-  html[data-theme="light"] .agent-app-shell input,
-  html[data-theme="light"] .agent-app-shell textarea,
-  html[data-theme="light"] .agent-app-shell select {
-    background:#fff !important; color:#0f172a !important; border-color:#cbd5e1 !important;
-  }
-  html[data-theme="light"] .agent-app-shell input::placeholder,
-  html[data-theme="light"] .agent-app-shell textarea::placeholder { color:#64748b !important; opacity:1; }
-  html[data-theme="light"] .agent-app-shell option { background:#fff; color:#0f172a; }
-  html[data-theme="light"] .agent-app-shell .pro-card {
-    background:#fff !important; border-color:#dbe3ee !important; color:#0f172a !important;
-    box-shadow:0 10px 30px rgba(15,23,42,.06);
-  }
-  html[data-theme="light"] .agent-app-shell .pro-balance small,
-  html[data-theme="light"] .agent-app-shell .pro-metric small,
-  html[data-theme="light"] .agent-app-shell .pro-metric span,
-  html[data-theme="light"] .agent-app-shell .pro-orders-head p,
-  html[data-theme="light"] .agent-app-shell .pro-empty,
-  html[data-theme="light"] .agent-app-shell .pro-order-info small { color:#526987 !important; }
-  html[data-theme="light"] .agent-app-shell .pro-order-row {
-    color:#0f172a !important; border-color:#e2e8f0 !important;
-  }
-  html[data-theme="light"] .agent-app-shell .pro-order-row:hover { background:#f8fafc !important; }
-  html[data-theme="light"] .agent-app-shell .pro-orders-head button,
-  html[data-theme="light"] .agent-app-shell .pro-chevron { color:#3f5d83 !important; }
-  html[data-theme="light"] .agent-app-shell .pro-shortcuts > button:hover { border-color:#93b4dc !important; }
-  html[data-theme="light"] .agent-app-shell .bottom-nav > div {
-    background:rgba(255,255,255,.97) !important;
-    box-shadow:0 8px 28px rgba(15,23,42,.16),0 0 0 1px #dbe3ee !important;
-  }
-  html[data-theme="light"] .agent-app-shell button[style*="color: white"],
-  html[data-theme="light"] .agent-app-shell a[style*="color: white"],
-  html[data-theme="light"] .agent-app-shell .text-white { color:#fff !important; }
 
   /* Welcome modal is converted to a true light card as a single component. */
   html[data-theme="light"] .welcome-popup-card { background:#fff !important; border-color:#dbe3ee !important; }

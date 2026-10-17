@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       history: historyResult.data ?? [],
       methodology: {
         timezone: "UTC/Ghana",
-        paymentEvidence: "Paystack reference or recognised wallet/manual/API order source",
+        paymentEvidence: "Payment reference or recognised wallet/manual/API order source",
         expectedProfit: "Completed order amount minus provider cost minus agent commission, before payment processing fees",
         note: "This report never delivers orders, refunds customers, or changes balances.",
       },

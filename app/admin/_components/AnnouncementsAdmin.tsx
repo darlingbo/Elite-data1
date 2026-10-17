@@ -290,7 +290,7 @@ export default function AnnouncementsAdmin() {
       <div>
         <h2 style={{ color: "#f1f5f9", fontWeight: 900, fontSize: 22, margin: 0 }}>Notifications</h2>
         <p style={{ color: "#64748b", fontSize: 14, marginTop: 4 }}>
-          Send banner messages to customers and agents, or close the whole store with a custom message.
+          Send banner messages to customers, or close the whole store with a custom message.
         </p>
       </div>
 
@@ -304,7 +304,7 @@ export default function AnnouncementsAdmin() {
           <span style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 16 }}>Store is {storeOpen !== false ? "OPEN" : "CLOSED"}</span>
         </div>
         <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 14px" }}>
-          When closed, the home, buy, prices and vouchers pages and all agent stores show your message and a button to {ALTERNATE_STORE_LABEL}. The admin panel, agent dashboards and order tracking stay open. Takes effect within about 10 seconds.
+          When closed, the home, buy, prices and vouchers pages show your message and a button to {ALTERNATE_STORE_LABEL}. The admin panel and order tracking stay open. Takes effect within about 10 seconds.
         </p>
         <button
           onClick={toggleStore}
@@ -508,25 +508,6 @@ export default function AnnouncementsAdmin() {
                   </button>
                 ))}
               </div>
-              {/* Row 2 — agent targets */}
-              <div style={{ display: "flex", gap: 6 }}>
-                {(["agents", "agents_commission", "agents_custom_price"] as const).map((t) => (
-                  <button key={t} onClick={() => setTarget(t)}
-                    style={{ flex: 1, padding: "7px 4px", borderRadius: 8, border: "1px solid", fontWeight: 700, fontSize: 11, cursor: "pointer", transition: "all .15s", textAlign: "center",
-                      borderColor: target === t ? TARGET_LABELS[t].color : "#1e3050",
-                      background: target === t ? TARGET_LABELS[t].bg : "#0e1928",
-                      color: target === t ? TARGET_LABELS[t].color : "#64748b" }}>
-                    {t === "agents" ? "All Agents" : t === "agents_commission" ? "Commission" : "Price Mode"}
-                  </button>
-                ))}
-              </div>
-              {target.startsWith("agents_") && (
-                <p style={{ color: "#475569", fontSize: 11, marginTop: 2 }}>
-                  {target === "agents_commission"
-                    ? "Only agents in Commission mode will see this."
-                    : "Only agents in Price Mode (custom price) will see this."}
-                </p>
-              )}
             </div>
           </div>
 

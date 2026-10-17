@@ -8,7 +8,7 @@ type ChatMessage = { role: "user" | "assistant"; content: string };
 
 const WELCOME: ChatMessage = {
   role: "assistant",
-  content: "Hello! I’m your EliteData AI assistant. Ask me about business performance, agents, voucher stock, marketing, customer replies, risks, or what you should focus on today.",
+  content: "Hello! I’m your EliteData AI assistant. Ask me about business performance, voucher stock, marketing, customer replies, risks, or what you should focus on today.",
 };
 
 const SUGGESTIONS = [

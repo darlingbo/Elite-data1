@@ -10,7 +10,7 @@ Next.js 16 rules that override your training data defaults.
 - **Supabase** (PostgreSQL) — NOT MongoDB
 - **Tailwind CSS** + custom inline styles (dark theme)
 - **Vercel** (primary deployment) + **Render** (standalone/backend)
-- **Paystack** (payments), **Telegram Bot API**, **MessagePilot SMS**
+- **Yebeck** (Mobile Money payments; no card, Paystack removed), **Telegram Bot API**, **MessagePilot SMS**
 - **Inventor API** (data bundle delivery)
 
 ## Most Important Rules
@@ -29,5 +29,5 @@ Mobile-first: most users are on low-end Android over mobile data.
 ## Project
 Elite Data is a data-selling platform for Ghana.
 Customers buy MTN, Telecel, AirtelTigo data bundles and exam vouchers.
-Payments via Paystack (card + Mobile Money).
+Payments by Mobile Money only (Yebeck).
 Admin approves every order before delivery via Telegram or the admin dashboard.

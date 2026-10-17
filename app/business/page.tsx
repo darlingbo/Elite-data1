@@ -1,27 +1,14 @@
 "use client";
-import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-import type { Bundle, Network } from "@/lib/bundles";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
+import Link from "next/link";
+import type { Bundle } from "@/lib/bundles";
 import { detectGhProvider, normalizeGhPhone } from "@/lib/phone";
+import { MOMO_NETWORKS, NETWORK_META, type BuyNetwork, type MomoNetwork } from "@/lib/ed-networks";
+import Icon from "@/components/ed/Icon";
 
 const PLATFORM_FEE_RATE = 0.02;
-
-function usePaystackReady() {
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    if (window.PaystackPop) {
-      const timer = window.setTimeout(() => setReady(true), 0);
-      return () => window.clearTimeout(timer);
-    }
-    const s = document.createElement("script");
-    s.src = "https://js.paystack.co/v1/inline.js";
-    s.async = true;
-    s.onload = () => setReady(true);
-    document.body.appendChild(s);
-    return () => { s.onload = null; };
-  }, []);
-  return ready;
-}
+const money = (n: number) => `GH₵${n.toFixed(2)}`;
+const spaced = (p: string) => p.replace(/\s/g, "").replace(/^(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3");
 
 function parsePhones(raw: string): string[] {
   return raw
@@ -30,421 +17,239 @@ function parsePhones(raw: string): string[] {
     .filter((s) => /^0[2-5][0-9]{8}$/.test(s));
 }
 
-function networkBg(n: string) {
-  if (n === "mtn") return "bg-yellow-400 text-yellow-900";
-  if (n === "telecel") return "bg-red-500 text-white";
-  return "bg-blue-500 text-white";
-}
-
 interface Outcome { phone: string; ref: string; status: "pending_approval" | "failed"; }
 
 function BusinessContent() {
-  useSearchParams(); // required for Suspense boundary
-
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [bundles, setBundles] = useState<Bundle[]>([]);
-  const [network, setNetwork] = useState<Network>("mtn");
+  const [network, setNetwork] = useState<BuyNetwork>("mtn");
   const [selectedBundle, setSelectedBundle] = useState<Bundle | null>(null);
   const [phonesText, setPhonesText] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  const [momoNetwork, setMomoNetwork] = useState<MomoNetwork | null>(null);
+  const [momoPhone, setMomoPhone] = useState("");
+  const [confirmNetwork, setConfirmNetwork] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState<{ pendingApproval: number; failed: number; total: number; outcomes: Outcome[] } | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const paystackReady = usePaystackReady();
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (stopRef.current) { clearTimeout(stopRef.current); stopRef.current = null; }
+  }, []);
+  useEffect(() => stopPolling, [stopPolling]);
 
   useEffect(() => {
-    fetch("/api/bundles")
-      .then((r) => r.json())
-      .then((d) => setBundles(d.bundles ?? []));
+    fetch("/api/bundles").then((r) => r.json()).then((d) => setBundles(d.bundles ?? [])).catch(() => {});
   }, []);
 
-  const validPhones = parsePhones(phonesText);
-  const uniquePhones = [...new Set(validPhones)];
+  const uniquePhones = [...new Set(parsePhones(phonesText))];
   const allLines = phonesText.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
   const invalidCount = allLines.length - uniquePhones.length;
-
-  const filtered = bundles
-    .filter((b) => b.network === network)
-    .sort((a, b) => (a.sizeGB ?? 0) - (b.sizeGB ?? 0));
-
+  const filtered = bundles.filter((b) => b.network === network).sort((a, b) => (a.sizeGB ?? 0) - (b.sizeGB ?? 0));
   const unitTotal = selectedBundle ? parseFloat((selectedBundle.price * (1 + PLATFORM_FEE_RATE)).toFixed(2)) : 0;
   const grandTotal = parseFloat((unitTotal * uniquePhones.length).toFixed(2));
   const platformFee = parseFloat((selectedBundle ? selectedBundle.price * PLATFORM_FEE_RATE * uniquePhones.length : 0).toFixed(2));
+  const meta = NETWORK_META[network];
+
+  const cleanContact = normalizeGhPhone(contactPhone);
+  const momoClean = normalizeGhPhone(momoPhone);
+  const detected = momoClean ? detectGhProvider(momoClean) : null;
+  const wrong = !!(momoNetwork && detected && detected !== momoNetwork);
+  const labelOf = (id: MomoNetwork | null) => MOMO_NETWORKS.find((n) => n.id === id)?.label ?? "";
+  const canPay = !!selectedBundle && uniquePhones.length >= 2 && !!cleanContact && !!momoNetwork && !!momoClean && (!wrong || confirmNetwork) && !loading;
 
   async function handlePay() {
-    if (!selectedBundle || uniquePhones.length < 2) return;
-    if (!contactPhone.trim()) { setError("Enter your contact phone number."); return; }
+    if (!canPay || !selectedBundle || !momoNetwork || !momoClean || !cleanContact) return;
     setError("");
-
-    const cleanContact = normalizeGhPhone(contactPhone);
-    if (!cleanContact) {
-      setError("Enter a valid 10-digit Ghana contact phone number.");
-      return;
-    }
-
-    const momoNet = detectGhProvider(cleanContact) ?? "mtn";
     setLoading(true);
-
     try {
       const ybkRes = await fetch("/api/yebeck/charge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: grandTotal,
-          phone: cleanContact,
-          network: momoNet,
+          phone: momoClean,
+          network: momoNetwork,
+          confirmNetwork: wrong && confirmNetwork,
           type: "bulk_order",
           name: companyName.trim() || "Business Customer",
-          metadata: {
-            phonesCount: uniquePhones.length,
-            bundleId: selectedBundle.id,
-            companyName: companyName.trim() || null,
-          },
+          metadata: { phonesCount: uniquePhones.length, bundleId: selectedBundle.id, companyName: companyName.trim() || null },
         }),
       });
-
       const ybkData = await ybkRes.json();
       if (!ybkRes.ok || !ybkData.ok) {
         setLoading(false);
-        setError(ybkData.message || "Could not start Mobile Money prompt. Please try again.");
+        setError(ybkData.message || "We could not send the Mobile Money prompt. Please try again.");
         return;
       }
-
-      const ybkRef = ybkData.reference;
-
-      // Poll status every 1.8s
-      const pollInterval = setInterval(async () => {
+      const ybkRef = ybkData.reference as string;
+      stopPolling();
+      pollRef.current = setInterval(async () => {
         try {
           const sRes = await fetch(`/api/yebeck/status?reference=${encodeURIComponent(ybkRef)}`);
           const sData = await sRes.json();
           if (sData.status === "success") {
-            clearInterval(pollInterval);
+            stopPolling();
             const res = await fetch("/api/orders/bulk", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                phones: uniquePhones,
-                bundleId: selectedBundle.id,
-                paystackRef: ybkRef,
-                companyName: companyName.trim() || null,
-                contactPhone: cleanContact,
-              }),
+              body: JSON.stringify({ phones: uniquePhones, bundleId: selectedBundle.id, paymentRef: ybkRef, companyName: companyName.trim() || null, contactPhone: cleanContact }),
             });
             const d = await res.json();
             setLoading(false);
             if (d.success) setResults(d);
-            else setError(d.error || "Order failed. Contact support with reference: " + ybkRef);
+            else setError(d.error || `The order failed. Contact support with reference ${ybkRef}.`);
           } else if (sData.status === "failed") {
-            clearInterval(pollInterval);
-            setLoading(false);
-            setError("Payment was declined or cancelled on your phone. Please try again.");
+            stopPolling(); setLoading(false);
+            setError("The payment was declined or cancelled on your phone. Please try again.");
           }
-        } catch {
-          // keep polling
-        }
+        } catch { /* keep polling */ }
       }, 1800);
-
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        setLoading(false);
-      }, 180000);
-
-    } catch (err) {
+      stopRef.current = setTimeout(() => { stopPolling(); setLoading(false); setError("The payment timed out. If you already approved it, contact support."); }, 180000);
+    } catch {
       setLoading(false);
-      setError(`Payment error: ${err instanceof Error ? err.message : String(err)}`);
+      setError("We could not start the payment. Check your connection and try again.");
     }
   }
 
-  // ── Results screen ──
   if (results) {
     const allOk = results.failed === 0;
     return (
-      <div className="max-w-2xl mx-auto px-4 py-8 pb-16">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="bg-amber-50 p-6 text-center">
-            <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
-              {allOk ? (
-                <svg className="h-8 w-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 3l7 3v5c0 4.5-2.8 8.5-7 10-4.2-1.5-7-5.5-7-10V6l7-3zM9 12l2 2 4-4" />
-                </svg>
-              ) : (
-                <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              )}
-            </div>
-            <h2 className="text-xl font-black text-gray-800 mb-1">
-              {allOk ? "Payment received" : `${results.pendingApproval}/${results.total} queued`}
-            </h2>
-            <p className="text-sm text-gray-500">
-              {allOk
-                ? `${results.total} numbers are waiting for admin approval before delivery.`
-                : `${results.failed} could not be queued. Support has been notified.`}
-            </p>
-            <p className="mt-2 text-xs font-bold text-amber-700">Do not pay again. You will receive delivery after approval.</p>
-          </div>
-
-          <div className="divide-y divide-gray-50">
+      <div className="ed-page" style={{ padding: "28px 0 100px" }}>
+        <div className="ed-wrap ed-stack" style={{ gap: 18 }}>
+          <div style={{ width: 60, height: 60, borderRadius: "50%", background: "rgba(34,197,94,.14)", color: "var(--ed-green)", display: "grid", placeItems: "center" }}><Icon name="check" /></div>
+          <h1 className="ed-h2">{allOk ? "Payment received" : `${results.pendingApproval} of ${results.total} queued`}</h1>
+          <p className="ed-muted" style={{ margin: 0 }}>{allOk ? `${results.total} numbers are waiting for approval before delivery.` : `${results.failed} could not be queued. Our team has been told.`} Do not pay again. Delivery starts after approval.</p>
+          <div>
             {results.outcomes.map((o) => (
-              <div key={o.ref} className="flex items-center gap-3 px-5 py-3">
-                <div className={`w-2 h-2 rounded-full shrink-0 ${o.status === "pending_approval" ? "bg-amber-500" : "bg-red-400"}`} />
-                <span className="font-mono text-sm text-gray-700 flex-1">{o.phone}</span>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${o.status === "pending_approval" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-600"}`}>
-                  {o.status === "pending_approval" ? "Awaiting approval" : "Failed"}
-                </span>
+              <div key={o.ref} className="ed-lrow" style={{ minHeight: 52 }}>
+                <span className="t" style={{ flex: 1 }}><b className="ed-num" style={{ fontSize: 15 }}>{spaced(o.phone)}</b></span>
+                <span className="ed-pill" style={o.status === "pending_approval" ? undefined : { background: "#fee2e2", color: "#991b1b" }}>{o.status === "pending_approval" ? "Waiting for approval" : "Failed"}</span>
               </div>
             ))}
           </div>
-
-          {results.failed > 0 && (
-            <div className="px-5 py-4 bg-amber-50 border-t border-amber-100">
-              <p className="text-xs text-amber-700 font-semibold">Some paid numbers were not safely recorded. Our team has been alerted to queue them or process the correct refund.</p>
-              <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-1.5 mt-2 text-xs font-bold text-green-700 bg-green-100 hover:bg-green-200 px-3 py-1.5 rounded-lg transition-colors">
-                WhatsApp Support
-              </a>
-            </div>
-          )}
-
-          <div className="px-5 py-4 border-t border-gray-50">
-            <button onClick={() => { setResults(null); setStep(1); setSelectedBundle(null); setPhonesText(""); setContactPhone(""); setCompanyName(""); }}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl text-sm transition-colors">
-              Place Another Order
-            </button>
-          </div>
+          {results.failed > 0 && <div className="ed-chk warn">Some paid numbers were not recorded safely. Our team has been alerted to queue them or refund the correct amount. <a href="https://wa.me/233509794503" target="_blank" rel="noopener noreferrer" className="ed-link">WhatsApp support</a></div>}
+          <button type="button" className="ed-btn y tall block" onClick={() => { setResults(null); setStep(1); setSelectedBundle(null); setPhonesText(""); setContactPhone(""); setCompanyName(""); setMomoPhone(""); setMomoNetwork(null); }}>Place another order</button>
         </div>
       </div>
     );
   }
 
+  const inputStyle = { width: "100%", minHeight: 52, borderRadius: 12, border: "1px solid var(--ed-line2)", background: "var(--ed-card)", color: "var(--ed-text)", padding: "0 12px", fontSize: 16, fontFamily: "var(--ed-body)" } as const;
+  const label = { display: "block", fontSize: 12, fontWeight: 700, color: "var(--ed-muted)", marginBottom: 6 } as const;
+
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 pb-16">
-      {/* Header */}
-      <div className="mb-7">
-        <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1.5 rounded-full mb-3">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-          </svg>
-          Business Top-up
+    <div className="ed-page" style={{ ["--ed-net" as string]: meta.color, ["--ed-net-ink" as string]: meta.ink, paddingBottom: 100 }}>
+      <div className="ed-wrap ed-stack" style={{ paddingTop: 22, gap: 22 }}>
+        <div className="ed-stack" style={{ gap: 8 }}>
+          <h1 className="ed-h1" style={{ fontSize: "clamp(26px,7vw,40px)" }}>Bulk data top-up</h1>
+          <p className="ed-muted" style={{ margin: 0 }}>Top up 2 to 50 numbers with one payment. For teams, churches and schools.</p>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-black text-gray-800 leading-tight">Bulk Data Top-up</h1>
-        <p className="text-gray-400 text-sm mt-1.5">Top up 2–50 numbers in a single payment. Perfect for teams, churches, and schools.</p>
-      </div>
 
-      {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-7">
-        {[1, 2, 3].map((s) => (
-          <div key={s} className="flex items-center gap-2">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all ${step === s ? "bg-blue-600 text-white" : step > s ? "bg-green-500 text-white" : "bg-gray-100 text-gray-400"}`}>
-              {step > s ? "✓" : s}
-            </div>
-            {s < 3 && <div className={`flex-1 h-0.5 w-8 ${step > s ? "bg-green-400" : "bg-gray-100"}`} />}
-          </div>
-        ))}
-        <span className="ml-2 text-xs text-gray-400 font-medium">
-          {step === 1 ? "Choose bundle" : step === 2 ? "Enter numbers" : "Review & pay"}
-        </span>
-      </div>
+        <ol className="ed-chips" style={{ listStyle: "none", margin: 0, padding: 0 }} aria-label="Steps">
+          {["Choose bundle", "Enter numbers", "Review and pay"].map((s, i) => (
+            <li key={s} className={`ed-chip${step === i + 1 ? " on" : ""}`} aria-current={step === i + 1 ? "step" : undefined}>{i + 1}. {s}</li>
+          ))}
+        </ol>
 
-      {/* ── Step 1: Choose Bundle ── */}
-      {step === 1 && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <p className="text-sm font-black text-gray-800 mb-4">Which bundle do you want to send?</p>
-
-            {/* Network tabs */}
-            <div className="flex gap-2 bg-gray-100 rounded-2xl p-1.5 mb-4">
-              {(["mtn", "telecel", "airteltigo"] as Network[]).map((n) => (
-                <button key={n} onClick={() => setNetwork(n)}
-                  className={`flex-1 py-2 px-1 rounded-xl font-bold text-xs transition-all ${network === n ? (n === "mtn" ? "bg-yellow-400 text-yellow-900" : n === "telecel" ? "bg-red-500 text-white" : "bg-blue-500 text-white") + " shadow-sm" : "text-gray-500"}`}>
-                  {n === "mtn" ? "MTN" : n === "telecel" ? "Telecel" : "AirtelTigo"}
-                </button>
+        {step === 1 && (
+          <section className="ed-stack" style={{ gap: 12 }} aria-labelledby="b1">
+            <h2 id="b1" className="ed-h2" style={{ fontSize: 20 }}>Which bundle should each number get?</h2>
+            <div className="ed-seg" role="tablist" aria-label="Network" style={{ background: "var(--ed-card)" }}>
+              {(["mtn", "telecel", "airteltigo"] as BuyNetwork[]).map((n) => (
+                <button key={n} type="button" role="tab" aria-selected={network === n} aria-current={network === n} style={network === n ? { background: NETWORK_META[n].color, color: NETWORK_META[n].ink } : { color: "var(--ed-text)" }}
+                  onClick={() => { setNetwork(n); setSelectedBundle(null); }}>{NETWORK_META[n].label}</button>
               ))}
             </div>
-
-            {/* Bundles */}
-            {filtered.length === 0 ? (
-              <div className="text-center py-8 text-gray-400 text-sm">No bundles available.</div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            {filtered.length === 0 ? <p className="ed-muted">No bundles available.</p> : (
+              <div className="ed-grid2">
                 {filtered.map((b) => (
-                  <button key={b.id} onClick={() => setSelectedBundle(b)}
-                    className={`rounded-2xl p-3.5 text-left border-2 transition-all ${selectedBundle?.id === b.id ? "border-blue-500 bg-blue-50" : "border-gray-100 bg-gray-50 hover:border-gray-200"}`}>
-                    <div className={`text-xs font-black px-1.5 py-0.5 rounded-full inline-block mb-2 ${networkBg(b.network)}`}>
-                      {b.network === "airteltigo" ? "AT" : b.network.toUpperCase()}
-                    </div>
-                    <p className="font-black text-gray-800 text-base leading-none mb-0.5">{b.size}</p>
-                    <p className="font-black text-blue-600">GH₵{b.price.toFixed(2)}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">per number</p>
+                  <button key={b.id} type="button" className={`ed-tile${selectedBundle?.id === b.id ? " sel" : ""}`} aria-pressed={selectedBundle?.id === b.id} onClick={() => setSelectedBundle(b)}>
+                    <span className="sz">{b.size}</span>
+                    <span className="vd">per number</span>
+                    <span className="pr">{money(b.price)}</span>
                   </button>
                 ))}
               </div>
             )}
-          </div>
+            <button type="button" className={`ed-btn tall block ${selectedBundle ? "y" : "dis"}`} disabled={!selectedBundle} onClick={() => setStep(2)}>Continue</button>
+          </section>
+        )}
 
-          <button onClick={() => setStep(2)} disabled={!selectedBundle}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-2xl text-sm transition-colors">
-            Continue — Enter Numbers →
-          </button>
-        </div>
-      )}
-
-      {/* ── Step 2: Enter Numbers ── */}
-      {step === 2 && selectedBundle && (
-        <div className="space-y-4">
-          {/* Selected bundle pill */}
-          <div className="flex items-center gap-2 bg-white border border-gray-100 rounded-2xl px-4 py-3 shadow-sm">
-            <span className={`text-xs font-black px-2 py-0.5 rounded-full ${networkBg(selectedBundle.network)}`}>
-              {selectedBundle.network === "airteltigo" ? "AT" : selectedBundle.network.toUpperCase()}
-            </span>
-            <span className="font-bold text-gray-800 text-sm">{selectedBundle.size}</span>
-            <span className="text-blue-600 font-black text-sm">GH₵{selectedBundle.price.toFixed(2)} / number</span>
-            <button onClick={() => setStep(1)} className="ml-auto text-xs text-blue-600 hover:underline font-semibold">Change</button>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+        {step === 2 && selectedBundle && (
+          <section className="ed-stack" style={{ gap: 14 }} aria-labelledby="b2">
+            <h2 id="b2" className="ed-h2" style={{ fontSize: 20 }}>{meta.label} {selectedBundle.size} for each number</h2>
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1.5">
-                Phone Numbers * <span className="text-gray-400 font-normal">(one per line, max 50)</span>
-              </label>
-              <textarea
-                value={phonesText}
-                onChange={(e) => setPhonesText(e.target.value)}
-                placeholder={"0241234567\n0551234567\n0241234568\n..."}
-                rows={8}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              />
-              <div className="flex items-center justify-between mt-1.5">
-                <p className="text-xs text-gray-400">
-                  {uniquePhones.length > 0
-                    ? <span className="text-green-600 font-semibold">{uniquePhones.length} valid number{uniquePhones.length !== 1 ? "s" : ""}</span>
-                    : "Paste phone numbers, one per line"}
-                  {invalidCount > 0 && <span className="text-red-500 ml-2">· {invalidCount} invalid/duplicate removed</span>}
-                </p>
-                {uniquePhones.length >= 2 && (
-                  <span className="text-xs font-bold text-blue-600">
-                    Est. total: GH₵{(selectedBundle.price * (1 + PLATFORM_FEE_RATE) * uniquePhones.length).toFixed(2)}
-                  </span>
-                )}
+              <label style={label} htmlFor="b_phones">Phone numbers, one per line (2 to 50)</label>
+              <textarea id="b_phones" value={phonesText} onChange={(e) => setPhonesText(e.target.value)} rows={8} placeholder={"0241234567\n0551234567\n0241234568"} style={{ ...inputStyle, padding: 12, minHeight: 160, fontFamily: "monospace", resize: "vertical" }} />
+              <p className="ed-muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+                {uniquePhones.length > 0 ? <b style={{ color: "var(--ed-green)" }}>{uniquePhones.length} valid number{uniquePhones.length !== 1 ? "s" : ""}</b> : "Paste the numbers, one per line."}
+                {invalidCount > 0 && <span style={{ color: "var(--ed-red)", marginLeft: 8 }}>{invalidCount} invalid or repeated removed</span>}
+                {uniquePhones.length >= 2 && <span style={{ float: "right", color: "var(--ed-text)", fontWeight: 700 }}>About {money(unitTotal * uniquePhones.length)}</span>}
+              </p>
+              {network === "mtn" && <p className="ed-chk warn" style={{ marginTop: 8 }}>MTN numbers that are new to our system are delivered by hand within 72 hours. No refund is needed.</p>}
+            </div>
+            <div><label style={label} htmlFor="b_company">Company or organisation (optional)</label><input id="b_company" style={inputStyle} value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="For example Sunrise Church" /></div>
+            <div><label style={label} htmlFor="b_contact">Your contact number, for the receipt and support</label><input id="b_contact" style={inputStyle} type="tel" inputMode="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="024 123 4567" /></div>
+            {error && <p className="ed-chk bad" style={{ margin: 0 }}>{error}</p>}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8 }}>
+              <button type="button" className="ed-btn o tall" onClick={() => setStep(1)}>Back</button>
+              <button type="button" className={`ed-btn tall ${uniquePhones.length >= 2 && cleanContact ? "y" : "dis"}`} disabled={uniquePhones.length < 2 || !cleanContact} onClick={() => { setError(""); setStep(3); }}>Review order</button>
+            </div>
+          </section>
+        )}
+
+        {step === 3 && selectedBundle && (
+          <section className="ed-paper" style={{ borderRadius: 22, padding: 18, display: "flex", flexDirection: "column", gap: 14 }} aria-labelledby="b3">
+            <h2 id="b3" className="ed-h2" style={{ fontSize: 22, color: "var(--ed-ink)" }}>Review and pay</h2>
+            <div className="ed-sum">
+              <div className="r"><span>Bundle</span><b>{meta.label} {selectedBundle.size}</b></div>
+              <div className="r"><span>Numbers</span><b>{uniquePhones.length}</b></div>
+              <div className="r"><span>Price per number</span><b>{money(selectedBundle.price)}</b></div>
+              <div className="r"><span>Processing fee (2%)</span><b>{money(platformFee)}</b></div>
+              {companyName && <div className="r"><span>Company</span><b>{companyName}</b></div>}
+              <div className="r"><span>Contact</span><b>{spaced(cleanContact ?? contactPhone)}</b></div>
+              <div className="r tot"><span>Total</span><b>{money(grandTotal)}</b></div>
+            </div>
+            <details>
+              <summary style={{ minHeight: 44, display: "flex", alignItems: "center", cursor: "pointer", fontWeight: 700, fontSize: 14 }}>See the {uniquePhones.length} numbers</summary>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, maxHeight: 150, overflowY: "auto", fontFamily: "monospace", fontSize: 12 }}>{uniquePhones.map((p) => <span key={p}>{spaced(p)}</span>)}</div>
+            </details>
+
+            <div role="radiogroup" aria-label="Your Mobile Money network">
+              <span className="lt">Your Mobile Money network</span>
+              <div className="ed-nets3">
+                {MOMO_NETWORKS.map((n) => (
+                  <button key={n.id} type="button" role="radio" aria-checked={momoNetwork === n.id} className="ed-net3" onClick={() => { setMomoNetwork(n.id); setConfirmNetwork(false); }}><i style={{ background: n.color }} />{n.label}</button>
+                ))}
               </div>
             </div>
-
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1.5">Company / Organisation Name <span className="text-gray-400 font-normal">(optional)</span></label>
-              <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)}
-                placeholder="e.g. ABC Ltd, Sunrise Church, Accra High School"
-                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label htmlFor="b_momo" className="lt">Your Mobile Money number</label>
+              <input id="b_momo" className={`ed-input${wrong ? " warn" : ""}`} type="tel" inputMode="tel" disabled={!momoNetwork} value={momoPhone} onChange={(e) => { setMomoPhone(e.target.value); setConfirmNetwork(false); }} placeholder={momoNetwork ? "024 123 4567" : "Choose your network first"} />
+              <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--ed-g500)" }}>This is the number that pays. It can be different from your contact number.</p>
             </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1.5">Your Contact Number * <span className="text-gray-400 font-normal">(for receipt & support)</span></label>
-              <input type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)}
-                placeholder="0241234567"
-                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            {wrong && detected && momoNetwork && (
+              <div className="ed-note warn" role="alert">
+                <b>{spaced(momoClean ?? "")} looks like a {labelOf(detected)} number.</b> Choose {labelOf(detected)}, or confirm it is on {labelOf(momoNetwork)}.
+                <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, minHeight: 44, fontWeight: 700 }}>
+                  <input type="checkbox" checked={confirmNetwork} onChange={(e) => setConfirmNetwork(e.target.checked)} style={{ width: 22, height: 22 }} />This number is on {labelOf(momoNetwork)}
+                </label>
+              </div>
+            )}
+            {error && <div className="ed-note bad" role="alert">{error}</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8 }}>
+              <button type="button" className="ed-btn o tall" style={{ color: "var(--ed-ink)", borderColor: "var(--ed-g300)" }} onClick={() => setStep(2)}>Back</button>
+              <button type="button" className={`ed-btn tall ${canPay ? "b" : "dis paper"}`} disabled={!canPay} onClick={() => void handlePay()}>{loading ? "Waiting for your PIN…" : `Pay ${money(grandTotal)}`}</button>
             </div>
-          </div>
+          </section>
+        )}
 
-          <div className="flex gap-3">
-            <button onClick={() => setStep(1)}
-              className="px-5 py-3 rounded-2xl border border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50 transition-colors">
-              ← Back
-            </button>
-            <button onClick={() => { if (uniquePhones.length < 2) { setError("Enter at least 2 valid phone numbers."); return; } if (!contactPhone.trim()) { setError("Enter your contact number."); return; } setError(""); setStep(3); }}
-              disabled={uniquePhones.length < 2}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 rounded-2xl text-sm transition-colors">
-              Review Order →
-            </button>
-          </div>
-          {error && <p className="text-xs text-red-500 text-center">{error}</p>}
-        </div>
-      )}
-
-      {/* ── Step 3: Review & Pay ── */}
-      {step === 3 && selectedBundle && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-50">
-              <p className="font-black text-gray-800">Order Summary</p>
-            </div>
-            <div className="px-5 py-4 space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Bundle</span>
-                <span className="font-bold text-gray-800">
-                  {selectedBundle.network === "airteltigo" ? "AirtelTigo" : selectedBundle.network.toUpperCase()} {selectedBundle.size}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Numbers</span>
-                <span className="font-bold text-gray-800">{uniquePhones.length} phone{uniquePhones.length !== 1 ? "s" : ""}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Price per number</span>
-                <span className="font-bold text-gray-800">GH₵{selectedBundle.price.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Platform fee (2%)</span>
-                <span className="font-bold text-gray-800">GH₵{platformFee.toFixed(2)}</span>
-              </div>
-              {companyName && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Company</span>
-                  <span className="font-bold text-gray-800">{companyName}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Contact</span>
-                <span className="font-bold text-gray-800">{contactPhone}</span>
-              </div>
-              <div className="border-t border-gray-100 pt-3 flex justify-between">
-                <span className="font-black text-gray-800">Total</span>
-                <span className="font-black text-blue-600 text-lg">GH₵{grandTotal.toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Numbers preview (collapsed) */}
-          <div className="bg-gray-50 rounded-2xl border border-gray-100 p-4 max-h-36 overflow-y-auto">
-            <p className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">{uniquePhones.length} Numbers</p>
-            <div className="grid grid-cols-2 gap-1">
-              {uniquePhones.map((p) => (
-                <span key={p} className="font-mono text-xs text-gray-600">{p}</span>
-              ))}
-            </div>
-          </div>
-
-          {error && <div className="bg-red-50 border border-red-200 text-red-600 text-xs px-4 py-2.5 rounded-xl">{error}</div>}
-
-          <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-xs text-blue-700">
-            All {uniquePhones.length} numbers will be topped up immediately after payment. Failures are auto-reported to our team.
-          </div>
-
-          <div className="flex gap-3">
-            <button onClick={() => setStep(2)}
-              className="px-5 py-3 rounded-2xl border border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-50 transition-colors">
-              ← Back
-            </button>
-            <button onClick={handlePay} disabled={loading}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-2xl text-sm transition-colors">
-              {loading ? "Waiting for phone approval…" : `Pay GH₵${grandTotal.toFixed(2)} with MoMo →`}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Trust strip */}
-      <div className="mt-8 grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {[
-          { icon: "⚡", text: "Instant Top-up" },
-          { icon: "🔒", text: "Secure Payment" },
-          { icon: "📞", text: "WhatsApp Support" },
-        ].map((item) => (
-          <div key={item.text} className="bg-white border border-gray-100 rounded-xl px-3 py-2.5 flex items-center gap-2 shadow-sm">
-            <span className="text-base">{item.icon}</span>
-            <span className="text-xs font-semibold text-gray-600">{item.text}</span>
-          </div>
-        ))}
+        <Link href="/buy" className="ed-link" style={{ minHeight: 44, display: "inline-flex", alignItems: "center", alignSelf: "center" }}>Need just one number? Buy a single bundle</Link>
       </div>
     </div>
   );
@@ -452,11 +257,7 @@ function BusinessContent() {
 
 export default function BusinessPage() {
   return (
-    <Suspense fallback={
-      <div className="max-w-2xl mx-auto px-4 py-20 text-center">
-        <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto" />
-      </div>
-    }>
+    <Suspense fallback={<div className="ed-page" style={{ display: "grid", placeItems: "center" }}><span className="ed-spin" style={{ width: 32, height: 32, color: "var(--ed-yellow)" }} /></div>}>
       <BusinessContent />
     </Suspense>
   );

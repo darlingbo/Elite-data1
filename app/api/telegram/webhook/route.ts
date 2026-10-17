@@ -31,12 +31,8 @@ const icon: Record<string, string> = { completed: "✅", processing: "🔄", fai
 const MOMO_LABELS: Record<string, string> = { mtn: "MTN MoMo", telecel: "Telecel Cash", airteltigo: "AirtelTigo Money" };
 
 async function cmdStatus(chatId: string) {
-  const [ordersRes, agentsRes] = await Promise.all([
-    supabase.from("orders").select("status, amount, admin_commission, agent_id"),
-    supabase.from("agents").select("status"),
-  ]);
+  const ordersRes = await supabase.from("orders").select("status, amount, admin_commission");
   const o = ordersRes.data ?? [];
-  const a = agentsRes.data ?? [];
 
   const revenue = o.reduce((s, x) => s + (Number(x.amount) || 0), 0);
   const profit = o.reduce((s, x) => s + (Number(x.admin_commission) || 0), 0);
@@ -49,17 +45,14 @@ async function cmdStatus(chatId: string) {
     `⏳ Pending: ${o.filter(x => x.status === "pending").length}\n` +
     `❌ Failed: ${o.filter(x => x.status === "failed").length}\n\n` +
     `💰 Revenue: <b>GH₵${revenue.toFixed(2)}</b>\n` +
-    `📈 Admin profit: <b>GH₵${profit.toFixed(2)}</b>\n` +
-    `🔗 Via agents: ${o.filter(x => x.agent_id).length} orders\n\n` +
-    `👤 Agents: ${a.filter(x => x.status === "approved").length} active, ` +
-    `${a.filter(x => x.status === "pending").length} pending approval`
+    `📈 Admin profit: <b>GH₵${profit.toFixed(2)}</b>`
   );
 }
 
 async function cmdOrders(chatId: string) {
   const { data } = await supabase
     .from("orders")
-    .select("reference, status, amount, network, bundle_size, phone, customer_name, created_at, agent_id, admin_commission")
+    .select("reference, status, amount, network, bundle_size, phone, customer_name, created_at, admin_commission")
     .order("created_at", { ascending: false })
     .limit(10);
 
@@ -67,7 +60,7 @@ async function cmdOrders(chatId: string) {
 
   const lines = data.map(o =>
     `${icon[o.status] ?? "❓"} <b>${(o.network ?? "—").toUpperCase()} ${o.bundle_size ?? "—"}</b> → <code>${o.phone}</code>\n` +
-    `   GH₵${Number(o.amount).toFixed(2)} | Profit: GH₵${Number(o.admin_commission).toFixed(2)} | ${o.agent_id ? "Agent" : "Direct"}\n` +
+    `   GH₵${Number(o.amount).toFixed(2)} | Profit: GH₵${Number(o.admin_commission).toFixed(2)}\n` +
     `   <code>${o.reference ?? "—"}</code>`
   ).join("\n\n");
 
@@ -95,38 +88,6 @@ async function cmdFailed(chatId: string) {
       { inline_keyboard: [[{ text: "🔄 Retry Now", callback_data: `retry:${o.reference}` }]] }
     );
   }
-}
-
-async function cmdAgents(chatId: string) {
-  const [activeRes, pendingRes] = await Promise.all([
-    supabase.from("agents").select("name, referral_code, commission_balance, total_sales, total_revenue")
-      .eq("status", "approved").order("total_revenue", { ascending: false }).limit(10),
-    supabase.from("agents").select("name, phone, email, created_at").eq("status", "pending"),
-  ]);
-
-  const active = activeRes.data ?? [];
-  const pending = pendingRes.data ?? [];
-  const medals = ["🥇", "🥈", "🥉"];
-
-  let msg = `👤 <b>Agent Leaderboard</b>\n\n`;
-  if (!active.length) {
-    msg += "No active agents yet.\n";
-  } else {
-    active.forEach((a, i) => {
-      msg += `${medals[i] ?? `${i + 1}.`} <b>${a.name}</b>\n`;
-      msg += `   Code: <code>${a.referral_code}</code>\n`;
-      msg += `   Sales: ${a.total_sales} | Revenue: GH₵${Number(a.total_revenue).toFixed(2)}\n`;
-      msg += `   Earned: GH₵${Number(a.commission_balance).toFixed(2)}\n\n`;
-    });
-  }
-
-  if (pending.length) {
-    msg += `\n⚡ <b>${pending.length} application(s) awaiting approval:</b>\n`;
-    pending.forEach((p) => { msg += `• ${p.name} — <code>${p.phone}</code>\n`; });
-    msg += `\nUse the assistant bot to approve.`;
-  }
-
-  await reply(chatId, msg);
 }
 
 async function retryOrder(chatId: string, reference: string) {
@@ -158,7 +119,7 @@ async function retryOrder(chatId: string, reference: string) {
 
 async function cmdRecover(chatId: string, reference: string) {
   if (!reference) {
-    await reply(chatId, "Usage: /recover [paystack_reference]\nExample: /recover elite-1779381711689");
+    await reply(chatId, "Usage: /recover [payment_reference]\nExample: /recover YBK-482131");
     return;
   }
 
@@ -184,49 +145,51 @@ async function cmdRecover(chatId: string, reference: string) {
     return;
   }
 
-  // Not in DB — verify on Paystack
-  let psData: Record<string, unknown> = {};
+  // Not in DB — check the Mobile Money payment
+  let customerName = "Customer";
+  let phone = "";
+  let bundleLabel = "";
+  let email = "";
+  let amountPesewas = 0;
   try {
-    const psRes = await fetch(
-      `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
-      { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` } }
-    );
-    psData = await psRes.json();
-  } catch {
-    await reply(chatId, "❌ Could not reach Paystack. Check your internet and try again.");
+    const { verifyYebeckPayment } = await import("@/lib/payment-attempt");
+    const ybk = await verifyYebeckPayment(reference);
+    if (ybk.status !== "success") {
+      await reply(chatId,
+        `❌ <b>Payment not confirmed</b>
+
+` +
+        `Ref: <code>${reference}</code>
+` +
+        `Mobile Money status: ${ybk.status}
+
+` +
+        `This payment was not successful — no delivery needed.`
+      );
+      return;
+    }
+    const meta = (ybk.attempt.metadata ?? {}) as Record<string, string>;
+    customerName = meta.customer_name || "Customer";
+    phone = meta.recipient_phone || meta.phone || "";
+    bundleLabel = meta.bundle_id ?? "";
+    amountPesewas = ybk.attempt.amount_pesewas;
+    email = `${phone}@elitedata1.com`;
+  } catch (e) {
+    await reply(chatId, `❌ Could not verify this payment reference: ${String(e)}`);
     return;
   }
-
-  const txn = psData.data as Record<string, unknown>;
-  if (!psData.status || txn?.status !== "success") {
-    await reply(chatId,
-      `❌ <b>Payment not confirmed</b>\n\n` +
-      `Ref: <code>${reference}</code>\n` +
-      `Paystack status: ${txn?.status ?? "unknown"}\n\n` +
-      `This payment was not successful — no delivery needed.`
-    );
-    return;
-  }
-
-  // Extract customer info from Paystack metadata
-  const meta = txn.metadata as Record<string, unknown>;
-  const fields = (meta?.custom_fields as Array<Record<string, string>>) ?? [];
-  const getField = (name: string) => fields.find(f => f.variable_name === name)?.value ?? "";
-
-  const customerName = getField("name") || String(txn.customer ? (txn.customer as Record<string, string>).first_name : "") || "Customer";
-  const phone = getField("phone") || "";
-  const bundleLabel = getField("bundle") || ""; // e.g. "MTN 2GB"
-  const agentCodeRecover = getField("agent_code") || "";
-  const email = (txn.customer as Record<string, string>)?.email ?? "";
-  const amountPesewas = Number(txn.amount ?? 0);
 
   if (!phone) {
     await reply(chatId,
-      `⚠️ <b>Payment confirmed but phone not found in metadata</b>\n\n` +
-      `Amount: GH₵${(amountPesewas / 100).toFixed(2)}\n` +
-      `Customer email: ${email}\n` +
-      `Bundle: ${bundleLabel || "unknown"}\n\n` +
-      `Please check Paystack dashboard for full details.`
+      `⚠️ <b>Payment confirmed but phone not found</b>
+
+` +
+      `Amount: GH₵${(amountPesewas / 100).toFixed(2)}
+` +
+      `Bundle: ${bundleLabel || "unknown"}
+
+` +
+      `Please check the payment in the Yebeck dashboard for full details.`
     );
     return;
   }
@@ -271,7 +234,7 @@ async function cmdRecover(chatId: string, reference: string) {
     const createRes = await fetch(`${SITE_URL}/api/orders/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: customerName, email, phone, bundleId, paystackRef: reference, agentCode: agentCodeRecover || undefined }),
+      body: JSON.stringify({ name: customerName, email, phone, bundleId, paymentRef: reference }),
     });
     const result = await createRes.json() as Record<string, unknown>;
 
@@ -333,7 +296,7 @@ async function cmdSend(chatId: string, arg: string) {
       `/send mtn 2gb 0241234567\n` +
       `/send telecel 10gb 0551234567\n` +
       `/send airteltigo 5gb 0261234567\n\n` +
-      `<i>This sends data directly from your Inventor API balance — no Paystack needed.</i>`
+      `<i>This sends data directly from your Inventor API balance — no customer payment involved.</i>`
     );
     return;
   }
@@ -693,34 +656,6 @@ async function rejectOrder(chatId: string, reference: string) {
   );
 }
 
-async function approveAgent(chatId: string, agentId: string) {
-  const { data: agent } = await supabase.from("agents").select("name, phone, email, referral_code").eq("id", agentId).maybeSingle();
-  if (!agent) { await reply(chatId, `❌ Agent not found.`); return; }
-
-  await supabase.from("agents").update({ status: "approved", approved_at: new Date().toISOString() }).eq("id", agentId);
-
-  await reply(chatId,
-    `✅ <b>Agent Approved!</b>\n\n` +
-    `👤 ${agent.name}\n` +
-    `📱 ${agent.phone}\n` +
-    `🔗 Referral code: <code>${agent.referral_code}</code>\n\n` +
-    `They can now log in and start selling.`
-  );
-}
-
-async function rejectAgent(chatId: string, agentId: string) {
-  const { data: agent } = await supabase.from("agents").select("name, phone").eq("id", agentId).maybeSingle();
-  if (!agent) { await reply(chatId, `❌ Agent not found.`); return; }
-
-  await supabase.from("agents").update({ status: "rejected" }).eq("id", agentId);
-
-  await reply(chatId,
-    `❌ <b>Agent Rejected</b>\n\n` +
-    `👤 ${agent.name} (${agent.phone}) has been rejected.\n\n` +
-    `Their application will not be processed.`
-  );
-}
-
 async function cmdHelp(chatId: string) {
   await reply(chatId,
     `👋 <b>Elite Data Admin Bot</b>\n\n` +
@@ -735,15 +670,12 @@ async function cmdHelp(chatId: string) {
     `/recover [ref] — Recover missed payment &amp; deliver\n` +
     `/retry [ref] — Retry a specific failed order\n` +
     `/sync — Auto-retry all stuck orders\n\n` +
-    `<b>👥 Agents:</b>\n` +
-    `/agents — Leaderboard &amp; earnings\n` +
-    `Approve/reject buttons come automatically when someone applies\n\n` +
     `<b>⚡ Examples:</b>\n` +
     `/send mtn 2gb 0241234567\n` +
     `/lookup 0241234567\n` +
     `/refunds\n` +
     `/sync\n\n` +
-    `<b>🔔 Auto alerts:</b> new orders, deliveries, failures, agent approvals, auto-retries, agent withdrawals`
+    `<b>🔔 Auto alerts:</b> new orders, deliveries, failures, auto-retries`
   );
 }
 
@@ -797,12 +729,6 @@ export async function POST(request: NextRequest) {
       const ref = data.replace("skip_retry:", "");
       await supabase.from("orders").update({ status: "completed" }).eq("reference", ref);
       await reply(chatId, `✅ Marked <code>${ref}</code> as <b>COMPLETED</b> — no re-delivery.`);
-
-    } else if (data?.startsWith("approve_agent:")) {
-      await approveAgent(chatId, data.replace("approve_agent:", ""));
-
-    } else if (data?.startsWith("reject_agent:")) {
-      await rejectAgent(chatId, data.replace("reject_agent:", ""));
     }
 
     return Response.json({ ok: true });
@@ -814,60 +740,8 @@ export async function POST(request: NextRequest) {
   const chatId = String(message.chat.id);
   const msgText = (message.text as string).trim();
 
-  // ── Agent linking via /start AGENTCODE ────────────────────────────────────
-  if (chatId !== ADMIN_CHAT_ID) {
-    const isStart = msgText.toLowerCase().startsWith("/start");
-    const code = msgText.split(" ")[1]?.trim().toUpperCase();
-
-    if (isStart && code) {
-      const { data: agent } = await supabase
-        .from("agents")
-        .select("id, name, referral_code, telegram_chat_id")
-        .eq("referral_code", code)
-        .eq("status", "approved")
-        .maybeSingle();
-
-      if (!agent) {
-        await reply(chatId,
-          `❌ <b>Code not found</b>\n\n` +
-          `The code <code>${code}</code> is not linked to any active agent.\n\n` +
-          `Go to your dashboard and copy the exact link from the <b>Connect Telegram</b> section.`
-        );
-        return Response.json({ ok: true });
-      }
-
-      if (agent.telegram_chat_id && agent.telegram_chat_id !== chatId) {
-        await reply(chatId,
-          `⚠️ <b>Already connected to another Telegram account</b>\n\n` +
-          `Contact admin on WhatsApp to reset your Telegram link.`
-        );
-        return Response.json({ ok: true });
-      }
-
-      await supabase.from("agents").update({ telegram_chat_id: chatId }).eq("id", agent.id);
-
-      await reply(chatId,
-        `✅ <b>Connected! You are now ${agent.name}</b>\n\n` +
-        `📱 From now on, every time a customer buys from your store link, you will get an instant notification here on Telegram.\n\n` +
-        `🛒 <b>What you will see:</b>\n` +
-        `• Customer name &amp; phone\n` +
-        `• Bundle bought\n` +
-        `• Amount paid\n` +
-        `• Your commission earned\n` +
-        `• Delivery status\n\n` +
-        `Keep this chat open and notifications turned on! 🔔`
-      );
-      return Response.json({ ok: true });
-    }
-
-    // Non-admin, no valid code
-    await reply(chatId,
-      `👋 <b>Elite Data Agent Bot</b>\n\n` +
-      `This bot sends you instant sale notifications.\n\n` +
-      `To connect your account, go to your agent dashboard and tap <b>Connect Telegram</b>.`
-    );
-    return Response.json({ ok: true });
-  }
+  // Only the admin chat may use this bot.
+  if (chatId !== ADMIN_CHAT_ID) return Response.json({ ok: true });
 
   const text = msgText.split(" ")[0].toLowerCase();
   const arg = msgText.split(" ").slice(1).join(" ");
@@ -878,7 +752,6 @@ export async function POST(request: NextRequest) {
     case "/status": await cmdStatus(chatId); break;
     case "/orders": await cmdOrders(chatId); break;
     case "/failed": await cmdFailed(chatId); break;
-    case "/agents": await cmdAgents(chatId); break;
     case "/retry":
       if (arg) await retryOrder(chatId, arg);
       else await reply(chatId, "Usage: /retry [reference]");

@@ -15,7 +15,7 @@ function order(overrides: Partial<FinanceOrderInput> = {}): FinanceOrderInput {
     agent_commission: 10,
     admin_commission: 20,
     status: "completed",
-    payment_method: "paystack",
+    payment_method: "yebeck",
     created_at: "2026-07-28T08:00:00.000Z",
     ...overrides,
   };

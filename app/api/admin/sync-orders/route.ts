@@ -45,7 +45,8 @@ async function creditAgent(agentId: string, commission: number, revenue: number)
 }
 
 export async function POST(request: Request) {
-  const isCron = request.headers.get("x-cron-sync") === process.env.CRON_SECRET;
+  const cronSecret = process.env.CRON_SECRET ?? "";
+  const isCron = cronSecret.length >= 24 && request.headers.get("x-cron-sync") === cronSecret;
   if (!isCron && !(await isAdmin())) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }

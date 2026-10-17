@@ -8,15 +8,12 @@ export const ALTERNATE_STORE_LABEL = "silentecho.online";
 export const DEFAULT_CLOSED_MESSAGE =
   `Elite Data is temporarily closed. To buy data in the meantime, please go to ${ALTERNATE_STORE_LABEL}.`;
 
-// Pages that keep working while the store is closed: staff and agent areas,
+// Pages that keep working while the store is closed: the admin area,
 // order tracking/receipts for people who already paid, and policy pages.
-// Everything else (home, buy, prices, vouchers, agent storefronts...) is closed,
+// Everything else (home, buy, prices, vouchers...) is closed,
 // so any new public page is closed by default.
 const OPEN_WHEN_CLOSED = [
   "/admin",
-  "/subadmin",
-  "/agent",
-  "/agent-agreement",
   "/track",
   "/order",
   "/privacy",

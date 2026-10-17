@@ -1,7 +1,11 @@
 import { NextRequest } from "next/server";
 import { verifyYebeckPayment } from "@/lib/payment-attempt";
+import { tooMany } from "@/lib/public-limit";
 
 export async function GET(request: NextRequest) {
+  const blocked = await tooMany(request, "momo-status", 500, 600000);
+  if (blocked) return blocked;
+
   const { searchParams } = new URL(request.url);
   const reference = searchParams.get("reference")?.trim();
 

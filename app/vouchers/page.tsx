@@ -1,44 +1,23 @@
 "use client";
-import { useState, useEffect } from "react";
-import { detectGhProvider } from "@/lib/phone";
+import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
+import { detectGhProvider, normalizeGhPhone } from "@/lib/phone";
+import { MOMO_NETWORKS, type MomoNetwork } from "@/lib/ed-networks";
+import Icon from "@/components/ed/Icon";
 
 const VOUCHER_META = [
-  { id: "BECE"   as const, label: "BECE",   full: "Basic Education Certificate Examination",           color: "#3b82f6", dark: "#1d4ed8", glow: "rgba(59,130,246,0.4)",  emoji: "📗" },
-  { id: "WASSCE" as const, label: "WASSCE", full: "West African Senior School Certificate Examination", color: "#8b5cf6", dark: "#6d28d9", glow: "rgba(139,92,246,0.4)", emoji: "📘" },
+  { id: "BECE" as const, label: "BECE", full: "Basic Education Certificate Examination" },
+  { id: "WASSCE" as const, label: "WASSCE", full: "West African Senior School Certificate Examination" },
 ];
 
 type VoucherID = "BECE" | "WASSCE";
-type VoucherEntry = typeof VOUCHER_META[number] & {
-  price: number;
-  bulkPrice: number;
-  bulkThreshold: number;
-};
+type VoucherEntry = (typeof VOUCHER_META)[number] & { price: number; bulkPrice: number; bulkThreshold: number };
 
-const D = { bg: "#080d18", card: "#0d1525", border: "#1a2a45", text: "#e2e8f0", muted: "#64748b" };
-const fieldLabelStyle = { color: D.muted, fontSize: 11, fontWeight: 700 } as const;
-const fieldStyle = { width: "100%", marginTop: 7, background: "#050b15", border: `1px solid ${D.border}`, borderRadius: 12, padding: "12px 13px", color: D.text, fontSize: 14, outline: "none", boxSizing: "border-box" } as const;
-
-function usePaystackReady() {
-  const [ready, setReady] = useState(() => typeof window !== "undefined" && !!window.PaystackPop);
-  useEffect(() => {
-    if (ready) return;
-    const existing = document.querySelector('script[src*="paystack"]');
-    if (!existing) {
-      const s = document.createElement("script");
-      s.src = "https://js.paystack.co/v1/inline.js";
-      s.async = true;
-      s.onload = () => setReady(true);
-      document.body.appendChild(s);
-    } else {
-      const id = setInterval(() => { if (window.PaystackPop) { setReady(true); clearInterval(id); } }, 100);
-      return () => clearInterval(id);
-    }
-  }, [ready]);
-  return ready;
-}
+const money = (n: number) => `GH₵${n.toFixed(2)}`;
+const spaced = (p: string) => p.replace(/\s/g, "").replace(/^(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3");
 
 function normalizeGhana(raw: string): string {
-  let v = raw.replace(/[\s\-\(\)]/g, "");
+  let v = raw.replace(/[\s\-()]/g, "");
   if (v.startsWith("+233")) v = v.slice(4);
   else if (v.startsWith("233")) v = v.slice(3);
   if (!v.startsWith("0")) v = "0" + v;
@@ -46,16 +25,16 @@ function normalizeGhana(raw: string): string {
 }
 
 const HOW_TO_BUY = [
-  "Tap a card below to flip it — you'll see the price. Press \"Select\" to choose that exam type.",
+  "Choose BECE or WASSCE.",
   "Pick how many vouchers you need. Buying 11 or more unlocks the bulk price of GH₵18 each.",
-  "Enter the Ghana phone number where your voucher codes will be sent via SMS.",
-  "Pay securely with Paystack (card or Mobile Money). You'll get your codes within minutes.",
+  "Enter the phone number the voucher codes should be sent to by SMS.",
+  "Pay with Mobile Money. Choose your network, type your own Mobile Money number and approve the prompt.",
 ];
 
-export default function VouchersPage() {
-  const [selectedId, setSelectedId]   = useState<VoucherID>("BECE");
-  const [quantity, setQuantity]       = useState(1);
-  const [phone, setPhone]             = useState("");
+function VouchersPage() {
+  const [selectedId, setSelectedId] = useState<VoucherID>("BECE");
+  const [quantity, setQuantity] = useState(1);
+  const [phone, setPhone] = useState("");
   const [serviceMode, setServiceMode] = useState<"voucher_only" | "assisted_result">("voucher_only");
   const [candidateName, setCandidateName] = useState("");
   const [candidateType, setCandidateType] = useState<"school" | "private">("school");
@@ -65,98 +44,87 @@ export default function VouchersPage() {
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [consent, setConsent] = useState(false);
-  const [promoCode, setPromoCode]     = useState("");
+  const [promoCode, setPromoCode] = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
-  const [promoMsg, setPromoMsg]       = useState<{ ok: boolean; text: string } | null>(null);
+  const [promoMsg, setPromoMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [promoChecking, setPromoChecking] = useState(false);
-  const [showPromo, setShowPromo]     = useState(false);
-  const [phoneError, setPhoneError]   = useState("");
-  const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState("");
-  const [success, setSuccess]         = useState<{ reference: string; pendingApproval: boolean } | null>(null);
-  const [mounted, setMounted]         = useState(false);
-  const [phoneFocus, setPhoneFocus]   = useState(false);
-  const [flipped, setFlipped]         = useState<VoucherID | null>(null);
-  const [vouchers, setVouchers]       = useState<VoucherEntry[]>(
-    VOUCHER_META.map(m => ({ ...m, price: 19, bulkPrice: 18, bulkThreshold: 10 }))
-  );
-  const paystackReady = usePaystackReady();
+  const [phoneError, setPhoneError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState<{ reference: string; pendingApproval: boolean } | null>(null);
+  const [momoNetwork, setMomoNetwork] = useState<MomoNetwork | null>(null);
+  const [momoPhone, setMomoPhone] = useState("");
+  const [confirmNetwork, setConfirmNetwork] = useState(false);
+  const [vouchers, setVouchers] = useState<VoucherEntry[]>(VOUCHER_META.map((m) => ({ ...m, price: 19, bulkPrice: 18, bulkThreshold: 10 })));
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => { const t = setTimeout(() => setMounted(true), 60); return () => clearTimeout(t); }, []);
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (stopRef.current) { clearTimeout(stopRef.current); stopRef.current = null; }
+  }, []);
+  useEffect(() => stopPolling, [stopPolling]);
 
   useEffect(() => {
     fetch("/api/vouchers/prices")
-      .then(r => r.json())
+      .then((r) => r.json())
       .then((data: Record<string, { sellPrice: number; bulkPrice: number; bulkThreshold: number }>) => {
-        setVouchers(VOUCHER_META.map(m => ({
-          ...m,
-          price:          data[m.id]?.sellPrice      ?? 19,
-          bulkPrice:      data[m.id]?.bulkPrice      ?? 18,
-          bulkThreshold:  data[m.id]?.bulkThreshold  ?? 10,
-        })));
+        setVouchers(VOUCHER_META.map((m) => ({ ...m, price: data[m.id]?.sellPrice ?? 19, bulkPrice: data[m.id]?.bulkPrice ?? 18, bulkThreshold: data[m.id]?.bulkThreshold ?? 10 })));
       })
       .catch(() => {});
   }, []);
 
-  const selected      = vouchers.find(v => v.id === selectedId)!;
-  const isAssisted    = serviceMode === "assisted_result";
-  const isBulk        = !isAssisted && quantity > selected.bulkThreshold;
-  const hasDiscount   = !isAssisted && (isBulk || promoApplied);
+  const selected = vouchers.find((v) => v.id === selectedId)!;
+  const isAssisted = serviceMode === "assisted_result";
+  const isBulk = !isAssisted && quantity > selected.bulkThreshold;
+  const hasDiscount = !isAssisted && (isBulk || promoApplied);
   const effectivePrice = hasDiscount ? selected.bulkPrice : selected.price;
-  const subtotal      = isAssisted ? 25 : parseFloat((effectivePrice * quantity).toFixed(2));
-  const fee           = isAssisted ? 0 : parseFloat((subtotal * 0.02).toFixed(2));
-  const total         = parseFloat((subtotal + fee).toFixed(2));
+  const subtotal = isAssisted ? 25 : parseFloat((effectivePrice * quantity).toFixed(2));
+  const fee = isAssisted ? 0 : parseFloat((subtotal * 0.02).toFixed(2));
+  const total = parseFloat((subtotal + fee).toFixed(2));
   const normalizedPhone = normalizeGhana(isAssisted ? whatsapp : phone);
-  const phoneValid      = /^0[2-5][0-9]{8}$/.test(normalizedPhone);
+  const phoneValid = /^0[2-5][0-9]{8}$/.test(normalizedPhone);
   const needsDob = (selectedId === "WASSCE" && candidateType === "private") || (selectedId === "BECE" && candidateType === "school");
-  const candidateValid = candidateName.trim().length >= 2 && /^(?:\d[\s-]*){6,14}$/.test(indexNumber.trim()) && indexNumber.trim() === confirmIndexNumber.trim()
-    && /^\d{4}$/.test(examYear) && Number(examYear) >= 1990 && Number(examYear) <= new Date().getFullYear()
-    && (!needsDob || /^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) && consent;
-  const canPay          = phoneValid && !phoneError && (!isAssisted || candidateValid) && !loading;
-  const bulkLeft      = selected.bulkThreshold + 1 - quantity;
+  const candidateValid =
+    candidateName.trim().length >= 2 && /^(?:\d[\s-]*){6,14}$/.test(indexNumber.trim()) && indexNumber.trim() === confirmIndexNumber.trim() &&
+    /^\d{4}$/.test(examYear) && Number(examYear) >= 1990 && Number(examYear) <= new Date().getFullYear() &&
+    (!needsDob || /^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) && consent;
+  const bulkLeft = selected.bulkThreshold + 1 - quantity;
 
-  function changeQty(val: number) {
-    setQuantity(Math.min(50, Math.max(1, val)));
-  }
+  const momoClean = normalizeGhPhone(momoPhone);
+  const detected = momoClean ? detectGhProvider(momoClean) : null;
+  const networkLooksWrong = !!(momoNetwork && detected && detected !== momoNetwork);
+  const labelOf = (id: MomoNetwork | null) => MOMO_NETWORKS.find((n) => n.id === id)?.label ?? "";
+  const canPay = phoneValid && !phoneError && (!isAssisted || candidateValid) && !!momoNetwork && !!momoClean && (!networkLooksWrong || confirmNetwork) && !loading;
 
   async function applyPromoCode() {
     const code = promoCode.trim();
     if (!code) { setPromoMsg({ ok: false, text: "Enter a discount code first." }); return; }
-    setPromoChecking(true);
-    setPromoMsg(null);
+    setPromoChecking(true); setPromoMsg(null);
     try {
-      const data = await fetch(`/api/vouchers/prices?code=${encodeURIComponent(code)}`).then(r => r.json()) as
-        Record<string, { sellPrice: number; bulkPrice: number; bulkThreshold: number; promoApplied: boolean }>;
-      const applied = Object.values(data).some(v => v.promoApplied);
-      if (applied) {
+      const data = (await fetch(`/api/vouchers/prices?code=${encodeURIComponent(code)}`).then((r) => r.json())) as Record<string, { sellPrice: number; bulkPrice: number; bulkThreshold: number; promoApplied: boolean }>;
+      if (Object.values(data).some((v) => v.promoApplied)) {
         setPromoApplied(true);
-        setVouchers(VOUCHER_META.map(m => ({ ...m, price: data[m.id]?.sellPrice ?? 19, bulkPrice: data[m.id]?.bulkPrice ?? 18, bulkThreshold: data[m.id]?.bulkThreshold ?? 10 })));
-        setPromoMsg({ ok: true, text: "Discount code applied! GH₵18 each." });
-      } else {
-        setPromoApplied(false);
-        setPromoMsg({ ok: false, text: "Invalid or expired discount code." });
-      }
-    } catch { setPromoMsg({ ok: false, text: "Could not validate. Try again." }); }
+        setVouchers(VOUCHER_META.map((m) => ({ ...m, price: data[m.id]?.sellPrice ?? 19, bulkPrice: data[m.id]?.bulkPrice ?? 18, bulkThreshold: data[m.id]?.bulkThreshold ?? 10 })));
+        setPromoMsg({ ok: true, text: "Discount code applied. GH₵18 each." });
+      } else { setPromoApplied(false); setPromoMsg({ ok: false, text: "That discount code is invalid or has expired." }); }
+    } catch { setPromoMsg({ ok: false, text: "Could not check the code. Try again." }); }
     setPromoChecking(false);
   }
 
   function clearPromo() {
     setPromoCode(""); setPromoApplied(false); setPromoMsg(null);
-    fetch("/api/vouchers/prices")
-      .then(r => r.json())
-      .then((data: Record<string, { sellPrice: number; bulkPrice: number; bulkThreshold: number }>) => {
-        setVouchers(VOUCHER_META.map(m => ({ ...m, price: data[m.id]?.sellPrice ?? 19, bulkPrice: data[m.id]?.bulkPrice ?? 18, bulkThreshold: data[m.id]?.bulkThreshold ?? 10 })));
-      })
-      .catch(() => {});
+    fetch("/api/vouchers/prices").then((r) => r.json()).then((data: Record<string, { sellPrice: number; bulkPrice: number; bulkThreshold: number }>) => {
+      setVouchers(VOUCHER_META.map((m) => ({ ...m, price: data[m.id]?.sellPrice ?? 19, bulkPrice: data[m.id]?.bulkPrice ?? 18, bulkThreshold: data[m.id]?.bulkThreshold ?? 10 })));
+    }).catch(() => {});
   }
 
   async function handlePay() {
     setError("");
-    const cleaned = normalizeGhana(isAssisted ? whatsapp : phone);
-    if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setError("Enter a valid Ghana phone number (e.g. 0241234567 or +233241234567)."); return; }
-    if (isAssisted && !candidateValid) { setError("Complete all candidate details, confirm the index number, and accept the authorization."); return; }
-
-    const momoNet = detectGhProvider(cleaned) ?? "mtn";
+    if (!canPay || !momoNetwork || !momoClean) return;
+    const cleaned = normalizedPhone;
+    if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setError("Enter a valid Ghana phone number, for example 0241234567."); return; }
+    if (isAssisted && !candidateValid) { setError("Complete all candidate details, confirm the index number and accept the authorisation."); return; }
     setLoading(true);
 
     try {
@@ -165,45 +133,39 @@ export default function VouchersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: total,
-          phone: cleaned,
-          network: momoNet,
+          phone: momoClean,
+          network: momoNetwork,
+          confirmNetwork: networkLooksWrong && confirmNetwork,
           type: "voucher_order",
           name: candidateName.trim() || "Customer",
-          metadata: {
-            voucherType: selected.id,
-            quantity: isAssisted ? 1 : quantity,
-            phone: cleaned,
-          },
+          metadata: { voucherType: selected.id, quantity: isAssisted ? 1 : quantity, phone: cleaned },
         }),
       });
-
       const ybkData = await ybkRes.json();
       if (!ybkRes.ok || !ybkData.ok) {
         setLoading(false);
-        setError(ybkData.message || "Could not initiate Mobile Money prompt. Please check your number.");
+        setError(ybkData.message || "We could not send the Mobile Money prompt. Please check your number and network.");
         return;
       }
 
-      const ybkRef = ybkData.reference;
-
-      // Fast poll status
-      const pollInterval = setInterval(async () => {
+      const ybkRef = ybkData.reference as string;
+      stopPolling();
+      pollRef.current = setInterval(async () => {
         try {
           const sRes = await fetch(`/api/yebeck/status?reference=${encodeURIComponent(ybkRef)}`);
           const sData = await sRes.json();
           if (sData.status === "success") {
-            clearInterval(pollInterval);
-            const email = `${cleaned}@voucher.elitedata.com`;
+            stopPolling();
             const cr = await fetch("/api/vouchers/create", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 name: candidateName.trim() || "Customer",
-                email,
+                email: `${cleaned}@voucher.elitedata.com`,
                 phone: cleaned,
                 voucherType: selected.id,
                 quantity: isAssisted ? 1 : quantity,
-                paystackRef: ybkRef,
+                paymentRef: ybkRef,
                 promoCode: !isAssisted && promoApplied ? promoCode.trim() : undefined,
                 serviceMode,
                 candidateName: candidateName.trim(),
@@ -218,399 +180,200 @@ export default function VouchersPage() {
             });
             const d = await cr.json();
             setLoading(false);
-            if (d.success) {
-              setSuccess({ reference: d.reference, pendingApproval: d.pendingApproval !== false });
-            } else {
-              setError(d.error || "Payment received! Contact support with your reference: " + ybkRef);
-            }
+            if (d.success) setSuccess({ reference: d.reference, pendingApproval: d.pendingApproval !== false });
+            else setError(d.error || `Payment received. Please contact support with your reference: ${ybkRef}`);
           } else if (sData.status === "failed") {
-            clearInterval(pollInterval);
-            setLoading(false);
-            setError("Payment was declined or cancelled on your phone. Please try again.");
+            stopPolling(); setLoading(false);
+            setError("The payment was declined or cancelled on your phone. Please try again.");
           }
-        } catch {
-          // keep polling
-        }
+        } catch { /* keep polling */ }
       }, 1800);
-
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        setLoading(false);
-      }, 180000);
-
-    } catch (err) {
+      stopRef.current = setTimeout(() => { stopPolling(); setLoading(false); setError("The payment timed out. If you already approved it, contact support with your phone number."); }, 180000);
+    } catch {
       setLoading(false);
-      setError(`Payment error: ${err instanceof Error ? err.message : String(err)}`);
+      setError("We could not start the payment. Check your connection and try again.");
     }
   }
 
-  /* ── Success ── */
   if (success) {
     return (
-      <div style={{ minHeight: "100vh", background: D.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-        <style>{`
-          @keyframes successPop  { 0%{transform:scale(0) rotate(-15deg);opacity:0} 60%{transform:scale(1.15) rotate(5deg)} 100%{transform:scale(1) rotate(0);opacity:1} }
-          @keyframes confettiDrop { 0%{transform:translateY(-20px) rotate(0);opacity:1} 100%{transform:translateY(60px) rotate(360deg);opacity:0} }
-          @keyframes fadeSlideUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-          @keyframes ringPulse   { 0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,0.4)} 50%{box-shadow:0 0 0 16px rgba(34,197,94,0)} }
-        `}</style>
-        <div style={{ background: D.card, border: "1px solid rgba(34,197,94,0.3)", borderRadius: 28, padding: "44px 28px", maxWidth: 400, width: "100%", textAlign: "center", animation: "fadeSlideUp .5s cubic-bezier(.22,1,.36,1)" }}>
-          <div style={{ position: "relative", display: "inline-block", marginBottom: 24 }}>
-            <div style={{ width: 80, height: 80, borderRadius: "50%", background: "rgba(34,197,94,0.12)", border: "3px solid #22c55e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36, animation: "successPop .6s cubic-bezier(.22,1,.36,1) forwards, ringPulse 2s ease 0.6s infinite" }}>✅</div>
-            {["🎉","⭐","✨","🎊","💫"].map((e, i) => (
-              <span key={i} style={{ position: "absolute", top: -8, left: `${10 + i * 18}%`, fontSize: 14, animation: `confettiDrop .8s ease ${i * 0.1}s forwards` }}>{e}</span>
-            ))}
-          </div>
-          <h2 style={{ color: "#4ade80", fontWeight: 900, fontSize: 24, margin: "0 0 8px", animation: "fadeSlideUp .5s .2s both" }}>
-            {success.pendingApproval ? "Order Received!" : "Voucher Order Sent!"}
-          </h2>
-          <p style={{ color: D.muted, fontSize: 13, margin: "0 0 20px", lineHeight: 1.7, animation: "fadeSlideUp .5s .3s both" }}>
-            Your <strong style={{ color: D.text }}>{isAssisted ? `${selected.label} assisted result check` : `${selected.label} × ${quantity}`}</strong> order has been confirmed.
+      <div className="ed-page" style={{ display: "grid", placeItems: "center", padding: 16 }}>
+        <div className="ed-stack" style={{ maxWidth: 420, width: "100%", textAlign: "center" }}>
+          <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(34,197,94,.14)", color: "var(--ed-green)", display: "grid", placeItems: "center", margin: "0 auto" }}><Icon name="check" /></div>
+          <h1 className="ed-h2">{success.pendingApproval ? "Order received" : "Voucher order sent"}</h1>
+          <p className="ed-muted" style={{ margin: 0, lineHeight: 1.6 }}>
+            Your {isAssisted ? `${selected.label} assisted result check` : `${selected.label} x ${quantity}`} order is confirmed.
             {success.pendingApproval
-              ? (isAssisted ? " It is awaiting approval. We will check the result and send it to WhatsApp after approval." : " It is awaiting approval; the voucher code will be sent by SMS after delivery.")
-              : (isAssisted ? " Result checking is processing and will be sent to WhatsApp." : " Delivery is processing and the voucher code will be sent by SMS shortly.")}{" "}
-            Recipient: <strong style={{ color: "#60a5fa" }}>{normalizedPhone}</strong>.
+              ? (isAssisted ? " It is waiting for approval. After that we check the result and send it to WhatsApp." : " It is waiting for approval. The voucher code is sent by SMS after delivery.")
+              : (isAssisted ? " The result check is being processed and goes to WhatsApp." : " Delivery is being processed and the voucher code comes by SMS shortly.")}{" "}
+            Recipient: <b className="ed-num" style={{ color: "var(--ed-text)" }}>{spaced(normalizedPhone)}</b>
           </p>
-          <div style={{ background: "#050b15", borderRadius: 14, padding: "14px 16px", marginBottom: 20, animation: "fadeSlideUp .5s .4s both" }}>
-            <p style={{ color: D.muted, fontSize: 11, margin: "0 0 4px" }}>Order Reference</p>
-            <p style={{ color: "#60a5fa", fontFamily: "monospace", fontWeight: 700, fontSize: 13, margin: 0, wordBreak: "break-all" }}>{success.reference}</p>
-          </div>
-          <a href={`/track?ref=${encodeURIComponent(success.reference)}`}
-            style={{ display: "block", background: "linear-gradient(135deg,#22c55e,#16a34a)", color: "white", textDecoration: "none", borderRadius: 16, padding: "15px 0", fontWeight: 900, fontSize: 15, marginBottom: 12, animation: "fadeSlideUp .5s .5s both", boxShadow: "0 6px 24px rgba(34,197,94,0.4)" }}>
-            Track Order →
-          </a>
-          <a href="/vouchers" style={{ color: D.muted, fontSize: 13, textDecoration: "underline" }}>Buy another voucher</a>
+          <div className="ed-quote" style={{ textAlign: "left" }}><small>Order reference</small><b style={{ fontFamily: "monospace", wordBreak: "break-all" }}>{success.reference}</b></div>
+          <Link href={`/track?ref=${encodeURIComponent(success.reference)}`} className="ed-btn y tall block">Track my order</Link>
+          <a href="/vouchers" className="ed-link" style={{ minHeight: 44, display: "grid", placeItems: "center" }}>Buy another voucher</a>
         </div>
       </div>
     );
   }
 
-  /* ── Main page ── */
+  const inputStyle = { width: "100%", minHeight: 52, borderRadius: 12, border: "1px solid var(--ed-line2)", background: "var(--ed-card)", color: "var(--ed-text)", padding: "0 12px", fontSize: 16, fontFamily: "var(--ed-body)" } as const;
+  const label = { display: "block", fontSize: 12, fontWeight: 700, color: "var(--ed-muted)", marginBottom: 6 } as const;
+
   return (
-    <div style={{ minHeight: "100vh", background: D.bg, color: D.text, fontFamily: "system-ui,sans-serif", position: "relative", overflow: "hidden" }}>
-      <style>{`
-        @keyframes floatIcon   { 0%,100%{transform:translateY(0) rotate(-2deg)} 50%{transform:translateY(-8px) rotate(2deg)} }
-        @keyframes slideUp     { from{opacity:0;transform:translateY(28px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes glowPulse   { 0%,100%{box-shadow:0 0 20px var(--glow-color,rgba(59,130,246,0.3))} 50%{box-shadow:0 0 40px var(--glow-color,rgba(59,130,246,0.6)), 0 0 80px var(--glow-color,rgba(59,130,246,0.2))} }
-        @keyframes orb1        { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(60px,-40px) scale(1.2)} 66%{transform:translate(-40px,30px) scale(0.9)} }
-        @keyframes orb2        { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(-50px,50px) scale(0.8)} 66%{transform:translate(70px,-20px) scale(1.1)} }
-        @keyframes cardCheck   { from{transform:scale(0) rotate(-10deg);opacity:0} to{transform:scale(1) rotate(0);opacity:1} }
-        @keyframes spin        { to{transform:rotate(360deg)} }
-        @keyframes rotation481 { 0%{transform:rotateZ(0deg)} 100%{transform:rotateZ(360deg)} }
-        @keyframes floating    { 0%,100%{transform:translateY(0)} 50%{transform:translateY(10px)} }
-        .pay-btn:not(:disabled):hover { transform:translateY(-2px) !important; }
-        .pay-btn:not(:disabled):active { transform:translateY(0px) scale(.98) !important; }
-        .qty-btn:hover { background: rgba(255,255,255,0.1) !important; }
-        .flip-card { perspective:1000px; cursor:pointer; }
-        .flip-inner { width:100%; height:100%; transform-style:preserve-3d; transition:transform 420ms cubic-bezier(.22,1,.36,1); }
-        .flip-card.is-flipped .flip-inner { transform:rotateY(180deg); }
-        .flip-face { position:absolute; width:100%; height:100%; backface-visibility:hidden; -webkit-backface-visibility:hidden; border-radius:18px; overflow:hidden; }
-        .flip-front { transform:rotateY(180deg); }
-        .flip-back { display:flex; align-items:center; justify-content:center; }
-        .flip-back::before { content:''; position:absolute; width:140px; height:160%; animation:rotation481 4s linear infinite; border-radius:50%; }
-        .flip-back-inner { position:absolute; width:99%; height:99%; border-radius:17px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; }
-      `}</style>
-
-      {/* Ambient orbs */}
-      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0 }}>
-        <div style={{ position: "absolute", top: "5%", left: "10%", width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle,rgba(59,130,246,0.12) 0%,transparent 70%)", animation: "orb1 12s ease-in-out infinite" }} />
-        <div style={{ position: "absolute", bottom: "10%", right: "5%", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle,rgba(139,92,246,0.1) 0%,transparent 70%)", animation: "orb2 15s ease-in-out infinite" }} />
-      </div>
-
-      <div style={{ maxWidth: 540, margin: "0 auto", padding: "32px 16px 100px", position: "relative", zIndex: 1 }}>
-
-        {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: 28, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(20px)", transition: "all .6s cubic-bezier(.22,1,.36,1)" }}>
-          <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 72, height: 72, borderRadius: 22, background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", fontSize: 34, marginBottom: 16, animation: "floatIcon 3s ease-in-out infinite", boxShadow: "0 8px 32px rgba(139,92,246,0.4)" }}>📋</div>
-          <h1 style={{ fontSize: 26, fontWeight: 900, margin: "0 0 6px", background: "linear-gradient(135deg,#60a5fa,#a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-            Buy BECE &amp; WASSCE Result Checker Vouchers Online in Ghana
-          </h1>
-          <p style={{ color: D.muted, fontSize: 13, margin: 0 }}>Secure online payment · Available voucher details sent by SMS after approval</p>
+    <div className="ed-page" style={{ paddingBottom: 100 }}>
+      <div className="ed-wrap ed-stack" style={{ paddingTop: 22, gap: 26 }}>
+        <div className="ed-stack" style={{ gap: 8 }}>
+          <h1 className="ed-h1" style={{ fontSize: "clamp(26px,7vw,40px)" }}>Result checker vouchers</h1>
+          <p className="ed-muted" style={{ margin: 0 }}>Buy BECE and WASSCE result checker vouchers online in Ghana. Voucher details are sent by SMS after approval.</p>
         </div>
 
-        {/* How to Buy */}
-        <div style={{ marginBottom: 16, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(24px)", transition: "all .55s .05s cubic-bezier(.22,1,.36,1)" }}>
-          <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 22, padding: 20 }}>
-            <p style={{ fontWeight: 800, fontSize: 13, color: D.text, margin: "0 0 14px", display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 16 }}>💡</span> How to Buy
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {HOW_TO_BUY.map((step, i) => (
-                <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: "#60a5fa", marginTop: 1 }}>{i + 1}</div>
-                  <p style={{ color: D.muted, fontSize: 13, margin: 0, lineHeight: 1.55 }}>{step}</p>
-                </div>
-              ))}
-            </div>
-            <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 12, padding: "10px 14px", marginTop: 14, display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 16 }}>🎁</span>
-              <p style={{ color: "#fbbf24", fontSize: 12, fontWeight: 700, margin: 0 }}>
-                Bulk deal: Buy <strong>11 or more</strong> and each voucher drops from GH₵19 → <strong>GH₵18</strong>
-              </p>
-            </div>
-          </div>
-        </div>
+        <section aria-labelledby="how-h">
+          <h2 id="how-h" className="ed-h2" style={{ fontSize: 20, marginBottom: 6 }}>How it works</h2>
+          <div className="ed-how">{HOW_TO_BUY.map((s, i) => <div key={i}><i>{i + 1}</i><span>{s}</span></div>)}</div>
+        </section>
 
-        {/* Step 1 — Exam type */}
-        <div style={{ marginBottom: 16, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(24px)", transition: "all .55s .1s cubic-bezier(.22,1,.36,1)" }}>
-          <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 22, padding: 20 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-              <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, color: "white" }}>1</div>
-              <p style={{ fontSize: 12, fontWeight: 700, color: D.muted, margin: 0, textTransform: "uppercase", letterSpacing: 1 }}>Choose Exam Type</p>
-            </div>
-            <p style={{ color: D.muted, fontSize: 11, margin: "0 0 14px" }}>Tap a card to flip it and see the price, then press Select</p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              {vouchers.map(v => {
-                const isFlipped = flipped === v.id;
-                const active    = selectedId === v.id;
-                return (
-                  <div key={v.id} className={`flip-card${isFlipped ? " is-flipped" : ""}`}
-                    style={{ height: 200, position: "relative" }}
-                    onClick={() => setFlipped(isFlipped ? null : v.id)}>
-                    <div className="flip-inner" style={{ position: "relative", height: "100%", boxShadow: active ? `0 0 0 2px ${v.color}, 0 8px 32px ${v.glow}` : "0 4px 16px rgba(0,0,0,0.4)", borderRadius: 18 }}>
-                      <div className="flip-face flip-back" style={{ background: D.card }}>
-                        <div style={{ position: "absolute", inset: 0, overflow: "hidden", borderRadius: 18 }}>
-                          <div className="circle" style={{ width: 80, height: 80, borderRadius: "50%", background: v.color, position: "absolute", left: 20, top: 30, filter: "blur(18px)", animation: "floating 2.6s infinite linear", opacity: 0.5 }} />
-                          <div id="bottom" style={{ width: 120, height: 120, borderRadius: "50%", background: v.dark, position: "absolute", left: 50, top: -10, filter: "blur(20px)", animation: "floating 2.6s -800ms infinite linear", opacity: 0.35 }} />
-                          <div id="right" style={{ width: 28, height: 28, borderRadius: "50%", background: v.color, position: "absolute", right: 20, top: 10, filter: "blur(8px)", animation: "floating 2.6s -1800ms infinite linear", opacity: 0.6 }} />
-                        </div>
-                        <style>{`.flip-back:nth-child(1)::before { background: linear-gradient(90deg,transparent,${v.color},${v.color},transparent); }`}</style>
-                        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          <div style={{ width: "160px", height: "160%", position: "absolute", background: `linear-gradient(90deg,transparent,${v.color},${v.color},${v.color},transparent)`, animation: "rotation481 4s linear infinite", opacity: 0.7 }} />
-                        </div>
-                        <div className="flip-back-inner" style={{ background: D.card }}>
-                          <span style={{ fontSize: 38 }}>{v.emoji}</span>
-                          <p style={{ color: v.color, fontWeight: 900, fontSize: 18, margin: 0 }}>{v.label}</p>
-                          <p style={{ color: D.muted, fontSize: 10, margin: 0, textAlign: "center", padding: "0 12px", lineHeight: 1.4 }}>{v.full}</p>
-                          <p style={{ color: "#94a3b8", fontSize: 11, margin: 0 }}>Tap to see price →</p>
-                        </div>
-                      </div>
-                      <div className="flip-face flip-front" style={{ background: `linear-gradient(145deg,${v.dark},${v.color}90)`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, padding: 16 }}>
-                        <span style={{ fontSize: 36 }}>{v.emoji}</span>
-                        <p style={{ color: "white", fontWeight: 900, fontSize: 16, margin: 0 }}>{v.label} Voucher</p>
-                        <div style={{ textAlign: "center" }}>
-                          <p style={{ color: "rgba(255,255,255,0.85)", fontWeight: 900, fontSize: 26, margin: 0 }}>GH₵{v.price.toFixed(2)}</p>
-                          <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, margin: "2px 0 0" }}>Buy 11+ for GH₵{v.bulkPrice.toFixed(2)} each</p>
-                        </div>
-                        <button
-                          onClick={e => { e.stopPropagation(); setSelectedId(v.id); setFlipped(null); }}
-                          style={{ background: active ? "white" : "rgba(255,255,255,0.2)", color: active ? v.dark : "white", border: active ? "none" : "1px solid rgba(255,255,255,0.4)", borderRadius: 12, padding: "8px 20px", fontSize: 13, fontWeight: 800, cursor: "pointer", transition: "all .2s" }}>
-                          {active ? "✓ Selected" : "Select"}
-                        </button>
-                      </div>
-                    </div>
-                    {active && !isFlipped && (
-                      <div style={{ position: "absolute", top: 8, right: 8, width: 22, height: 22, borderRadius: "50%", background: v.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "white", fontWeight: 900, zIndex: 2, animation: "cardCheck .25s cubic-bezier(.22,1,.36,1)" }}>✓</div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+        <section aria-labelledby="exam-h" className="ed-stack" style={{ gap: 10 }}>
+          <h2 id="exam-h" className="ed-h2" style={{ fontSize: 20 }}>Choose the exam</h2>
+          <div className="ed-grid2" style={{ gridTemplateColumns: "1fr 1fr" }} role="radiogroup" aria-label="Exam type">
+            {vouchers.map((v) => (
+              <button key={v.id} type="button" role="radio" aria-checked={selectedId === v.id} className={`ed-tile${selectedId === v.id ? " sel" : ""}`} style={{ ["--ed-net" as string]: "var(--ed-yellow)" }} onClick={() => setSelectedId(v.id)}>
+                <span className="sz">{v.label}</span>
+                <span className="vd">{v.full}</span>
+                <span className="pr">{money(v.price)}</span>
+                <span className="pg">{money(v.bulkPrice)} each for 11 or more</span>
+              </button>
+            ))}
           </div>
-        </div>
+        </section>
 
-        {/* Step 2 — Quantity */}
-        <div style={{ marginBottom: 16, background: D.card, border: `1px solid ${D.border}`, borderRadius: 22, padding: 20 }}>
-          <p style={{ fontSize: 12, fontWeight: 800, color: D.muted, margin: "0 0 12px", textTransform: "uppercase", letterSpacing: 1 }}>Choose a service</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10 }}>
-            {([{ id: "voucher_only", title: "Voucher only", text: `Receive the ${selected.label} voucher by SMS`, price: `GH₵${selected.price.toFixed(2)} each` }, { id: "assisted_result", title: "Check my result for me", text: "We check your result and send it to WhatsApp", price: "GH₵25 total" }] as const).map(option => {
-              const active = serviceMode === option.id;
-              return <button key={option.id} type="button" onClick={() => { setServiceMode(option.id); setError(""); if (option.id === "assisted_result") { setQuantity(1); clearPromo(); } }} style={{ textAlign: "left", padding: 16, borderRadius: 16, cursor: "pointer", background: active ? `${selected.color}18` : "#050b15", border: `1px solid ${active ? selected.color : D.border}`, color: D.text }}><strong style={{ display: "block", fontSize: 14, marginBottom: 5 }}>{active ? "✓ " : ""}{option.title}</strong><span style={{ display: "block", color: D.muted, fontSize: 11, lineHeight: 1.5 }}>{option.text}</span><span style={{ display: "block", color: active ? selected.color : "#94a3b8", fontWeight: 900, fontSize: 14, marginTop: 8 }}>{option.price}</span></button>;
-            })}
+        <section aria-labelledby="svc-h" className="ed-stack" style={{ gap: 10 }}>
+          <h2 id="svc-h" className="ed-h2" style={{ fontSize: 20 }}>Choose a service</h2>
+          <div className="ed-grid2" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }} role="radiogroup" aria-label="Service">
+            {([
+              { id: "voucher_only", title: "Voucher only", text: `Receive the ${selected.label} voucher by SMS`, price: `${money(selected.price)} each` },
+              { id: "assisted_result", title: "Check my result for me", text: "We check your result and send it to WhatsApp", price: "GH₵25 total" },
+            ] as const).map((o) => (
+              <button key={o.id} type="button" role="radio" aria-checked={serviceMode === o.id} className={`ed-tile${serviceMode === o.id ? " sel" : ""}`} style={{ ["--ed-net" as string]: "var(--ed-yellow)", paddingTop: 14 }}
+                onClick={() => { setServiceMode(o.id); setError(""); if (o.id === "assisted_result") { setQuantity(1); clearPromo(); } }}>
+                <span className="sz" style={{ fontSize: 18 }}>{o.title}</span>
+                <span className="vd" style={{ fontSize: 12 }}>{o.text}</span>
+                <span className="pr">{o.price}</span>
+              </button>
+            ))}
           </div>
-        </div>
+        </section>
 
-        {isAssisted && <div style={{ marginBottom: 16, background: D.card, border: `1px solid ${selected.color}55`, borderRadius: 22, padding: 20 }}>
-          <p style={{ color: D.text, fontWeight: 900, fontSize: 16, margin: "0 0 5px" }}>Candidate details</p>
-          <p style={{ color: D.muted, fontSize: 11, lineHeight: 1.55, margin: "0 0 16px" }}>Enter the information exactly as it appears on the examination record. Your voucher will be sent securely to the admin for checking.</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 12 }}>
-            <label style={fieldLabelStyle}>Candidate full name<input value={candidateName} onChange={e => setCandidateName(e.target.value)} placeholder="Full name on exam record" style={fieldStyle} /></label>
-            <label style={fieldLabelStyle}>Candidate type<select value={candidateType} onChange={e => setCandidateType(e.target.value as "school" | "private")} style={fieldStyle}><option value="school">School candidate</option><option value="private">Private candidate</option></select></label>
-            <label style={fieldLabelStyle}>Examination year<input type="number" min="1990" max={new Date().getFullYear()} value={examYear} onChange={e => setExamYear(e.target.value)} style={fieldStyle} /></label>
-            <label style={fieldLabelStyle}>Index number<input inputMode="numeric" value={indexNumber} onChange={e => setIndexNumber(e.target.value.replace(/[^0-9]/g, ""))} placeholder="Candidate index number" style={fieldStyle} /></label>
-            <label style={fieldLabelStyle}>Confirm index number<input inputMode="numeric" value={confirmIndexNumber} onChange={e => setConfirmIndexNumber(e.target.value.replace(/[^0-9]/g, ""))} placeholder="Enter index number again" style={fieldStyle} /></label>
-            {needsDob && <label style={fieldLabelStyle}>Date of birth<input type="date" value={dateOfBirth} onChange={e => setDateOfBirth(e.target.value)} style={fieldStyle} /></label>}
-            <label style={fieldLabelStyle}>WhatsApp number<input type="tel" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="0241234567" style={fieldStyle} /></label>
-          </div>
-          <label style={{ display: "flex", gap: 10, alignItems: "flex-start", color: "#94a3b8", fontSize: 11, lineHeight: 1.55, marginTop: 16, cursor: "pointer" }}><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ marginTop: 3 }} />I authorize Elite Data to use these details and one result-checker voucher only to check my result and send it to my WhatsApp number.</label>
-        </div>}
-
-        {!isAssisted && <div style={{ marginBottom: 16, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(24px)", transition: "all .55s .2s cubic-bezier(.22,1,.36,1)" }}>
-          <div style={{ background: D.card, border: `1px solid ${isBulk ? "rgba(245,158,11,0.4)" : D.border}`, borderRadius: 22, padding: 20, transition: "border-color .3s" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-              <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, color: "white", flexShrink: 0 }}>2</div>
-              <p style={{ fontSize: 12, fontWeight: 700, color: D.muted, margin: 0, textTransform: "uppercase", letterSpacing: 1 }}>Quantity (max 50)</p>
-              {isBulk && (
-                <span style={{ fontSize: 11, fontWeight: 800, background: "rgba(245,158,11,0.15)", color: "#f59e0b", padding: "3px 10px", borderRadius: 20, border: "1px solid rgba(245,158,11,0.3)" }}>
-                  Bulk price: GH₵{selected.bulkPrice}/each
-                </span>
-              )}
+        {isAssisted && (
+          <section aria-labelledby="cand-h" className="ed-stack" style={{ gap: 12 }}>
+            <h2 id="cand-h" className="ed-h2" style={{ fontSize: 20 }}>Candidate details</h2>
+            <p className="ed-muted" style={{ margin: 0, fontSize: 13 }}>Enter the information exactly as it appears on the examination record.</p>
+            <div className="ed-stack" style={{ gap: 12 }}>
+              <div><label style={label} htmlFor="c_name">Candidate full name</label><input id="c_name" style={inputStyle} value={candidateName} onChange={(e) => setCandidateName(e.target.value)} placeholder="Full name on the exam record" /></div>
+              <div><label style={label} htmlFor="c_type">Candidate type</label><select id="c_type" style={inputStyle} value={candidateType} onChange={(e) => setCandidateType(e.target.value as "school" | "private")}><option value="school">School candidate</option><option value="private">Private candidate</option></select></div>
+              <div><label style={label} htmlFor="c_year">Examination year</label><input id="c_year" style={inputStyle} type="number" min="1990" max={new Date().getFullYear()} value={examYear} onChange={(e) => setExamYear(e.target.value)} /></div>
+              <div><label style={label} htmlFor="c_idx">Index number</label><input id="c_idx" style={inputStyle} inputMode="numeric" value={indexNumber} onChange={(e) => setIndexNumber(e.target.value.replace(/[^0-9]/g, ""))} placeholder="Candidate index number" /></div>
+              <div><label style={label} htmlFor="c_idx2">Confirm index number</label><input id="c_idx2" style={inputStyle} inputMode="numeric" value={confirmIndexNumber} onChange={(e) => setConfirmIndexNumber(e.target.value.replace(/[^0-9]/g, ""))} placeholder="Enter the index number again" /></div>
+              {needsDob && <div><label style={label} htmlFor="c_dob">Date of birth</label><input id="c_dob" style={inputStyle} type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} /></div>}
+              <div><label style={label} htmlFor="c_wa">WhatsApp number for the result</label><input id="c_wa" style={inputStyle} type="tel" inputMode="tel" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="024 123 4567" /></div>
+              <label style={{ display: "flex", gap: 12, alignItems: "flex-start", fontSize: 13, color: "var(--ed-muted)", lineHeight: 1.5, cursor: "pointer", minHeight: 44 }}>
+                <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ width: 22, height: 22, marginTop: 2 }} />
+                I allow Elite Data to use these details and one result checker voucher only to check my result and send it to my WhatsApp number.
+              </label>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <button className="qty-btn" onClick={() => changeQty(quantity - 1)} disabled={quantity <= 1}
-                style={{ width: 48, height: 48, borderRadius: 14, border: `1px solid ${D.border}`, background: "transparent", color: quantity <= 1 ? D.muted : D.text, fontSize: 24, fontWeight: 700, cursor: quantity <= 1 ? "not-allowed" : "pointer", transition: "all .15s", flexShrink: 0 }}>−</button>
-              <input
-                type="number" min={1} max={50} value={quantity}
-                onChange={e => changeQty(parseInt(e.target.value) || 1)}
-                style={{ width: 64, height: 48, borderRadius: 14, border: `1px solid ${D.border}`, background: "#050b15", color: D.text, fontSize: 22, fontWeight: 900, textAlign: "center", outline: "none", flexShrink: 0 }}
-              />
-              <button className="qty-btn" onClick={() => changeQty(quantity + 1)} disabled={quantity >= 50}
-                style={{ width: 48, height: 48, borderRadius: 14, border: `1px solid ${D.border}`, background: "transparent", color: quantity >= 50 ? D.muted : D.text, fontSize: 24, fontWeight: 700, cursor: quantity >= 50 ? "not-allowed" : "pointer", transition: "all .15s", flexShrink: 0 }}>+</button>
-              <div style={{ flex: 1, background: "#050b15", borderRadius: 14, padding: "10px 14px", border: `1px solid ${D.border}` }}>
-                <p style={{ color: D.muted, fontSize: 11, margin: "0 0 2px" }}>
-                  GH₵{effectivePrice.toFixed(2)}/each
-                  {hasDiscount && <span style={{ color: D.muted, textDecoration: "line-through", marginLeft: 6, fontSize: 10 }}>GH₵{selected.price.toFixed(2)}</span>}
-                </p>
-                <p style={{ color: selected.color, fontWeight: 900, fontSize: 20, margin: 0, transition: "color .2s" }}>GH₵{subtotal.toFixed(2)}</p>
-              </div>
-            </div>
-            {!hasDiscount && bulkLeft > 0 && (
-              <p style={{ color: D.muted, fontSize: 11, marginTop: 10, textAlign: "center" }}>
-                Add <strong style={{ color: "#f59e0b" }}>{bulkLeft} more</strong> to unlock bulk price (GH₵{selected.bulkPrice}/each)
-              </p>
-            )}
-          </div>
-        </div>}
-
-        {/* Step 3 — Promo code (optional) */}
-        {!isAssisted && <div style={{ marginBottom: 16, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(24px)", transition: "all .55s .25s cubic-bezier(.22,1,.36,1)" }}>
-          <button
-            onClick={() => setShowPromo(v => !v)}
-            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: D.card, border: `1px solid ${promoApplied ? "rgba(34,197,94,0.4)" : D.border}`, borderRadius: showPromo ? "18px 18px 0 0" : 18, padding: "14px 20px", cursor: "pointer", color: D.text, fontSize: 13, fontWeight: 700, transition: "all .25s" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span>🏷️</span>
-              <span>Have a discount code?</span>
-              {promoApplied && <span style={{ color: "#4ade80", fontSize: 12, fontWeight: 800 }}>✓ Applied</span>}
-            </span>
-            <span style={{ color: D.muted, fontSize: 16, transition: "transform .25s", display: "inline-block", transform: showPromo ? "rotate(180deg)" : "none" }}>⌄</span>
-          </button>
-          {showPromo && (
-            <div style={{ background: D.card, border: `1px solid ${promoApplied ? "rgba(34,197,94,0.4)" : D.border}`, borderTop: "none", borderRadius: "0 0 18px 18px", padding: "0 20px 16px" }}>
-              {promoApplied ? (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 12, padding: "10px 14px" }}>
-                  <p style={{ color: "#4ade80", fontSize: 13, fontWeight: 700, margin: 0 }}>✓ Discount code applied — GH₵18 each</p>
-                  <button onClick={clearPromo} style={{ color: D.muted, fontSize: 11, background: "none", border: "none", cursor: "pointer", padding: 0 }}>Remove</button>
-                </div>
-              ) : (
-                <div style={{ display: "flex", gap: 8, paddingTop: 4 }}>
-                  <input
-                    type="text" placeholder="Enter code"
-                    value={promoCode}
-                    onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoMsg(null); }}
-                    onKeyDown={e => { if (e.key === "Enter") void applyPromoCode(); }}
-                    style={{ flex: 1, background: "#050b15", border: `1px solid ${D.border}`, borderRadius: 12, padding: "12px 14px", color: D.text, fontSize: 14, fontWeight: 700, outline: "none", letterSpacing: 2 }}
-                  />
-                  <button
-                    onClick={() => void applyPromoCode()}
-                    disabled={promoChecking || !promoCode.trim()}
-                    style={{ padding: "12px 20px", borderRadius: 12, background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", color: "white", border: "none", fontSize: 13, fontWeight: 800, cursor: promoChecking || !promoCode.trim() ? "not-allowed" : "pointer", opacity: promoChecking || !promoCode.trim() ? 0.6 : 1 }}>
-                    {promoChecking ? "…" : "Apply"}
-                  </button>
-                </div>
-              )}
-              {promoMsg && !promoApplied && (
-                <p style={{ color: promoMsg.ok ? "#4ade80" : "#f87171", fontSize: 12, fontWeight: 700, margin: "8px 0 0" }}>
-                  {promoMsg.ok ? "✓" : "⚠️"} {promoMsg.text}
-                </p>
-              )}
-            </div>
-          )}
-        </div>}
-
-        {/* Step 4 — Phone */}
-        {!isAssisted && <div style={{ marginBottom: 16, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(24px)", transition: "all .55s .3s cubic-bezier(.22,1,.36,1)" }}>
-          <div style={{ background: D.card, border: `1px solid ${phoneFocus ? selected.color : D.border}`, borderRadius: 22, padding: 20, transition: "border-color .25s", boxShadow: phoneFocus ? `0 0 0 3px ${selected.color}20` : "none" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-              <div style={{ width: 24, height: 24, borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, color: "white" }}>3</div>
-              <p style={{ fontSize: 12, fontWeight: 700, color: D.muted, margin: 0, textTransform: "uppercase", letterSpacing: 1 }}>Your Phone Number</p>
-            </div>
-            <p style={{ color: D.muted, fontSize: 12, margin: "0 0 12px" }}>📱 Voucher codes will be sent here via SMS</p>
-            <input
-              type="tel" placeholder="0241234567" value={phone}
-              onChange={e => {
-                const raw = e.target.value;
-                setPhone(raw);
-                if (!raw.replace(/[\s\-\(\)]/g, "")) { setPhoneError(""); return; }
-                const norm = normalizeGhana(raw);
-                if (norm.length < 10) { setPhoneError(""); return; } // still typing
-                setPhoneError(/^0[2-5][0-9]{8}$/.test(norm) ? "" : "Enter a valid Ghana number (e.g. 0241234567 or +233241234567).");
-              }}
-              onFocus={() => setPhoneFocus(true)}
-              onBlur={() => setPhoneFocus(false)}
-              style={{ width: "100%", background: "#050b15", border: `1px solid ${phoneError ? "#f87171" : phoneFocus ? selected.color : D.border}`, borderRadius: 14, padding: "15px 18px", color: D.text, fontSize: 18, outline: "none", boxSizing: "border-box", transition: "border-color .2s", letterSpacing: 1 }}
-            />
-            {phoneError && (
-              <p style={{ color: "#f87171", fontSize: 12, fontWeight: 600, margin: "8px 0 0" }}>⚠️ {phoneError}</p>
-            )}
-            {phoneValid && !phoneError && (
-              <p style={{ color: "#4ade80", fontSize: 12, fontWeight: 600, margin: "8px 0 0" }}>✓ Valid Ghana number</p>
-            )}
-          </div>
-        </div>}
-
-        {/* Order summary */}
-        <div style={{ background: `${selected.color}08`, border: `1px solid ${selected.color}30`, borderRadius: 18, padding: "16px 20px", marginBottom: 16, transition: "all .3s", opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(24px)", transitionDelay: ".4s" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <p style={{ color: D.muted, fontSize: 11, margin: "0 0 3px" }}>Order Summary</p>
-              <p style={{ color: D.text, fontWeight: 800, fontSize: 15, margin: 0 }}>{isAssisted ? `${selected.label} assisted result check` : `${selected.label} × ${quantity}`}</p>
-              {hasDiscount && (
-                <p style={{ color: "#f59e0b", fontSize: 11, fontWeight: 700, margin: "3px 0 0" }}>
-                  {isBulk && !promoApplied ? "Bulk discount" : "Discount code"} · save GH₵{((selected.price - effectivePrice) * quantity).toFixed(2)} total
-                </p>
-              )}
-              <p style={{ color: D.muted, fontSize: 11, margin: "3px 0 0" }}>{isAssisted ? "Voucher and checking service included — no extra fee" : "incl. 2% processing fee"}</p>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <p style={{ color: D.muted, fontSize: 11, margin: "0 0 3px" }}>Total</p>
-              <p style={{ color: selected.color, fontWeight: 900, fontSize: 24, margin: 0, transition: "color .2s" }}>GH₵{total.toFixed(2)}</p>
-              {hasDiscount && (
-                <p style={{ color: D.muted, fontSize: 10, textDecoration: "line-through", margin: "2px 0 0" }}>
-                  GH₵{parseFloat((selected.price * quantity * 1.02).toFixed(2)).toFixed(2)}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {error && (
-          <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 14, padding: "12px 16px", marginBottom: 14, color: "#f87171", fontSize: 13, animation: "slideUp .3s ease" }}>
-            ⚠️ {error}
-          </div>
+          </section>
         )}
 
-        {/* Pay button */}
-        <button
-          className="pay-btn"
-          onClick={handlePay}
-          disabled={!canPay}
-          style={{
-            width: "100%",
-            background: canPay ? `linear-gradient(135deg,${selected.color},${selected.dark})` : "#1a2a45",
-            color: canPay ? "white" : D.muted,
-            border: "none", borderRadius: 18,
-            padding: "18px 0", fontSize: 18, fontWeight: 900,
-            cursor: canPay ? "pointer" : "not-allowed",
-            transition: "all .25s cubic-bezier(.22,1,.36,1)",
-            boxShadow: canPay ? `0 8px 32px ${selected.glow}` : "none",
-            animation: canPay ? `glowPulse 2.5s ease-in-out infinite` : "none",
-            "--glow-color": selected.glow,
-            opacity: mounted ? 1 : 0,
-            transform: mounted ? "translateY(0)" : "translateY(24px)",
-          } as React.CSSProperties}
-        >
-          {loading ? (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 18, height: 18, border: "2px solid white", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", animation: "spin .7s linear infinite" }} />
-              Awaiting phone approval…
-            </span>
-          ) : `Pay GH₵${total.toFixed(2)} with MoMo ⚡`}
-        </button>
+        {!isAssisted && (
+          <section aria-labelledby="qty-h" className="ed-stack" style={{ gap: 10 }}>
+            <h2 id="qty-h" className="ed-h2" style={{ fontSize: 20 }}>How many?</h2>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button type="button" className="ed-ibtn" style={{ width: 52, height: 52, fontSize: 24 }} aria-label="One fewer" onClick={() => setQuantity((q) => Math.max(1, q - 1))} disabled={quantity <= 1}>−</button>
+              <input aria-label="Quantity" type="number" min={1} max={50} value={quantity} onChange={(e) => setQuantity(Math.min(50, Math.max(1, parseInt(e.target.value) || 1)))} style={{ ...inputStyle, width: 76, textAlign: "center", fontSize: 22, fontWeight: 900, fontFamily: "var(--ed-display)" }} />
+              <button type="button" className="ed-ibtn" style={{ width: 52, height: 52, fontSize: 24 }} aria-label="One more" onClick={() => setQuantity((q) => Math.min(50, q + 1))} disabled={quantity >= 50}>+</button>
+              <div style={{ flex: 1, textAlign: "right" }}>
+                <div className="ed-muted ed-num" style={{ fontSize: 12 }}>{money(effectivePrice)} each{hasDiscount && <s style={{ marginLeft: 6 }}>{money(selected.price)}</s>}</div>
+                <b className="ed-display ed-num" style={{ fontSize: 24 }}>{money(subtotal)}</b>
+              </div>
+            </div>
+            {isBulk && <p className="ed-chk ok" style={{ margin: 0 }}>Bulk price applied: {money(selected.bulkPrice)} each.</p>}
+            {!hasDiscount && bulkLeft > 0 && <p className="ed-muted" style={{ margin: 0, fontSize: 12 }}>Add {bulkLeft} more to unlock the bulk price of {money(selected.bulkPrice)} each.</p>}
 
-        <p style={{ color: D.muted, fontSize: 11, textAlign: "center", margin: "14px 0 0", opacity: mounted ? 1 : 0, transition: "opacity .5s .6s" }}>
-          🔒 Direct Mobile Money via Yebeck · Fast Instant Processing
-        </p>
+            <details style={{ borderTop: "1px solid var(--ed-line)", paddingTop: 6 }}>
+              <summary style={{ minHeight: 48, display: "flex", alignItems: "center", cursor: "pointer", fontWeight: 700, fontSize: 14 }}>Have a discount code?{promoApplied && <span style={{ color: "var(--ed-green)", marginLeft: 8 }}>Applied</span>}</summary>
+              {promoApplied ? (
+                <div className="ed-chk ok" style={{ justifyContent: "space-between", alignItems: "center" }}>Discount code applied. {money(selected.bulkPrice)} each.<button type="button" onClick={clearPromo} style={{ background: "none", border: 0, color: "inherit", textDecoration: "underline", cursor: "pointer", minHeight: 44, font: "inherit" }}>Remove</button></div>
+              ) : (
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input aria-label="Discount code" style={{ ...inputStyle, letterSpacing: 2, fontWeight: 700 }} placeholder="CODE" value={promoCode} onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoMsg(null); }} onKeyDown={(e) => { if (e.key === "Enter") void applyPromoCode(); }} />
+                  <button type="button" className="ed-btn y" style={{ minHeight: 52 }} disabled={promoChecking || !promoCode.trim()} onClick={() => void applyPromoCode()}>{promoChecking ? "…" : "Apply"}</button>
+                </div>
+              )}
+              {promoMsg && !promoApplied && <p className={`ed-chk ${promoMsg.ok ? "ok" : "bad"}`} style={{ margin: "8px 0 0" }}>{promoMsg.text}</p>}
+            </details>
+          </section>
+        )}
+
+        {!isAssisted && (
+          <section aria-labelledby="ph-h" className="ed-stack" style={{ gap: 8 }}>
+            <h2 id="ph-h" className="ed-h2" style={{ fontSize: 20 }}>Where should the codes go?</h2>
+            <label style={label} htmlFor="v_phone">Phone number that receives the voucher codes by SMS</label>
+            <div className={`ed-nin${phoneError ? " bad" : phoneValid ? " ok" : ""}`}>
+              <input id="v_phone" type="tel" inputMode="tel" placeholder="024 123 4567" value={phone}
+                onChange={(e) => {
+                  const raw = e.target.value; setPhone(raw);
+                  if (!raw.replace(/[\s\-()]/g, "")) { setPhoneError(""); return; }
+                  const norm = normalizeGhana(raw);
+                  if (norm.length < 10) { setPhoneError(""); return; }
+                  setPhoneError(/^0[2-5][0-9]{8}$/.test(norm) ? "" : "Enter a valid Ghana number, for example 0241234567.");
+                }} />
+            </div>
+            {phoneError && <p className="ed-chk bad" style={{ margin: 0 }}>{phoneError}</p>}
+          </section>
+        )}
+
+        <section className="ed-paper" style={{ borderRadius: 22, padding: 18, display: "flex", flexDirection: "column", gap: 14 }} aria-labelledby="pay-h">
+          <h2 id="pay-h" className="ed-h2" style={{ fontSize: 22, color: "var(--ed-ink)" }}>Pay with Mobile Money</h2>
+          <div className="ed-sum">
+            <div className="r"><span>Order</span><b>{isAssisted ? `${selected.label} result check` : `${selected.label} x ${quantity}`}</b></div>
+            {hasDiscount && <div className="r"><span>Discount</span><b>-{money((selected.price - effectivePrice) * quantity)}</b></div>}
+            {!isAssisted && <div className="r"><span>Processing fee (2%)</span><b>{money(fee)}</b></div>}
+            <div className="r tot"><span>Total</span><b>{money(total)}</b></div>
+          </div>
+
+          <div role="radiogroup" aria-label="Your Mobile Money network">
+            <span className="lt">Your Mobile Money network</span>
+            <div className="ed-nets3">
+              {MOMO_NETWORKS.map((n) => (
+                <button key={n.id} type="button" role="radio" aria-checked={momoNetwork === n.id} className="ed-net3" onClick={() => { setMomoNetwork(n.id); setConfirmNetwork(false); }}><i style={{ background: n.color }} />{n.label}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label htmlFor="v_momo" className="lt">Your Mobile Money number</label>
+            <input id="v_momo" className={`ed-input${networkLooksWrong ? " warn" : ""}`} type="tel" inputMode="tel" disabled={!momoNetwork} value={momoPhone}
+              onChange={(e) => { setMomoPhone(e.target.value); setConfirmNetwork(false); }} placeholder={momoNetwork ? "024 123 4567" : "Choose your network first"} />
+            <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--ed-g500)" }}>This is the number that pays. It can be different from the number that receives the voucher.</p>
+          </div>
+          {networkLooksWrong && detected && momoNetwork && (
+            <div className="ed-note warn" role="alert">
+              <b>{spaced(momoClean ?? "")} looks like a {labelOf(detected)} number.</b> Choose {labelOf(detected)}, or confirm it is on {labelOf(momoNetwork)}.
+              <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, minHeight: 44, fontWeight: 700 }}>
+                <input type="checkbox" checked={confirmNetwork} onChange={(e) => setConfirmNetwork(e.target.checked)} style={{ width: 22, height: 22 }} />This number is on {labelOf(momoNetwork)}
+              </label>
+            </div>
+          )}
+          {momoNetwork && momoClean && (!networkLooksWrong || confirmNetwork) && phoneValid && (
+            <div className="ed-note">The payment prompt goes to <b>{spaced(momoClean)}</b>. The {isAssisted ? "result goes to WhatsApp on" : "voucher codes go to"} <b>{spaced(normalizedPhone)}</b>.</div>
+          )}
+          {error && <div className="ed-note bad" role="alert">{error}</div>}
+          <button type="button" className={`ed-btn tall block ${canPay ? "b" : "dis paper"}`} disabled={!canPay} onClick={() => void handlePay()}>
+            {loading ? "Waiting for your PIN…" : `Pay ${money(total)}`}
+          </button>
+          <p style={{ margin: 0, textAlign: "center", fontSize: 12, color: "var(--ed-g500)" }}>Secure Mobile Money payment. Your voucher is delivered once the payment is approved.</p>
+        </section>
       </div>
     </div>
   );
 }
+
+export default VouchersPage;

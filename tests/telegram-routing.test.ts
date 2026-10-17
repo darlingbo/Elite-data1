@@ -45,13 +45,12 @@ describe("Telegram event routing", () => {
     expect(String(vi.mocked(fetch).mock.calls[0][0])).toContain("botelite-agent-token/sendMessage");
   });
 
-  it("sends refund and withdrawal requests only to Swift Data GH", async () => {
-    const { sendRefundRequestAlert, sendWithdrawalRequestAlert } = await import("@/lib/telegram");
+  it("sends refund requests only to Swift Data GH", async () => {
+    const { sendRefundRequestAlert } = await import("@/lib/telegram");
     await sendRefundRequestAlert("refund");
-    await sendWithdrawalRequestAlert("withdrawal");
 
     const urls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
-    expect(urls).toHaveLength(2);
+    expect(urls).toHaveLength(1);
     expect(urls.every((url) => url.includes("botswift-data-token/sendMessage"))).toBe(true);
   });
 });

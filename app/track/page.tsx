@@ -1,11 +1,9 @@
 "use client";
 import { useState, useEffect, useCallback, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-
-const D = {
-  bg: "#0d1117", card: "#161b22", border: "#21262d",
-  text: "#e6edf3", muted: "#8b949e", blue: "#3b82f6",
-};
+import Icon from "@/components/ed/Icon";
+import { NETWORK_META, parseNetwork } from "@/lib/ed-networks";
 
 interface OrderResult {
   reference: string;
@@ -16,6 +14,7 @@ interface OrderResult {
   bundle_size?: string;
   amount: number;
   created_at: string;
+  completed_at?: string | null;
   inventor_status?: string | null;
   inventor_message?: string | null;
 }
@@ -29,47 +28,104 @@ interface VerifiedOrder {
   phone: string;
 }
 
-const STATUS: Record<string, { label: string; color: string; bg: string; icon: string; desc: string }> = {
-  pending:          { label: "Pending",    color: "#f59e0b", bg: "rgba(245,158,11,0.12)",  icon: "⏳", desc: "Order received — waiting to be sent to provider." },
-  pending_approval: { label: "Processing", color: "#3b82f6", bg: "rgba(59,130,246,0.12)",  icon: "🔄", desc: "Your order has been received and is being processed. Bundle will be delivered shortly." },
-  processing:       { label: "Processing", color: "#3b82f6", bg: "rgba(59,130,246,0.12)",  icon: "🔄", desc: "Provider is delivering your bundle. Usually 1–5 minutes." },
-  completed:        { label: "Delivered",  color: "#22c55e", bg: "rgba(34,197,94,0.12)",   icon: "✅", desc: "Bundle delivered successfully to your phone!" },
-  failed:           { label: "Failed",     color: "#ef4444", bg: "rgba(239,68,68,0.12)",   icon: "❌", desc: "Delivery failed. Click below to request your refund." },
-  not_on_list:      { label: "Processing", color: "#f97316", bg: "rgba(249,115,22,0.12)",  icon: "🕒", desc: "This number is new to our system, so delivery can take up to 72 hours. No refund is needed — your data is on the way." },
-  refunded:         { label: "Refunded",   color: "#22c55e", bg: "rgba(34,197,94,0.12)",   icon: "💸", desc: "Your refund has been processed. Please allow your payment provider time to complete settlement." },
-};
+type StepState = "done" | "now" | "wait" | "bad";
 
+const WHATSAPP = "https://wa.me/233509794503";
+
+function fmtTime(iso?: string | null) {
+  return iso ? new Date(iso).toLocaleTimeString("en-GH", { hour: "2-digit", minute: "2-digit" }) : "";
+}
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleString("en-GH", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
-
 function isPhone(val: string) {
   return /^0[2-5]\d{8}$/.test(val.replace(/\s/g, ""));
+}
+const spaced = (p: string) => p.replace(/\s/g, "").replace(/^(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3");
+
+/** Plain words for each status, and the four receipt steps that go with it. */
+function describe(order: OrderResult): { pill: string; tone: "" | "good" | "bad"; note: string; steps: Array<{ title: string; sub: string; state: StepState; time?: string }> } {
+  const st = (order.status ?? "").toLowerCase();
+  const paid = { title: "Payment received", sub: `GH₵${Number(order.amount).toFixed(2)} by Mobile Money`, state: "done" as StepState, time: fmtTime(order.created_at) };
+  switch (st) {
+    case "completed":
+      return { pill: "Delivered", tone: "good", note: "Your data has been delivered. Thank you for choosing Elite Data.", steps: [paid, { title: "Order checked", sub: "Approved for delivery", state: "done" }, { title: "Data sent", sub: "Sent to the network", state: "done" }, { title: "Delivered", sub: "It is on your phone", state: "done", time: fmtTime(order.completed_at) }] };
+    case "processing":
+      return { pill: "Sending", tone: "", note: "Most orders arrive in 1 to 3 minutes. You can close this page. We text you when it lands.", steps: [paid, { title: "Order checked", sub: "Approved for delivery", state: "done" }, { title: "Sending your data", sub: "Talking to the network now", state: "now" }, { title: "Delivered", sub: "You get an SMS", state: "wait", time: "soon" }] };
+    case "pending_approval":
+    case "pending":
+      return { pill: "Checking", tone: "", note: "We are checking your order. This usually takes a minute or two.", steps: [paid, { title: "Checking your order", sub: "A quick check before we send", state: "now" }, { title: "Sending your data", sub: "Next", state: "wait" }, { title: "Delivered", sub: "You get an SMS", state: "wait" }] };
+    case "not_on_list":
+      return { pill: "On its way", tone: "", note: "This number is new to our system, so delivery can take up to 72 hours. No refund is needed. Your data is on the way.", steps: [paid, { title: "Order checked", sub: "Approved for delivery", state: "done" }, { title: "Waiting for the network", sub: "New numbers can take up to 72 hours", state: "now" }, { title: "Delivered", sub: "You get an SMS", state: "wait" }] };
+    case "failed":
+      return { pill: "Not delivered", tone: "bad", note: "We could not deliver this order. Request your refund below. It is processed within 12 hours.", steps: [paid, { title: "Order checked", sub: "Approved for delivery", state: "done" }, { title: "Delivery failed", sub: "The network could not take it", state: "bad" }, { title: "Refund", sub: "Request it below", state: "wait" }] };
+    case "rejected":
+      return { pill: "Stopped", tone: "bad", note: "We could not complete this order. Request your refund below. It is processed within 12 hours.", steps: [paid, { title: "Order stopped", sub: "We could not complete it", state: "bad" }, { title: "Refund", sub: "Request it below", state: "wait" }] };
+    case "refunded":
+      return { pill: "Refunded", tone: "good", note: "Your refund has been sent. Please allow your payment provider a little time to settle it.", steps: [paid, { title: "Refund sent", sub: "Back to your Mobile Money", state: "done" }] };
+    default:
+      return { pill: st || "Pending", tone: "", note: "Your order has been received.", steps: [paid, { title: "Order checked", sub: "", state: "wait" }, { title: "Delivered", sub: "", state: "wait" }] };
+  }
+}
+
+function Receipt({ order }: { order: OrderResult }) {
+  const net = NETWORK_META[parseNetwork(order.network)];
+  const d = describe(order);
+  const phone = order.phone ?? "";
+  return (
+    <div>
+      <div className="ed-receipt" aria-live="polite">
+        <div className="rt">
+          <div className="t"><b>{(order.network ?? "").toUpperCase()} {order.bundle_size}</b>{phone ? `To ${spaced(phone)}` : ""}</div>
+          <span className={`ed-pill${d.tone ? ` ${d.tone}` : ""}`}>{d.pill}</span>
+        </div>
+        <hr />
+        <div className="ed-steps">
+          {d.steps.map((s, i) => (
+            <div key={i} className={`ed-step ${s.state}`}>
+              <span className="dot">{s.state === "done" ? <Icon name="check" small /> : s.state === "bad" ? <Icon name="x" small /> : null}</span>
+              <div className="tx"><b>{s.title}</b>{s.sub}</div>
+              <span className="tm">{s.time ?? ""}</span>
+            </div>
+          ))}
+        </div>
+        <hr />
+        <div className="ed-sum" style={{ border: 0, background: "transparent", padding: 0 }}>
+          <div className="r"><span>Reference</span><b style={{ fontFamily: "monospace", wordBreak: "break-all" }}>{order.reference}</b></div>
+          <div className="r"><span>Placed</span><b>{fmtDate(order.created_at)}</b></div>
+          <div className="r tot"><span>Amount</span><b>GH₵{Number(order.amount).toFixed(2)}</b></div>
+        </div>
+      </div>
+      <p className="ed-muted" style={{ margin: "14px 2px 0", fontSize: 13, lineHeight: 1.5 }}>{d.note}</p>
+      <span style={{ display: "none" }}>{net.label}</span>
+    </div>
+  );
 }
 
 function TrackContent() {
   const params = useSearchParams();
   const initialRef = params.get("ref") ?? "";
 
-  const [query, setQuery]       = useState(initialRef);
-  const [loading, setLoading]   = useState(false);
-  const [order, setOrder]       = useState<OrderResult | null>(null);
-  const [orders, setOrders]     = useState<OrderResult[] | null>(null);
+  const [query, setQuery] = useState(initialRef);
+  const [loading, setLoading] = useState(false);
+  const [order, setOrder] = useState<OrderResult | null>(null);
+  const [orders, setOrders] = useState<OrderResult[] | null>(null);
   const [notFound, setNotFound] = useState(false);
 
-  // Refund modal
-  const [refundOpen, setRefundOpen]       = useState(false);
-  const [refundStep, setRefundStep]       = useState<1 | 2 | 3>(1);
-  const [verRef, setVerRef]               = useState("");
-  const [verPhone, setVerPhone]           = useState("");
-  const [verifying, setVerifying]         = useState(false);
-  const [verError, setVerError]           = useState("");
+  // Refund request
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [refundStep, setRefundStep] = useState<1 | 2 | 3>(1);
+  const [verRef, setVerRef] = useState("");
+  const [verPhone, setVerPhone] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [verError, setVerError] = useState("");
   const [verifiedOrder, setVerifiedOrder] = useState<VerifiedOrder | null>(null);
-  const [momoName, setMomoName]           = useState("");
-  const [momoPhone, setMomoPhone]         = useState("");
-  const [submitting, setSubmitting]       = useState(false);
-  const [submitError, setSubmitError]     = useState("");
+  const [momoName, setMomoName] = useState("");
+  const [momoPhone, setMomoPhone] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [multipleOrders, setMultipleOrders] = useState<VerifiedOrder[]>([]);
+  const [copied, setCopied] = useState(false);
 
   function openRefund(prefillRef?: string, prefillPhone?: string) {
     setVerRef(prefillRef ?? "");
@@ -96,14 +152,9 @@ function TrackContent() {
         body: JSON.stringify({ reference: verRef.trim(), phone: verPhone.trim() }),
       });
       const data = await res.json();
-      if (data.success && data.order) {
-        setVerifiedOrder(data.order);
-        setRefundStep(2);
-      } else if (data.success && data.multiple) {
-        setMultipleOrders(data.multiple);
-      } else {
-        setVerError(data.error ?? "Verification failed. Check your phone number and try again.");
-      }
+      if (data.success && data.order) { setVerifiedOrder(data.order); setRefundStep(2); }
+      else if (data.success && data.multiple) setMultipleOrders(data.multiple);
+      else setVerError(data.error ?? "We could not verify that. Check your phone number and try again.");
     } catch {
       setVerError("Network error. Please try again.");
     } finally {
@@ -130,11 +181,8 @@ function TrackContent() {
         }),
       });
       const data = await res.json();
-      if (data.success) {
-        setRefundStep(3);
-      } else {
-        setSubmitError("Failed to submit. Please try again.");
-      }
+      if (data.success) setRefundStep(3);
+      else setSubmitError("We could not send the request. Please try again.");
     } catch {
       setSubmitError("Network error. Please try again.");
     } finally {
@@ -168,12 +216,10 @@ function TrackContent() {
   }, []);
 
   useEffect(() => {
-    if (initialRef) searchByRef(initialRef);
+    if (initialRef) { const t = setTimeout(() => void searchByRef(initialRef), 0); return () => clearTimeout(t); }
   }, [initialRef, searchByRef]);
 
-  // Poll every 15s while single order is still active — and only while the tab is
-  // visible: a forgotten background tab used to hit the server every 5s for hours,
-  // which is a big part of the Vercel free-plan CPU/invocation usage.
+  // Refresh every 15 seconds while the order is still moving, and only while the tab is visible.
   useEffect(() => {
     const status = order?.status?.toLowerCase();
     if (status !== "processing" && status !== "pending" && status !== "pending_approval") return;
@@ -182,7 +228,7 @@ function TrackContent() {
       void searchByRef(order!.reference, true);
     }, 15_000);
     return () => clearInterval(id);
-  }, [order?.status, order?.reference, searchByRef]);
+  }, [order, searchByRef]);
 
   async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -192,408 +238,150 @@ function TrackContent() {
     else await searchByRef(val);
   }
 
-  const st = order ? (STATUS[order.status?.toLowerCase()] ?? STATUS.pending) : null;
-  const isActive = order && ["processing", "pending", "pending_approval"].includes(order.status?.toLowerCase());
   const statusKey = order?.status?.toLowerCase() ?? "";
-  const isFailed = statusKey === "failed";
+  const canRefund = statusKey === "failed" || statusKey === "rejected";
+
+  async function shareLink() {
+    if (!order) return;
+    const url = `${window.location.origin}/track?ref=${encodeURIComponent(order.reference)}`;
+    try {
+      if (navigator.share) { await navigator.share({ title: "Elite Data order", url }); return; }
+      await navigator.clipboard.writeText(url);
+      setCopied(true); setTimeout(() => setCopied(false), 2000);
+    } catch { /* cancelled */ }
+  }
 
   return (
-    <div style={{ background: D.bg, minHeight: "100vh", color: D.text }}>
-      <div style={{ maxWidth: 540, margin: "0 auto", padding: "28px 16px 80px" }}>
+    <div className="ed-page" style={{ paddingBottom: 120 }}>
+      <div className="ed-appbar">
+        <Link href="/" className="ed-ibtn plain" aria-label="Back to home"><Icon name="back" /></Link>
+        <h1 className="ed-appbar-title" style={{ margin: 0 }}>Track order</h1>
+      </div>
 
-        {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: 20 }}>
-          <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(59,130,246,0.15)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
-            <svg width={28} height={28} fill="none" stroke="#3b82f6" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-          </div>
-          <h1 style={{ fontSize: 24, fontWeight: 900, color: D.text, margin: "0 0 4px" }}>Track Your Order</h1>
-          <p style={{ fontSize: 13, color: D.muted, margin: 0 }}>Enter your phone number or payment reference</p>
-        </div>
-
-        {/* Refund banner */}
-        <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 16, padding: "16px 20px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-          <div>
-            <p style={{ fontSize: 14, fontWeight: 800, color: "#f87171", margin: "0 0 2px" }}>💸 Need a Refund?</p>
-            <p style={{ fontSize: 12, color: "#8b949e", margin: 0 }}>Didn’t receive your data? Request a refund — processed within 12 hours.</p>
-          </div>
-          <button
-            onClick={() => openRefund()}
-            style={{ background: "#ef4444", color: "white", border: "none", borderRadius: 12, padding: "10px 18px", fontSize: 13, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
-            Request Refund
-          </button>
-        </div>
-
-        {/* Search form */}
-        <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, padding: 20, marginBottom: 20 }}>
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: D.muted, display: "block", marginBottom: 6 }}>
-                Phone Number or Payment Reference
-              </label>
-              <input
-                type="text"
-                placeholder="0241234567  or  elite-17123456789"
-                value={query}
-                onChange={e => { setQuery(e.target.value); setOrder(null); setOrders(null); setNotFound(false); }}
-                style={{ width: "100%", background: D.bg, border: `1px solid ${D.border}`, borderRadius: 10, padding: "12px 14px", fontSize: 14, color: D.text, outline: "none", boxSizing: "border-box" }}
-              />
-              <p style={{ fontSize: 11, color: D.muted, marginTop: 5 }}>
-                Use your Ghana phone number (0241234567) to see all your orders, or paste the reference from your payment receipt.
-              </p>
+      <div className="ed-wrap ed-stack" style={{ paddingTop: 18, gap: 18 }}>
+        <form onSubmit={handleSubmit} className="ed-stack" style={{ gap: 10 }}>
+          <label htmlFor="track-query" className="ed-muted" style={{ fontSize: 12, fontWeight: 700 }}>Order reference or phone number</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <div className="ed-nin" style={{ flex: 1, minHeight: 56 }}>
+              <input id="track-query" type="text" inputMode="text" autoCapitalize="characters" placeholder="YBK-123456 or 024 123 4567" value={query}
+                onChange={(e) => { setQuery(e.target.value); setOrder(null); setOrders(null); setNotFound(false); }} style={{ fontSize: 17 }} />
             </div>
-            <button type="submit" disabled={loading} style={{
-              width: "100%", background: D.blue, color: "white", border: "none", borderRadius: 12,
-              padding: "13px", fontSize: 14, fontWeight: 800, cursor: "pointer", opacity: loading ? 0.6 : 1,
-            }}>
-              {loading ? "Searching…" : "Track Order"}
-            </button>
-          </form>
-        </div>
+            <button type="submit" className="ed-btn y" style={{ minHeight: 56, minWidth: 84 }} disabled={loading}>{loading ? "…" : "Find"}</button>
+          </div>
+          <p className="ed-muted" style={{ margin: 0, fontSize: 12 }}>Use the reference from your payment receipt, or your phone number to see all your orders.</p>
+        </form>
 
-        {/* Multiple orders (phone lookup) */}
         {orders && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <p style={{ fontSize: 13, color: D.muted, margin: "0 0 4px", fontWeight: 600 }}>
-              {orders.length} order{orders.length !== 1 ? "s" : ""} found for {query}
-            </p>
-            {orders.map(o => {
-              const s = STATUS[o.status?.toLowerCase()] ?? STATUS.pending;
-              const oFailed = o.status?.toLowerCase() === "failed";
+          <div>
+            <p className="ed-muted" style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 700 }}>{orders.length} order{orders.length !== 1 ? "s" : ""} found for {query}</p>
+            {orders.map((o) => {
+              const d = describe(o);
               return (
-                <div key={o.reference} style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 14, overflow: "hidden" }}>
-                  <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${D.border}` }}>
-                    <span style={{ fontSize: 22 }}>{s.icon}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 14, fontWeight: 700, color: D.text, margin: "0 0 2px" }}>
-                        {(o.network ?? "").toUpperCase()} {o.bundle_size}
-                      </p>
-                      <p style={{ fontSize: 11, color: D.muted, margin: 0 }}>{fmtDate(o.created_at)}</p>
-                    </div>
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <p style={{ fontSize: 13, fontWeight: 800, color: "white", margin: "0 0 3px" }}>GH₵{Number(o.amount).toFixed(2)}</p>
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: s.bg, color: s.color }}>
-                        {s.label}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ padding: "8px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <p style={{ fontSize: 10, color: D.muted, fontFamily: "monospace", margin: 0, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.reference}</p>
-                    <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                      {oFailed && (
-                        <button
-                          onClick={() => openRefund(o.reference, query.replace(/\s/g, ""))}
-                          style={{ fontSize: 11, fontWeight: 700, color: "#f87171", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
-                          💸 Refund
-                        </button>
-                      )}
-                      <button onClick={() => { setQuery(o.reference); searchByRef(o.reference); setOrders(null); }}
-                        style={{ fontSize: 11, fontWeight: 700, color: D.blue, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
-                        View Details →
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <button key={o.reference} type="button" className="ed-lrow" style={{ width: "100%", background: "transparent", border: 0, borderBottom: "1px solid var(--ed-line)", color: "inherit", textAlign: "left", cursor: "pointer", font: "inherit" }}
+                  onClick={() => { setQuery(o.reference); void searchByRef(o.reference); setOrders(null); }}>
+                  <span className="z" style={{ fontSize: 22, width: 72 }}>{o.bundle_size}</span>
+                  <span className="t"><b>{(o.network ?? "").toUpperCase()}</b>{fmtDate(o.created_at)}</span>
+                  <span style={{ textAlign: "right" }}>
+                    <span className="p" style={{ display: "block", fontSize: 16 }}>GH₵{Number(o.amount).toFixed(2)}</span>
+                    <span className={`ed-pill${d.tone ? ` ${d.tone}` : ""}`} style={{ fontSize: 10 }}>{d.pill}</span>
+                  </span>
+                </button>
               );
             })}
           </div>
         )}
 
-        {/* Single order detail */}
-        {order && st && (
-          <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 16, overflow: "hidden" }}>
-            {/* Status banner */}
-            <div style={{ padding: "18px 20px", background: st.bg, borderBottom: `1px solid ${D.border}`, display: "flex", alignItems: "center", gap: 14 }}>
-              <span style={{ fontSize: 32 }} className={isActive ? "animate-pulse" : ""}>{st.icon}</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <p style={{ fontSize: 20, fontWeight: 900, color: st.color, margin: 0 }}>{st.label}</p>
-                  {isActive && (
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: "rgba(59,130,246,0.2)", color: "#60a5fa", display: "flex", alignItems: "center", gap: 4 }}>
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block animate-pulse" /> Live
-                    </span>
-                  )}
-                </div>
-                <p style={{ fontSize: 13, color: D.muted, margin: "4px 0 0" }}>{st.desc}</p>
-              </div>
+        {order && (
+          <>
+            <Receipt order={order} />
+            <div className="ed-grid2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <a href={`${WHATSAPP}?text=${encodeURIComponent(`Hi Elite Data support, my order reference is ${order.reference}. Please assist me with delivery status.`)}`} target="_blank" rel="noopener noreferrer" className="ed-btn o"><Icon name="whatsapp" small />WhatsApp</a>
+              <button type="button" className="ed-btn o" onClick={() => void shareLink()}><Icon name="copy" small />{copied ? "Link copied" : "Share link"}</button>
             </div>
-
-            {/* Progress bar */}
-            {isActive && (
-              <div style={{ padding: "14px 20px 0" }}>
-                <div style={{ height: 6, borderRadius: 3, background: D.border, overflow: "hidden" }}>
-                  <div style={{
-                    height: "100%", borderRadius: 3,
-                    background: "linear-gradient(90deg, #3b82f6, #8b5cf6)",
-                    width: statusKey === "processing" ? "65%" : "20%",
-                    transition: "width 0.8s ease",
-                  }} className="animate-pulse" />
-                </div>
+            {order.network && (
+              <Link href={`/buy/number?network=${parseNetwork(order.network)}`} className="ed-btn y tall block">Buy again</Link>
+            )}
+            {canRefund && (
+              <div className="ed-block">
+                <b>Refund available</b>
+                <p>Your payment of GH₵{Number(order.amount).toFixed(2)} was taken but the data did not arrive. Request your refund below. It is processed within 12 hours.</p>
+                <button type="button" className="ed-btn r" onClick={() => openRefund(order.reference, order.phone ?? "")}>Request my refund</button>
               </div>
             )}
-
-            {/* Steps */}
-            {!isFailed && (
-              <div style={{ padding: "16px 20px", borderBottom: `1px solid ${D.border}` }}>
-                {[
-                  { label: "Payment confirmed", done: true },
-                  { label: "Order sent to provider", done: statusKey === "processing" || statusKey === "completed" },
-                  { label: "Bundle delivered to your phone", done: statusKey === "completed" },
-                ].map((step, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 0" }}>
-                    <div style={{
-                      width: 24, height: 24, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 11, fontWeight: 800, border: `2px solid ${step.done ? "#22c55e" : D.border}`,
-                      background: step.done ? "#22c55e" : "transparent", color: step.done ? "white" : D.muted,
-                    }}>
-                      {step.done ? "✓" : i + 1}
-                    </div>
-                    <span style={{ fontSize: 13, color: step.done ? D.text : D.muted, fontWeight: step.done ? 600 : 400 }}>{step.label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Details */}
-            <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
-              {[
-                { label: "Reference", value: <span style={{ fontFamily: "monospace", fontSize: 11, wordBreak: "break-all" }}>{order.reference}</span> },
-                order.network && order.bundle_size ? { label: "Bundle", value: `${order.network.toUpperCase()} ${order.bundle_size}` } : null,
-                order.phone ? { label: "Data Sent To (Recipient)", value: <span style={{ color: "#34d399", fontWeight: 700 }}>{order.phone}</span> } : null,
-                { label: "Amount", value: `GH₵ ${Number(order.amount).toFixed(2)}` },
-                { label: "Date", value: fmtDate(order.created_at) },
-              ].filter(Boolean).map((row, i) => row && (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <span style={{ fontSize: 13, color: D.muted, flexShrink: 0 }}>{row.label}</span>
-                  <span style={{ fontSize: 13, color: D.text, fontWeight: 600, textAlign: "right" }}>{row.value}</span>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ padding: "0 20px 20px", display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {statusKey === "completed" && (
-                <button
-                  onClick={() => window.print()}
-                  style={{ flex: 1, minWidth: 140, background: D.bg, color: D.text, border: `1px solid ${D.border}`, borderRadius: 10, padding: "11px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                  Print Receipt
-                </button>
-              )}
-              {order.phone && order.network && order.bundle_size && (
-                <a
-                  href={`/buy?phone=${encodeURIComponent(order.phone)}&network=${encodeURIComponent(order.network)}&bundle=${encodeURIComponent(order.bundle_size)}`}
-                  style={{ flex: 1, minWidth: 140, background: D.blue, color: "white", borderRadius: 10, padding: "11px 14px", fontSize: 13, fontWeight: 800, textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>
-                  Buy Again
-                </a>
-              )}
-            </div>
-
-            {/* Failed — in-app refund */}
-            {isFailed && (
-              <div style={{ margin: "0 20px 20px", background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 14, padding: "16px 18px" }}>
-                <p style={{ fontSize: 13, fontWeight: 800, color: "#f87171", margin: "0 0 6px" }}>💸 Refund Available</p>
-                <p style={{ fontSize: 13, color: D.muted, margin: "0 0 16px", lineHeight: 1.5 }}>
-                  Your payment of <strong style={{ color: "white" }}>GH₵{Number(order.amount).toFixed(2)}</strong> was charged but the bundle was not delivered.
-                  Request your refund below — it will be processed within 12 hours.
-                </p>
-                <button
-                  onClick={() => openRefund(order.reference, order.phone ?? "")}
-                  style={{ display: "block", width: "100%", textAlign: "center", background: "#ef4444", color: "white", fontWeight: 800, padding: "13px", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 14, boxSizing: "border-box" }}>
-                  💸 Request Refund
-                </button>
-                <p style={{ fontSize: 11, color: D.muted, margin: "10px 0 0", textAlign: "center" }}>
-                  Refunds are processed within 12 hours. If not received, contact our help line.
-                </p>
-              </div>
-            )}
-          </div>
+          </>
         )}
 
-        {/* Not found */}
         {notFound && (
-          <div style={{ background: D.card, border: `1px solid rgba(245,158,11,0.3)`, borderRadius: 14, padding: 20 }}>
-            <p style={{ fontWeight: 700, color: "#fbbf24", margin: "0 0 6px" }}>Not found</p>
-            <p style={{ fontSize: 13, color: D.muted, margin: "0 0 12px" }}>
-              No order found for <strong style={{ color: D.text }}>{query}</strong>. Check the number or reference and try again.
-            </p>
-            <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer"
-              style={{ fontSize: 13, fontWeight: 700, color: "#22c55e", textDecoration: "none" }}>
-              Contact us on WhatsApp →
-            </a>
+          <div className="ed-block">
+            <b>Not found</b>
+            <p>We found no order for <strong>{query}</strong>. Check the reference or number and try again.</p>
+            <a href={WHATSAPP} target="_blank" rel="noopener noreferrer" className="ed-btn o"><Icon name="whatsapp" small />Ask us on WhatsApp</a>
           </div>
         )}
 
-        <div style={{ marginTop: 24, textAlign: "center" }}>
-          <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer"
-            style={{ fontSize: 13, color: D.blue, textDecoration: "none", fontWeight: 600 }}>
-            Need help? Chat with us on WhatsApp
-          </a>
-        </div>
+        {!order && !orders && !notFound && (
+          <div className="ed-chk warn" style={{ alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <span>Did not get your data? You can ask for a refund.</span>
+            <button type="button" className="ed-btn r" style={{ minHeight: 44, whiteSpace: "nowrap" }} onClick={() => openRefund()}>Request refund</button>
+          </div>
+        )}
+
+        <a href={WHATSAPP} target="_blank" rel="noopener noreferrer" className="ed-link" style={{ minHeight: 44, display: "inline-flex", alignItems: "center", gap: 8, alignSelf: "center" }}>
+          <Icon name="whatsapp" small />Need help? Chat with us on WhatsApp
+        </a>
       </div>
 
-      {/* ── Refund Modal ──────────────────────────────────────────────────────── */}
       {refundOpen && (
-        <div
-          onClick={e => { if (e.target === e.currentTarget) setRefundOpen(false); }}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-          <div style={{ background: "#161b22", border: "1px solid #21262d", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: "28px 24px 48px", width: "100%", maxWidth: 480 }}>
-
-            {/* Step 1: Verify identity */}
+        <div className="ed-overlay" onClick={(e) => { if (e.target === e.currentTarget) setRefundOpen(false); }}>
+          <div className="ed-sheet" role="dialog" aria-modal="true" aria-label="Request a refund">
+            <div className="ed-grab" />
             {refundStep === 1 && (
               <>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
-                  <div>
-                    <p style={{ fontSize: 18, fontWeight: 900, color: D.text, margin: "0 0 4px" }}>💸 Request a Refund</p>
-                    <p style={{ fontSize: 12, color: D.muted, margin: 0 }}>Step 1 of 2 · Verify your identity</p>
-                  </div>
-                  <button onClick={() => setRefundOpen(false)} style={{ background: "transparent", border: "none", color: D.muted, fontSize: 24, cursor: "pointer", lineHeight: 1, paddingTop: 2 }}>×</button>
-                </div>
-                <p style={{ fontSize: 13, color: D.muted, marginBottom: 20, lineHeight: 1.6 }}>
-                  Enter the <strong style={{ color: D.text }}>phone number</strong> you used to buy. If you have your reference, add it too — otherwise leave it blank.
-                </p>
-                <form onSubmit={handleVerify} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                  <div>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: D.muted, display: "block", marginBottom: 6 }}>Phone Number Used to Buy <span style={{ color: "#ef4444" }}>*</span></label>
-                    <input
-                      type="tel"
-                      placeholder="0241234567"
-                      value={verPhone}
-                      onChange={e => setVerPhone(e.target.value)}
-                      required
-                      style={{ width: "100%", background: D.bg, border: `1px solid ${D.border}`, borderRadius: 10, padding: "12px 14px", fontSize: 14, color: D.text, outline: "none", boxSizing: "border-box" }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: D.muted, display: "block", marginBottom: 6 }}>
-                      Order Reference <span style={{ fontWeight: 400, color: D.muted }}>(optional)</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="elite-17123456789 — leave blank if you don't have it"
-                      value={verRef}
-                      onChange={e => setVerRef(e.target.value)}
-                      autoCapitalize="none"
-                      style={{ width: "100%", background: D.bg, border: `1px solid ${D.border}`, borderRadius: 10, padding: "12px 14px", fontSize: 13, color: D.text, outline: "none", boxSizing: "border-box" }}
-                    />
-                    <p style={{ fontSize: 11, color: D.muted, margin: "4px 0 0" }}>Find it in your SMS or order confirmation email</p>
-                  </div>
-                  {verError && (
-                    <div style={{ fontSize: 13, color: "#f87171", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "10px 14px" }}>
-                      ⚠️ {verError}
+                <div className="ad-sheet-title"><b>Request a refund</b><button type="button" className="ad-x" style={{ color: "var(--ed-g500)" }} onClick={() => setRefundOpen(false)} aria-label="Close"><Icon name="x" /></button></div>
+                <p style={{ margin: 0, fontSize: 13, color: "var(--ed-g500)" }}>Step 1 of 2. Enter the phone number the data was sent to. Add the reference too if you have it.</p>
+                <form onSubmit={handleVerify} className="ed-stack" style={{ gap: 12 }}>
+                  <div><label htmlFor="ver_phone" className="lt">Phone number the data went to</label><input id="ver_phone" className="ed-input" type="tel" inputMode="tel" placeholder="024 123 4567" value={verPhone} onChange={(e) => setVerPhone(e.target.value)} required /></div>
+                  <div><label htmlFor="ver_ref" className="lt">Order reference (optional)</label><input id="ver_ref" className="ed-input" style={{ fontSize: 15 }} type="text" placeholder="YBK-123456" value={verRef} onChange={(e) => setVerRef(e.target.value)} autoCapitalize="characters" /></div>
+                  {verError && <div className="ed-note bad" role="alert">{verError}</div>}
+                  {multipleOrders.length > 0 ? (
+                    <div className="ed-stack" style={{ gap: 8 }}>
+                      <div className="ed-note warn">We found {multipleOrders.length} failed orders for this number. Pick the one you want refunded.</div>
+                      {multipleOrders.map((o) => (
+                        <button key={o.reference} type="button" className="ed-btn o" style={{ color: "var(--ed-ink)", borderColor: "var(--ed-g200)", flexDirection: "column", alignItems: "flex-start", padding: "10px 14px", textAlign: "left" }} onClick={() => { setVerifiedOrder(o); setRefundStep(2); }}>
+                          <span>{(o.network ?? "").toUpperCase()} {o.bundle_size}, GH₵{Number(o.amount).toFixed(2)}</span>
+                          <span style={{ fontSize: 11, fontWeight: 400, color: "var(--ed-g500)" }}>Ref {o.reference}</span>
+                        </button>
+                      ))}
                     </div>
-                  )}
-                  {/* Multiple failed orders picker */}
-                  {multipleOrders.length > 0 && (
-                    <div>
-                      <p style={{ fontSize: 13, color: "#fbbf24", margin: "0 0 10px", fontWeight: 700 }}>
-                        ⚠️ We found {multipleOrders.length} failed orders for this number. Pick the one you want refunded:
-                      </p>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        {multipleOrders.map(o => (
-                          <button
-                            key={o.reference}
-                            type="button"
-                            onClick={() => { setVerifiedOrder(o); setRefundStep(2); }}
-                            style={{ background: D.bg, border: `1px solid ${D.border}`, borderRadius: 10, padding: "12px 14px", textAlign: "left", cursor: "pointer", color: D.text }}>
-                            <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14 }}>
-                              {(o.network ?? "").toUpperCase()} {o.bundle_size} · GH₵{Number(o.amount).toFixed(2)}
-                            </p>
-                            <p style={{ margin: 0, fontSize: 11, color: D.muted }}>Ref: {o.reference}</p>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {multipleOrders.length === 0 && (
-                    <button type="submit" disabled={verifying} style={{ background: D.blue, color: "white", border: "none", borderRadius: 12, padding: "14px", fontSize: 14, fontWeight: 800, cursor: "pointer", opacity: verifying ? 0.6 : 1, marginTop: 4 }}>
-                      {verifying ? "Verifying…" : "Find My Order →"}
-                    </button>
+                  ) : (
+                    <button type="submit" className="ed-btn b tall block" disabled={verifying}>{verifying ? "Checking…" : "Find my order"}</button>
                   )}
                 </form>
               </>
             )}
 
-            {/* Step 2: MoMo details */}
             {refundStep === 2 && verifiedOrder && (
               <>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-                  <div>
-                    <p style={{ fontSize: 18, fontWeight: 900, color: D.text, margin: "0 0 4px" }}>💸 Refund Details</p>
-                    <p style={{ fontSize: 12, color: D.muted, margin: 0 }}>Step 2 of 2 · Where to send your money</p>
-                  </div>
-                  <button onClick={() => setRefundOpen(false)} style={{ background: "transparent", border: "none", color: D.muted, fontSize: 24, cursor: "pointer", lineHeight: 1, paddingTop: 2 }}>×</button>
-                </div>
-
-                <div style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 12, padding: "12px 14px", marginBottom: 20 }}>
-                  <p style={{ fontSize: 11, fontWeight: 700, color: "#4ade80", margin: "0 0 6px" }}>✅ Identity verified</p>
-                  <p style={{ fontSize: 13, color: D.text, margin: "0 0 2px", fontWeight: 600 }}>
-                    {(verifiedOrder.network ?? "").toUpperCase()} {verifiedOrder.bundle_size}
-                  </p>
-                  <p style={{ fontSize: 12, color: D.muted, margin: 0 }}>
-                    Refund: <strong style={{ color: "white" }}>GH₵{Number(verifiedOrder.amount).toFixed(2)}</strong>
-                  </p>
-                </div>
-
-                <form onSubmit={handleRefundSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                  <div>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: D.muted, display: "block", marginBottom: 6 }}>MoMo Account Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Kwame Mensah"
-                      value={momoName}
-                      onChange={e => setMomoName(e.target.value)}
-                      required
-                      style={{ width: "100%", background: D.bg, border: `1px solid ${D.border}`, borderRadius: 10, padding: "12px 14px", fontSize: 14, color: D.text, outline: "none", boxSizing: "border-box" }}
-                    />
-                    <p style={{ fontSize: 11, color: D.muted, margin: "4px 0 0" }}>The name on your Mobile Money account</p>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: D.muted, display: "block", marginBottom: 6 }}>MoMo Number</label>
-                    <input
-                      type="tel"
-                      placeholder="0241234567"
-                      value={momoPhone}
-                      onChange={e => setMomoPhone(e.target.value)}
-                      required
-                      style={{ width: "100%", background: D.bg, border: `1px solid ${D.border}`, borderRadius: 10, padding: "12px 14px", fontSize: 14, color: D.text, outline: "none", boxSizing: "border-box" }}
-                    />
-                    <p style={{ fontSize: 11, color: D.muted, margin: "4px 0 0" }}>The number to receive your refund</p>
-                  </div>
-                  {submitError && (
-                    <div style={{ fontSize: 13, color: "#f87171", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "10px 14px" }}>
-                      ⚠️ {submitError}
-                    </div>
-                  )}
-                  <button type="submit" disabled={submitting} style={{ background: "#ef4444", color: "white", border: "none", borderRadius: 12, padding: "14px", fontSize: 14, fontWeight: 800, cursor: "pointer", opacity: submitting ? 0.6 : 1, marginTop: 4 }}>
-                    {submitting ? "Submitting…" : "Submit Refund Request"}
-                  </button>
+                <div className="ad-sheet-title"><b>Where to send the money</b><button type="button" className="ad-x" style={{ color: "var(--ed-g500)" }} onClick={() => setRefundOpen(false)} aria-label="Close"><Icon name="x" /></button></div>
+                <div className="ed-note ok"><b>Order found.</b> {(verifiedOrder.network ?? "").toUpperCase()} {verifiedOrder.bundle_size}. Refund of <b>GH₵{Number(verifiedOrder.amount).toFixed(2)}</b>.</div>
+                <form onSubmit={handleRefundSubmit} className="ed-stack" style={{ gap: 12 }}>
+                  <div><label htmlFor="momo_name" className="lt">Name on your Mobile Money account</label><input id="momo_name" className="ed-input" style={{ fontSize: 16 }} type="text" placeholder="Kwame Mensah" value={momoName} onChange={(e) => setMomoName(e.target.value)} required /></div>
+                  <div><label htmlFor="momo_num" className="lt">Mobile Money number for the refund</label><input id="momo_num" className="ed-input" type="tel" inputMode="tel" placeholder="024 123 4567" value={momoPhone} onChange={(e) => setMomoPhone(e.target.value)} required /></div>
+                  {submitError && <div className="ed-note bad" role="alert">{submitError}</div>}
+                  <button type="submit" className="ed-btn b tall block" disabled={submitting}>{submitting ? "Sending…" : "Send refund request"}</button>
                 </form>
               </>
             )}
 
-            {/* Step 3: Success */}
             {refundStep === 3 && (
-              <div style={{ textAlign: "center", padding: "12px 0" }}>
-                <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
-                <p style={{ fontSize: 20, fontWeight: 900, color: D.text, margin: "0 0 12px" }}>Refund Request Sent!</p>
-                <p style={{ fontSize: 14, color: D.muted, margin: "0 0 8px", lineHeight: 1.7 }}>
-                  Your refund request has been received. The admin will process your refund within <strong style={{ color: "white" }}>12 hours</strong>.
-                </p>
-                <p style={{ fontSize: 13, color: D.muted, margin: "0 0 28px" }}>
-                  If you do not receive your money after 12 hours, please contact our help line.
-                </p>
-                <a href="https://wa.me/233509794503" target="_blank" rel="noreferrer"
-                  style={{ display: "inline-block", fontSize: 13, color: "#22c55e", textDecoration: "none", fontWeight: 700, marginBottom: 20 }}>
-                  Contact Help Line →
-                </a>
-                <br />
-                <button onClick={() => setRefundOpen(false)}
-                  style={{ background: D.blue, color: "white", border: "none", borderRadius: 12, padding: "13px 36px", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
-                  Close
-                </button>
+              <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 10, padding: "8px 0" }}>
+                <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#dcfce7", color: "#166534", display: "grid", placeItems: "center", margin: "0 auto" }}><Icon name="check" /></div>
+                <h2 className="ed-h2" style={{ fontSize: 24 }}>Refund request sent</h2>
+                <p style={{ margin: 0, fontSize: 14, color: "var(--ed-g500)" }}>We will send your refund within 12 hours. If it has not arrived by then, please contact our help line.</p>
+                <a href={WHATSAPP} target="_blank" rel="noopener noreferrer" className="ed-btn o" style={{ color: "var(--ed-ink)", borderColor: "var(--ed-g200)" }}>Contact the help line</a>
+                <button type="button" className="ed-btn b block" onClick={() => setRefundOpen(false)}>Close</button>
               </div>
             )}
-
           </div>
         </div>
       )}
@@ -603,11 +391,7 @@ function TrackContent() {
 
 export default function TrackPage() {
   return (
-    <Suspense fallback={
-      <div style={{ background: "#0d1117", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    }>
+    <Suspense fallback={<div className="ed-page" style={{ display: "grid", placeItems: "center" }}><span className="ed-spin" style={{ width: 32, height: 32, color: "var(--ed-yellow)" }} /></div>}>
       <TrackContent />
     </Suspense>
   );

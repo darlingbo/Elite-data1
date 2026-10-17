@@ -1,3 +1,4 @@
+import { cronAuthorized } from "@/lib/cron-auth";
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { sendAdminAlert } from "@/lib/telegram";
@@ -7,10 +8,7 @@ const INVENTOR_BASE = process.env.INVENTOR_API_BASE_URL;
 const INVENTOR_KEY = process.env.INVENTOR_API_KEY;
 
 function isAuthorized(req: NextRequest): boolean {
-  const isVercelCron = req.headers.get("x-vercel-cron") === "1";
-  const secret = process.env.CRON_SECRET;
-  const auth = req.headers.get("authorization");
-  return isVercelCron || !secret || auth === `Bearer ${secret}`;
+  return cronAuthorized(req);
 }
 
 // ── Collect live system state — READ ONLY, never modifies anything ────────────
@@ -18,10 +16,9 @@ async function collectState() {
   const cutoff15 = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const todayStart = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
 
-  const [failedRes, stuckRes, pendingAgentsRes, todayRes, inventorCheck] = await Promise.all([
+  const [failedRes, stuckRes, todayRes, inventorCheck] = await Promise.all([
     supabase.from("orders").select("reference, phone, network, bundle_size").eq("status", "failed"),
     supabase.from("orders").select("id").in("status", ["pending", "processing"]).lt("created_at", cutoff15),
-    supabase.from("agents").select("id, name, phone").eq("status", "pending"),
     supabase.from("orders").select("status, amount, admin_commission").gte("created_at", todayStart),
     fetch(`${INVENTOR_BASE}/api/developer/orders?limit=1`, {
       headers: { Authorization: `Bearer ${INVENTOR_KEY}` },
@@ -35,7 +32,6 @@ async function collectState() {
   return {
     failedOrders: failedRes.data ?? [],
     stuckOrderCount: (stuckRes.data ?? []).length,
-    pendingAgents: pendingAgentsRes.data ?? [],
     inventorHealthy: inventorCheck.healthy,
     today: {
       total: today.length,
@@ -48,7 +44,7 @@ async function collectState() {
 
 type State = Awaited<ReturnType<typeof collectState>>;
 // AI Brain only sends alerts — it NEVER touches orders directly
-type AIAction = "alert_failed" | "alert_stuck" | "alert_agents" | "alert_inventor_down" | "daily_report";
+type AIAction = "alert_failed" | "alert_stuck" | "alert_inventor_down" | "daily_report";
 
 // ── Decide what to alert about ────────────────────────────────────────────────
 async function decideActions(state: State): Promise<AIAction[]> {
@@ -65,7 +61,6 @@ async function decideActions(state: State): Promise<AIAction[]> {
     const actions: AIAction[] = [];
     if (state.failedOrders.length > 0) actions.push("alert_failed");
     if (state.stuckOrderCount > 0) actions.push("alert_stuck");
-    if (state.pendingAgents.length > 0) actions.push("alert_agents");
     if (!state.inventorHealthy) actions.push("alert_inventor_down");
     if (isDailyReportTime) actions.push("daily_report");
     return actions;
@@ -77,18 +72,16 @@ Current time (Ghana): ${ghTime}
 System state:
 - Failed orders: ${state.failedOrders.length}
 - Stuck orders (>15 min, still processing): ${state.stuckOrderCount}
-- New agent applications: ${state.pendingAgents.length}
 - Inventor API healthy: ${state.inventorHealthy}
 - Today: ${state.today.total} orders | Revenue: GH₵${state.today.revenue.toFixed(2)} | Profit: GH₵${state.today.profit.toFixed(2)} | Failed: ${state.today.failed}
 
 Choose which alerts to send. Return ONLY a JSON array:
 - "alert_failed" — tell admin about failed orders
 - "alert_stuck" — tell admin about stuck orders
-- "alert_agents" — tell admin about new agent applications
 - "alert_inventor_down" — tell admin Inventor API is down
 - "daily_report" — morning summary (only 07:00–07:15 Ghana time)
 
-Return ONLY the JSON array. Example: ["alert_failed","alert_agents"]
+Return ONLY the JSON array. Example: ["alert_failed","alert_stuck"]
 If nothing to report: []`;
 
   try {
@@ -151,10 +144,6 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (actions.includes("alert_agents") && state.pendingAgents.length > 0) {
-    const names = state.pendingAgents.map((a) => `• ${a.name} (${a.phone})`).join("\n");
-    alertParts.push(`👤 <b>${state.pendingAgents.length} agent application(s) waiting:</b>\n${names}\nSend /agents to approve or reject.`);
-  }
 
   if (actions.includes("alert_inventor_down")) {
     alertParts.push(

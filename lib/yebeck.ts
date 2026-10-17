@@ -1,6 +1,7 @@
 import { toMinorUnits } from "@/lib/finance";
 
-const YEBECK_BASE = "https://api.yebeck.com/api/v1";
+// YEBECK_API_BASE_URL exists so tests can point at a fake server. Production leaves it unset.
+const YEBECK_BASE = (process.env.YEBECK_API_BASE_URL ?? "").trim().replace(/\/+$/, "") || "https://api.yebeck.com/api/v1";
 
 function apiKey(): string {
   const key = process.env.YEBECK_API_KEY;

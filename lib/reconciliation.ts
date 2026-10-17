@@ -59,8 +59,8 @@ export interface ReconciliationIssue {
 export interface ReconciliationMetrics {
   orderCount: number;
   grossOrderValue: number;
-  paystackConfirmedCount: number;
-  paystackConfirmedValue: number;
+  providerConfirmedCount: number;
+  providerConfirmedValue: number;
   internalPaymentCount: number;
   internalPaymentValue: number;
   unverifiedPaymentCount: number;
@@ -104,9 +104,9 @@ function round(value: number): number {
   return roundCurrency(value);
 }
 
-export function paymentEvidence(order: ReconciliationOrder): "paystack" | "internal" | "missing" {
-  if (order.paystack_reference) return "paystack";
-  if (LEGACY_BULK_REFERENCE.test(order.reference ?? "")) return "paystack";
+export function paymentEvidence(order: ReconciliationOrder): "provider" | "internal" | "missing" {
+  if (order.paystack_reference) return "provider"; // column keeps its old name; it holds any payment reference
+  if (LEGACY_BULK_REFERENCE.test(order.reference ?? "")) return "provider";
   if (
     INTERNAL_REFERENCE.test(order.reference ?? "") ||
     INTERNAL_METHODS.has((order.payment_method ?? "").toLowerCase())
@@ -145,8 +145,8 @@ export function reconcileOrders(
   const metrics: ReconciliationMetrics = {
     orderCount: orders.length,
     grossOrderValue: 0,
-    paystackConfirmedCount: 0,
-    paystackConfirmedValue: 0,
+    providerConfirmedCount: 0,
+    providerConfirmedValue: 0,
     internalPaymentCount: 0,
     internalPaymentValue: 0,
     unverifiedPaymentCount: 0,
@@ -208,9 +208,9 @@ export function reconcileOrders(
     const evidence = paymentEvidence(order);
     metrics.grossOrderValue += amount;
 
-    if (evidence === "paystack") {
-      metrics.paystackConfirmedCount += 1;
-      metrics.paystackConfirmedValue += amount;
+    if (evidence === "provider") {
+      metrics.providerConfirmedCount += 1;
+      metrics.providerConfirmedValue += amount;
       const list = paymentReferences.get(order.paystack_reference!) ?? [];
       list.push(order);
       paymentReferences.set(order.paystack_reference!, list);
@@ -225,7 +225,7 @@ export function reconcileOrders(
         "missing_payment_evidence",
         "critical",
         "Payment evidence missing",
-        "No Paystack reference or recognised wallet/manual/API source is attached.",
+        "No payment reference or recognised wallet/manual/API source is attached.",
         amount,
       );
     }
@@ -248,14 +248,14 @@ export function reconcileOrders(
       if (
         order.admin_commission !== null &&
         Math.abs(adminCommission - (amount - cost - agentCommission)) >
-          (evidence === "paystack" ? Math.max(0.05, amount * 0.03) : 0.05)
+          (evidence === "provider" ? Math.max(0.05, amount * 0.03) : 0.05)
       ) {
         addIssue(
           order,
           "profit_mismatch",
           "review",
           "Recorded profit needs review",
-          "Recorded admin profit materially differs from gross margin after allowing for normal Paystack fees.",
+          "Recorded admin profit materially differs from gross margin after allowing for normal payment provider fees.",
         );
       }
       if (
@@ -310,7 +310,7 @@ export function reconcileOrders(
   for (const [reference, matchingOrders] of paymentReferences) {
     if (matchingOrders.length < 2) continue;
     const validBulkGroup = matchingOrders.every((order) =>
-      (order.payment_method ?? "").toLowerCase() === "paystack_bulk" &&
+      ["yebeck_bulk", "paystack_bulk"].includes((order.payment_method ?? "").toLowerCase()) &&
       order.reference.startsWith(`${reference}-`)
     );
     if (validBulkGroup) continue;
@@ -319,7 +319,7 @@ export function reconcileOrders(
         duplicate,
         "duplicate_payment_reference",
         "critical",
-        "Duplicate Paystack reference",
+        "Duplicate payment reference",
         `Payment reference ${reference} appears on ${matchingOrders.length} orders.`,
         money(duplicate.amount),
       );

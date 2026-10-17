@@ -40,7 +40,7 @@ export function middleware(request: NextRequest) { ... }
 | Framework | Next.js 16.x App Router (TypeScript) |
 | Database | Supabase (PostgreSQL) |
 | Auth | Cookie-based admin session (`admin_session` cookie vs `ADMIN_SESSION_TOKEN` env var) |
-| Payments | Paystack (inline + webhooks) |
+| Payments | Mobile Money only, through Yebeck (`lib/yebeck.ts`, `lib/payment-attempt.ts`). Paystack and card payments were removed. |
 | Styling | Tailwind CSS + inline styles (dark theme, custom design system) |
 | Notifications | Telegram Bot API, SMS via MessagePilot, WhatsApp API |
 | Data delivery | Inventor API (`INVENTOR_API_BASE_URL` + `INVENTOR_API_KEY`) |
@@ -52,10 +52,10 @@ export function middleware(request: NextRequest) { ... }
 ## Project: Elite Data — Ghana Data Bundle Platform
 
 A B2C and B2B platform for selling MTN, Telecel, and AirtelTigo data bundles and
-BECE/WASSCE exam vouchers in Ghana. Customers pay via Paystack (card or Mobile Money).
+BECE/WASSCE exam vouchers in Ghana. Customers pay by Mobile Money only (Yebeck). There is no card payment.
 
 ### Core Order Flow (CRITICAL — do not break this)
-1. Customer pays via Paystack
+1. Customer pays by Mobile Money (Yebeck)
 2. Order is saved as `pending_approval`
 3. If `auto_approve_orders` is enabled, the system approves it automatically
 4. Otherwise, it waits for Telegram/dashboard approval
@@ -66,7 +66,7 @@ Notes:
 - `auto_approve_orders` is an administrator-controlled setting in `system_settings`. When disabled, every order waits for a human (Telegram ✅/❌ buttons or the dashboard Approval Queue tab).
 - On approval → Inventor API called → data delivered → customer gets SMS.
 - On rejection → order marked `rejected` → customer gets SMS.
-- Agent commission is credited **only at approval time**, not at order creation.
+- There is no agent programme any more (removed 2026-10-17). New orders carry no agent. Orders placed before that may still hold an `agent_id`; approval still runs the old accounting for them.
 
 ### Order statuses
 `pending_approval` → `processing` (approved, Inventor called) → `completed`
@@ -95,20 +95,18 @@ Approval can be initiated by an administrator (Telegram / dashboard) or automati
 - **`lib/whatsapp.ts`** — WhatsApp notifications.
 
 ### Payments
-- **`app/api/orders/create/route.ts`** — Main order creation. Validates payment with Paystack, saves order as `pending_approval`, sends Telegram approval notification.
-- **`app/api/webhooks/paystack/route.ts`** — Paystack webhook handler. Also saves orders as `pending_approval`.
+- **`app/api/orders/create/route.ts`** — Main order creation. Verifies the Yebeck payment, saves order as `pending_approval`, sends Telegram approval notification.
+- **`app/api/yebeck/charge/route.ts`** — Starts a Mobile Money payment (store-closed gate, rate limits, MTN number check). **`app/api/yebeck/status`** and **`app/api/yebeck/webhook`** report the result.
 - **`app/api/vouchers/create/route.ts`** — Voucher order creation. Same `pending_approval` flow.
 
 ### Admin
 - **`app/api/telegram/webhook/route.ts`** — Handles Telegram bot commands and inline button callbacks (approve_order, reject_order). Verifies `WEBHOOK_SECRET` header AND `from.id === ADMIN_CHAT_ID`.
 - **`app/api/admin/orders/approve/route.ts`** — REST endpoint for admin dashboard to approve/reject orders. Checks `admin_session` cookie. Takes `{ references: string[], action: "approve" | "reject" }`.
 - **`app/api/admin/stats/route.ts`** — Returns all dashboard stats. Requires admin cookie.
-- **`app/admin/page.tsx`** — Admin dashboard (client component, ~2500 lines). Has Sidebar, OrdersView, AgentsView, etc. Contains an "Approval Queue" tab for approving/rejecting pending_approval orders.
+- **`app/admin/page.tsx`** — Admin dashboard (client component, ~2500 lines). Has Sidebar, OrdersView, OrderSheet, the Today dashboard, etc. Contains an "Approval Queue" tab for approving/rejecting pending_approval orders.
 
-### Agent System
-- Agents have types: `"standard"` (commission on sales) or `"custom_price"` (set their own prices)
-- Custom price agents with `plan: "free"` use wallet balance deducted at approval time
-- Agent commissions are stored in `commission_balance` and withdrawn on request
+### Agent System — REMOVED
+The agent area (signup, dashboards, wallets, storefronts, leaderboard, sub-admins, agent admin screens and agent routes) was deleted on 2026-10-17. The Supabase tables (`agents`, `agent_bundle_prices`, `custom_tier_prices`, `agent_wallet_transactions`, `manual_orders` …) were left untouched so existing balances and history are not lost. Do not rebuild agent features unless the owner asks.
 
 ---
 
@@ -119,9 +117,6 @@ Approval can be initiated by an administrator (Telegram / dashboard) or automati
 | `orders` | All orders | Enabled — service role for server, restricted for anon |
 | `bundle_prices` | MTN/Telecel/AT bundle prices | Enabled — public SELECT only |
 | `mashup_bundles` | Mashup bundle prices | Enabled — public SELECT only |
-| `agents` | Agent accounts | Enabled |
-| `custom_tier_prices` | Per-agent custom prices | Enabled |
-| `agent_bundle_prices` | Agent-specific bundle prices | Enabled |
 | `system_settings` | Key-value settings (helpline_enabled, etc.) | Enabled |
 
 ---
@@ -136,8 +131,7 @@ ADMIN_SESSION_TOKEN               — Admin login password / session cookie valu
 TELEGRAM_ADMIN_BOT_TOKEN          — Bot token for admin notifications
 TELEGRAM_ADMIN_CHAT_ID            — Admin's Telegram user ID (used to verify button clicks)
 TELEGRAM_WEBHOOK_SECRET           — Secret token Telegram includes in webhook POST headers
-PAYSTACK_SECRET_KEY               — Paystack secret (server-only)
-NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY   — Paystack public key (browser-safe)
+YEBECK_API_KEY                    — Yebeck Mobile Money key (server-only, never log)
 INVENTOR_API_KEY                  — Inventor data API key (server-only, NEVER log or echo)
 INVENTOR_API_BASE_URL             — Inventor API base URL
 SITE_URL                          — https://elitedata1.com

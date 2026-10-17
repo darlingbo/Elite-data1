@@ -1,7 +1,11 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { tooMany } from "@/lib/public-limit";
 
 export async function POST(req: NextRequest) {
+  const limitHit = await tooMany(req, "check-phone", 60, 60000);
+  if (limitHit) return limitHit;
+
   const { phone } = await req.json().catch(() => ({}));
   if (!phone) return Response.json({ blocked: false });
 

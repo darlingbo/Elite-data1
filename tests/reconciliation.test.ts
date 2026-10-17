@@ -15,7 +15,7 @@ function order(
     cost_price: 70,
     agent_commission: 10,
     admin_commission: 20,
-    payment_method: "paystack",
+    payment_method: "yebeck",
     paystack_reference: "PS-001",
     refunded: false,
     refund_amount: 0,
@@ -34,7 +34,7 @@ function order(
 
 describe("payment evidence", () => {
   it("recognises Paystack and internal wallet/manual/API orders", () => {
-    expect(paymentEvidence(order())).toBe("paystack");
+    expect(paymentEvidence(order())).toBe("provider");
     expect(paymentEvidence(order({
       reference: "AGTWALLET-001",
       payment_method: "wallet",
@@ -49,7 +49,7 @@ describe("payment evidence", () => {
       reference: "elite-bulk-1784810000000-01",
       payment_method: null,
       paystack_reference: null,
-    }))).toBe("paystack");
+    }))).toBe("provider");
   });
 
   it("flags a positive-value order with no recognised payment evidence", () => {

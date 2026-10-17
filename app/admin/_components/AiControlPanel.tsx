@@ -17,7 +17,6 @@ export default function AiControlPanel() {
   useEffect(() => { void load(); }, []);
   async function patch(body: Record<string, unknown>) { setSaving(true); await fetch("/api/admin/ai-control", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); await load(); setSaving(false); }
   if (!data) return <div className="rounded-2xl border border-white/10 p-5 text-sm text-slate-500">Loading AI controls…</div>;
-  const agentOn = data.settings.agent_ai_auto_approve_enabled !== "0";
   const customerOn = data.settings.customer_ai_enabled !== "0";
   return (
     <div className="space-y-4">
@@ -28,9 +27,7 @@ export default function AiControlPanel() {
         <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-4">
           <h3 className="font-black text-white">Safety & Cost Controls</h3>
           <div className="mt-4 space-y-3 text-sm">
-            <label className="flex items-center justify-between text-slate-300"><span>Free-agent AI auto approval</span><input type="checkbox" checked={agentOn} disabled={saving} onChange={event => void patch({ agentAutoApprove: event.target.checked })} /></label>
             <label className="flex items-center justify-between text-slate-300"><span>Customer AI chat</span><input type="checkbox" checked={customerOn} disabled={saving} onChange={event => void patch({ customerAi: event.target.checked })} /></label>
-            <label className="block text-slate-300">Minimum screening score<input type="number" min="0" max="100" defaultValue={data.settings.agent_ai_min_score ?? "70"} onBlur={event => void patch({ minScore: event.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-white" /></label>
             <label className="block text-slate-300">Daily AI request limit<input type="number" min="10" max="5000" defaultValue={data.settings.ai_daily_request_limit ?? "500"} onBlur={event => void patch({ dailyLimit: event.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black px-3 py-2 text-white" /></label>
           </div>
         </div>

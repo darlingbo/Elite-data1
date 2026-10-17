@@ -4,7 +4,9 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import CheckoutModal from "@/components/CheckoutModal";
+import Icon from "@/components/ed/Icon";
 import type { Bundle } from "@/lib/bundles";
+import { readDraft, type OrderDraft } from "@/lib/client/order-draft";
 
 type MashupBundle = { id: string; name: string; data_value: number; data_unit: string; minutes: number; price: number };
 
@@ -12,22 +14,25 @@ function CheckoutContent() {
   const params = useSearchParams();
   const router = useRouter();
   const bundleId = params.get("bundle") ?? "";
-  const agentCode = params.get("agent") ?? undefined;
   const referralVia = params.get("via") ?? undefined;
   const [bundle, setBundle] = useState<Bundle | null>(null);
+  const [isMashup, setIsMashup] = useState(false);
+  const [draft, setDraft] = useState<OrderDraft | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!bundleId) { setError("No bundle was selected."); return; }
-    const bundleUrl = agentCode ? `/api/bundles?agent=${encodeURIComponent(agentCode)}` : "/api/bundles";
+    if (!bundleId) { setTimeout(() => setError("No bundle was selected."), 0); return; }
+    const bundleUrl = "/api/bundles";
     Promise.all([
-      fetch(bundleUrl).then(response => response.json()),
-      fetch("/api/mashup-bundles").then(response => response.json()).catch(() => ({ bundles: [] })),
+      fetch(bundleUrl).then((response) => response.json()),
+      fetch("/api/mashup-bundles").then((response) => response.json()).catch(() => ({ bundles: [] })),
     ]).then(([standard, mashup]: [{ bundles?: Bundle[] }, { bundles?: MashupBundle[] }]) => {
-      const standardMatch = (standard.bundles ?? []).find(item => item.id === bundleId);
+      setDraft(readDraft());
+      const standardMatch = (standard.bundles ?? []).find((item) => item.id === bundleId);
       if (standardMatch) { setBundle(standardMatch); return; }
-      const mashupMatch = (mashup.bundles ?? []).find(item => item.id === bundleId);
+      const mashupMatch = (mashup.bundles ?? []).find((item) => item.id === bundleId);
       if (mashupMatch) {
+        setIsMashup(true);
         setBundle({
           id: mashupMatch.id,
           network: "mtn",
@@ -41,88 +46,60 @@ function CheckoutContent() {
       }
       setError("This bundle is no longer available. Please choose another one.");
     }).catch(() => setError("Checkout could not load. Please try again."));
-  }, [agentCode, bundleId]);
+  }, [bundleId]);
 
-  const buyHref = `/buy${agentCode ? `?agent=${encodeURIComponent(agentCode)}` : ""}`;
+  const baseQuery = (extra: Record<string, string> = {}) => {
+    const q = new URLSearchParams(extra);
+    if (referralVia) q.set("via", referralVia);
+    return q.toString();
+  };
+  const buyHref = "/buy";
+  const expectedNetwork = bundle ? (isMashup ? "mashup" : bundle.network) : null;
+  const numberHref = expectedNetwork ? `/buy/number?${baseQuery({ network: expectedNetwork, bundle: bundleId })}` : "/buy/number";
 
-  if (error) return (
-    <main className="min-h-screen bg-[#070d19] px-4 py-10 text-white sm:px-5 sm:py-16">
-      <div className="mx-auto max-w-md rounded-3xl border border-white/10 bg-white/5 p-6 text-center shadow-2xl sm:p-8">
-        <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-red-500/15 text-2xl">!</div>
-        <h1 className="text-2xl font-black">Checkout unavailable</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-400">{error}</p>
-        <Link href={buyHref} className="mt-6 inline-flex rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white">Choose a bundle</Link>
+  // The number step comes first. If this visit has no checked number for this network,
+  // send the customer there, then straight back here.
+  const needsNumber = !!bundle && !!draft && (!draft.recipient || draft.network !== expectedNetwork);
+  useEffect(() => {
+    if (needsNumber) router.replace(numberHref);
+  }, [needsNumber, numberHref, router]);
+
+  if (error) {
+    return (
+      <div className="ed-page" style={{ display: "grid", placeItems: "center", padding: 16 }}>
+        <div className="ed-stack" style={{ maxWidth: 420, textAlign: "center" }}>
+          <h1 className="ed-h2">Checkout unavailable</h1>
+          <p className="ed-muted" style={{ margin: 0 }}>{error}</p>
+          <Link href={buyHref} className="ed-btn y tall">Choose a bundle</Link>
+        </div>
       </div>
-    </main>
-  );
+    );
+  }
 
-  if (!bundle) return (
-    <main className="grid min-h-screen place-items-center bg-[#070d19]">
-      <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-500/25 border-t-blue-500" />
-    </main>
-  );
+  if (!bundle || !draft || needsNumber || !draft.recipient) {
+    return <div className="ed-page" style={{ display: "grid", placeItems: "center" }}><span className="ed-spin" style={{ width: 32, height: 32, color: "var(--ed-yellow)" }} /></div>;
+  }
 
   return (
-    <main className="checkout-page min-h-screen bg-[#070d19] text-slate-100">
-      <header className="border-b border-white/10 bg-[#070d19]/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-5">
-          <Link href="/" className="flex items-center gap-3 text-white no-underline">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-linear-to-br from-blue-500 to-violet-600 font-black">E</span>
-            <span><b className="block text-sm">Elite Data</b><small className="text-[10px] uppercase tracking-[.2em] text-slate-500">Secure checkout</small></span>
-          </Link>
-          <Link href={buyHref} className="shrink-0 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-white/5 sm:px-4">← Change</Link>
-        </div>
-      </header>
-
-      <div className="mx-auto grid max-w-6xl gap-7 px-4 py-6 sm:px-5 sm:py-8 lg:grid-cols-[minmax(0,1fr)_480px] lg:py-14">
-        <section className="order-last lg:order-0">
-          <p className="text-xs font-black uppercase tracking-[.22em] text-amber-400">⚡ Instant Mobile Money Checkout</p>
-          <h1 className="mt-3 max-w-xl text-3xl font-black tracking-tight sm:text-5xl">Fast Ghana MoMo, instant phone approval.</h1>
-          <p className="mt-4 max-w-xl text-sm leading-7 text-slate-400">Approve the payment prompt directly on your handset (MTN MoMo, Telecel Cash, or AirtelTigo Money). Orders verify in real-time and deliver automatically.</p>
-
-          <div className="mt-8 rounded-3xl border border-white/10 bg-linear-to-br from-[#14223a] to-[#0d1728] p-6 shadow-2xl shadow-black/25 sm:p-8">
-            <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:gap-5">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[.18em] text-blue-300">Selected bundle</p>
-                <h2 className="mt-2 text-4xl font-black text-white">{bundle.size}</h2>
-                <p className="mt-2 text-sm text-slate-400">{bundle.network === "airteltigo" ? "AirtelTigo" : bundle.network.charAt(0).toUpperCase() + bundle.network.slice(1)} · {bundle.validity}</p>
-              </div>
-              <div className="rounded-2xl bg-amber-400/15 border border-amber-400/20 px-4 py-3 text-right">
-                <small className="block text-[10px] uppercase tracking-wider text-amber-300 font-bold">Bundle price</small>
-                <strong className="mt-1 block text-2xl text-amber-400">GH₵{bundle.price.toFixed(2)}</strong>
-              </div>
-            </div>
-            <div className="mt-7 grid gap-3 sm:grid-cols-3">
-              {[
-                ['📱', 'Handset Prompt', 'Approve on your phone'],
-                ['⚡', '1.8s Fast Polling', 'Reflects immediately'],
-                ['🧾', 'Instant Receipt', 'Print or track live'],
-              ].map(([icon, title, copy]) => (
-                <div key={title} className="rounded-2xl border border-white/8 bg-white/[.035] p-4">
-                  <span className="text-lg">{icon}</span><b className="mt-2 block text-xs text-white">{title}</b><small className="mt-1 block text-[11px] text-slate-500">{copy}</small>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-500">
-            <span>🔒 Direct MoMo via Yebeck</span><span>💳 Card & Bank fallback</span><span>🧾 Instant receipt & tracking</span>
-          </div>
-        </section>
-
-        <section className="order-first overflow-hidden rounded-3xl bg-white text-slate-900 shadow-[0_30px_100px_rgba(0,0,0,.35)] lg:order-0">
-          <div className="border-b border-slate-100 px-6 py-5">
-            <p className="text-[10px] font-black uppercase tracking-[.2em] text-blue-600">Customer details</p>
-            <h2 className="mt-1 text-xl font-black text-slate-900">Where should we send the bundle?</h2>
-            <p className="mt-1 text-xs text-slate-500">Fill in your name and receiving phone number below.</p>
-          </div>
-          <CheckoutModal bundle={bundle} agentCode={agentCode} referralVia={referralVia} displayMode="page" onClose={() => router.push(buyHref)} />
-        </section>
+    <div className="ed-paper" style={{ minHeight: "100vh" }}>
+      <div className="ed-appbar" style={{ background: "#fff", borderBottom: "1px solid var(--ed-g200)", color: "var(--ed-ink)" }}>
+        <Link href={buyHref} className="ed-ibtn plain" aria-label="Back to bundles" style={{ color: "var(--ed-ink)" }}><Icon name="back" /></Link>
+        <h1 className="ed-appbar-title" style={{ margin: 0 }}>Pay</h1>
+        <span className="ed-spacer" />
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ed-g500)" }}><Icon name="shield" small />Secure checkout</span>
       </div>
-    </main>
+      <CheckoutModal
+        bundle={bundle}
+        recipient={draft.recipient}
+        verified={draft.verifiedFor === draft.recipient}
+        referralVia={referralVia}
+        changeNumberHref={numberHref}
+        onClose={() => router.push(buyHref)}
+      />
+    </div>
   );
 }
 
 export default function CheckoutPage() {
-  return <Suspense fallback={<main className="min-h-screen bg-[#070d19]" />}><CheckoutContent /></Suspense>;
+  return <Suspense fallback={<div className="ed-page" />}><CheckoutContent /></Suspense>;
 }

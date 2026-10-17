@@ -10,9 +10,9 @@ const MAX_PHONES = 50;
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { phones, bundleId, paystackRef, companyName, contactPhone } = body;
+  const { phones, bundleId, paymentRef, companyName, contactPhone } = body;
 
-  if (!phones?.length || !bundleId || !paystackRef || !contactPhone) {
+  if (!phones?.length || !bundleId || !paymentRef || !contactPhone) {
     return Response.json({ error: "Missing required fields." }, { status: 400 });
   }
 
@@ -41,18 +41,18 @@ export async function POST(request: NextRequest) {
   }
 
   // Fast idempotency check for both new and legacy bulk orders. The payment
-  // claim inserted after Paystack verification is the final concurrency guard.
+  // claim inserted after payment verification is the final concurrency guard.
   const [existingClaimResult, existingOrderResult, legacyOrdersResult] = await Promise.all([
-    supabase.from("payments").select("id").eq("reference", paystackRef).limit(1).maybeSingle(),
-    supabase.from("orders").select("reference").eq("paystack_reference", paystackRef).limit(1).maybeSingle(),
-    supabase.from("orders").select("reference").like("reference", `${paystackRef}-%`).limit(MAX_PHONES),
+    supabase.from("payments").select("id").eq("reference", paymentRef).limit(1).maybeSingle(),
+    supabase.from("orders").select("reference").eq("paystack_reference", paymentRef).limit(1).maybeSingle(),
+    supabase.from("orders").select("reference").like("reference", `${paymentRef}-%`).limit(MAX_PHONES),
   ]);
   const lookupError =
     existingClaimResult.error ?? existingOrderResult.error ?? legacyOrdersResult.error;
   if (lookupError) {
     return Response.json({ error: "Could not safely check this payment. Please try again." }, { status: 500 });
   }
-  const legacyPrefix = `${paystackRef}-`;
+  const legacyPrefix = `${paymentRef}-`;
   const legacyOrderExists = (legacyOrdersResult.data ?? []).some((row) =>
     row.reference.startsWith(legacyPrefix) &&
     /^\d{2}$/.test(row.reference.slice(legacyPrefix.length))
@@ -67,37 +67,15 @@ export async function POST(request: NextRequest) {
 
   let txnStatus: string | undefined;
   let txnAmount = 0;
-  let isYebeck = /^(?:ybk|yebeck)-/i.test(String(paystackRef));
 
-  if (!isYebeck) {
-    const { getPaymentAttempt } = await import("@/lib/payment-attempt");
-    const existingAttempt = await getPaymentAttempt(String(paystackRef));
-    if (existingAttempt) isYebeck = true;
-  }
-
-  if (isYebeck) {
-    try {
-      const { verifyYebeckPayment } = await import("@/lib/payment-attempt");
-      const ybk = await verifyYebeckPayment(String(paystackRef));
-      txnStatus = ybk.status === "success" ? "success" : ybk.status;
-      txnAmount = ybk.attempt.amount_pesewas;
-    } catch (err) {
-      return Response.json({ error: `Could not reach Yebeck: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
-    }
-  } else {
-    let psData: Record<string, unknown> = {};
-    try {
-      const psRes = await fetch(
-        `https://api.paystack.co/transaction/verify/${encodeURIComponent(paystackRef)}`,
-        { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` } }
-      );
-      psData = await psRes.json();
-    } catch (err) {
-      return Response.json({ error: `Could not reach Paystack: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
-    }
-
-    txnStatus = (psData.data as Record<string, unknown>)?.status as string | undefined;
-    txnAmount = Number((psData.data as Record<string, unknown>)?.amount ?? 0);
+  // Mobile Money through Yebeck is the only way to pay.
+  try {
+    const { verifyYebeckPayment } = await import("@/lib/payment-attempt");
+    const ybk = await verifyYebeckPayment(String(paymentRef), "bulk_order");
+    txnStatus = ybk.status === "success" ? "success" : ybk.status;
+    txnAmount = ybk.attempt.amount_pesewas;
+  } catch (err) {
+    return Response.json({ error: `Could not reach Yebeck: ${err instanceof Error ? err.message : String(err)}` }, { status: 502 });
   }
 
   const paid = txnStatus === "success" && txnAmount >= expectedKobo;
@@ -115,8 +93,8 @@ export async function POST(request: NextRequest) {
   // two retries can never both proceed to provider delivery.
   const { error: claimError } = await supabase.from("payments").insert({
     amount: fromMinorUnits(txnAmount),
-    method: isYebeck ? "yebeck_bulk" : "paystack_bulk",
-    reference: paystackRef,
+    method: "yebeck_bulk",
+    reference: paymentRef,
     status: "processing",
   });
   if (claimError) {
@@ -124,7 +102,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "This payment has already been processed." }, { status: 409 });
     }
     await sendAdminAlert(
-      `BULK PAYMENT CLAIM FAILED\nRef: ${paystackRef}\nPaid: GHS ${(txnAmount / 100).toFixed(2)}\nNo delivery was attempted.\nError: ${claimError.message}`
+      `BULK PAYMENT CLAIM FAILED\nRef: ${paymentRef}\nPaid: GHS ${(txnAmount / 100).toFixed(2)}\nNo delivery was attempted.\nError: ${claimError.message}`
     ).catch(() => {});
     return Response.json(
       { error: "Payment was received but the order could not be safely recorded. Contact support." },
@@ -136,13 +114,13 @@ export async function POST(request: NextRequest) {
   // the delivery provider from this public route.
   const outcomes = await Promise.all(
     phoneList.map(async (phone, i) => {
-      const ref = `${paystackRef}-${String(i + 1).padStart(2, "0")}`;
+      const ref = `${paymentRef}-${String(i + 1).padStart(2, "0")}`;
 
       try {
         const { error: orderSaveError } = await supabase.from("orders").insert({
           reference: ref,
-          paystack_reference: paystackRef,
-          payment_method: "paystack_bulk",
+          paystack_reference: paymentRef,
+          payment_method: "yebeck_bulk",
           customer_name: companyName || "Business Order",
           phone,
           network,
@@ -171,10 +149,10 @@ export async function POST(request: NextRequest) {
   const { error: claimUpdateError } = await supabase
     .from("payments")
     .update({ status: claimStatus })
-    .eq("reference", paystackRef);
+    .eq("reference", paymentRef);
   if (claimUpdateError) {
     await sendAdminAlert(
-      `BULK PAYMENT STATUS UPDATE FAILED\nRef: ${paystackRef}\nQueued: ${pendingApproval}/${phoneList.length}\nError: ${claimUpdateError.message}`
+      `BULK PAYMENT STATUS UPDATE FAILED\nRef: ${paymentRef}\nQueued: ${pendingApproval}/${phoneList.length}\nError: ${claimUpdateError.message}`
     ).catch(() => {});
   }
 
@@ -187,7 +165,7 @@ export async function POST(request: NextRequest) {
     `💰 Total paid: GH₵${totalCharged.toFixed(2)}\n` +
     `✅ Queued: ${pendingApproval}/${phoneList.length}` +
     (failed > 0 ? `\n⚠️ Save failures: ${failed} — payment review required` : "") +
-    `\n📎 Ref: <code>${paystackRef}</code>`
+    `\n📎 Ref: <code>${paymentRef}</code>`
   ).catch(() => {});
 
   // Keep provider calls sequential so a bulk payment cannot create an unsafe

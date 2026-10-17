@@ -1,10 +1,14 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { StatsData, Tab } from "./shared/types";
-import { BG, CARD, BORDER } from "./shared/constants";
-import { LineChart } from "./shared/LineChart";
-import { useCountUp } from "./shared/Spinner";
-import { get7DayComparison, getWeeklyRevenue, getTopBundles, getTodayStats, getDataSold, getRevenueBreakdown, getNetBadge } from "./shared/utils";
+import Icon, { type IconName } from "@/components/ed/Icon";
+import { NETWORK_META, parseNetwork } from "@/lib/ed-networks";
+
+/**
+ * Admin "Today". What needs the admin first, then sales against yesterday,
+ * the week, which networks sell, best sellers, service health and the latest orders.
+ * Everything from the old overview is still here.
+ */
 
 export function PctBadge({ val }: { val: number }) {
   return (
@@ -14,341 +18,256 @@ export function PctBadge({ val }: { val: number }) {
   );
 }
 
-export function Dashboard({ stats, animated, onNavigate }: { stats: StatsData; animated: boolean; onNavigate: (t: Tab) => void }) {
-  const cmp = useMemo(() => get7DayComparison(stats.orders.all), [stats.orders.all]);
-  const weekly = useMemo(() => getWeeklyRevenue(stats.orders.all), [stats.orders.all]);
-  const { bundles, total: bundleTotal } = useMemo(() => getTopBundles(stats.orders.all), [stats.orders.all]);
-  const todayStats = useMemo(() => getTodayStats(stats.orders.all), [stats.orders.all]);
-  const revBreakdown = useMemo(() => getRevenueBreakdown(stats.orders.all), [stats.orders.all]);
-  const dataSold = useMemo(() => getDataSold(stats.orders.all), [stats.orders.all]);
-  const totalCustomers = useMemo(() => new Set(stats.orders.all.map(o => o.phone).filter(Boolean)).size, [stats.orders.all]);
-  const lastDelivery = useMemo(() => {
-    const delivered = stats.orders.all
-      .filter(o => o.completed_at)
-      .sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime())[0];
-    if (!delivered) return null;
-    const minutes = Math.round((new Date(delivered.completed_at!).getTime() - new Date(delivered.created_at).getTime()) / 60000);
-    if (!Number.isFinite(minutes) || minutes < 0 || minutes > 24 * 60) return null;
-    return { minutes, label: `${(delivered.network ?? "").toUpperCase()} ${delivered.bundle_size ?? ""}`.trim() };
-  }, [stats.orders.all]);
+type Today = {
+  generatedAt: string;
+  nowHour: number;
+  today: { sales: number; orders: number; delivered: number; profit: number };
+  vsYesterdayPct: number | null;
+  hourly: { today: number[]; yesterday: number[] };
+  week: Array<{ label: string; revenue: number; orders: number; isToday: boolean }>;
+  weekTotals: { revenue: number; orders: number; average: number };
+  networks: Array<{ net: string; revenue: number }>;
+  topBundles: Array<{ label: string; count: number }>;
+  latest: Array<{ reference: string; label: string; phone: string | null; status: string; amount: number; created_at: string }>;
+  attention: { waiting: number; stuck: number; failed: number; blockedToday: number };
+};
+type Health = { id: string; label: string; keySet: boolean; reachable: boolean | null; ms: number | null; balance: number | null };
+
+const money = (n: number) => `GH₵${n.toLocaleString("en-GH", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+const spaced = (p: string) => p.replace(/\s/g, "").replace(/^(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3");
+const hourLabel = (h: number) => (h === 0 ? "12am" : h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h - 12}pm`);
+
+function niceMax(v: number): number {
+  if (v <= 0) return 100;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+}
+
+function SalesChart({ hourly, nowHour }: { hourly: Today["hourly"]; nowHour: number }) {
+  const W = 300, H = 130, L = 34, R = 8, T = 10, B = 28;
+  const firstSale = hourly.today.findIndex((v) => v > 0);
+  const start = Math.max(0, Math.min(6, firstSale === -1 ? 6 : firstSale - 1));
+  const end = Math.min(24, Math.max(Math.ceil(nowHour) + 1, start + 5));
+  const lastToday = hourly.today[24] ?? 0;
+  const yMax = niceMax(Math.max(lastToday, hourly.yesterday[Math.min(end, 24)] ?? 0, 1));
+  const x = (h: number) => L + ((h - start) / (end - start)) * (W - L - R);
+  const y = (v: number) => H - B - (v / yMax) * (H - B - T);
+
+  const todayPts: Array<[number, number]> = [];
+  for (let h = start; h <= Math.floor(nowHour); h++) todayPts.push([x(h), y(hourly.today[h] ?? 0)]);
+  todayPts.push([x(nowHour), y(lastToday)]);
+  const yestPts: Array<[number, number]> = [];
+  for (let h = start; h <= end; h++) yestPts.push([x(h), y(hourly.yesterday[h] ?? 0)]);
+
+  const line = (pts: Array<[number, number]>) => pts.map(([a, b], i) => `${i === 0 ? "M" : "L"}${a.toFixed(1)} ${b.toFixed(1)}`).join(" ");
+  const area = `${line(todayPts)} L${todayPts[todayPts.length - 1][0].toFixed(1)} ${y(0)} L${todayPts[0][0].toFixed(1)} ${y(0)} Z`;
+  const ticks = [0, yMax / 2, yMax];
+  const xTicks: number[] = [];
+  const stepH = end - start > 12 ? 4 : end - start > 7 ? 2 : 1;
+  for (let h = start; h <= end; h += stepH) xTicks.push(h);
+
+  return (
+    <svg className="ad-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Sales so far today compared with yesterday. Today ${money(lastToday)}.`}>
+      <defs><linearGradient id="adArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fbbf24" stopOpacity=".3" /><stop offset="1" stopColor="#fbbf24" stopOpacity="0" /></linearGradient></defs>
+      {ticks.map((t) => <g key={t}><line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="#202b3d" /><text x={L - 5} y={y(t) + 3} textAnchor="end" fontSize="9" fill="#8b949e">{t.toLocaleString("en-GH", { maximumFractionDigits: 0 })}</text></g>)}
+      {xTicks.map((h) => <text key={h} x={x(h)} y={H - 10} textAnchor="middle" fontSize="9" fill="#8b949e">{hourLabel(h % 24)}</text>)}
+      <path d={area} fill="url(#adArea)" />
+      <path d={line(yestPts)} fill="none" stroke="#8b949e" strokeWidth="1.8" strokeDasharray="4 4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={line(todayPts)} fill="none" stroke="#fbbf24" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={x(nowHour)} cy={y(lastToday)} r="4.5" fill="#fbbf24" />
+    </svg>
+  );
+}
+
+function WeekChart({ week }: { week: Today["week"] }) {
+  const W = 300, H = 112, L = 30, B = 22, T = 14;
+  const max = niceMax(Math.max(...week.map((d) => d.revenue), 1));
+  const slot = (W - L - 8) / week.length;
+  const bw = Math.min(30, slot - 10);
+  const y = (v: number) => H - B - (v / max) * (H - B - T);
+  return (
+    <svg className="ad-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Sales for the last seven days: ${week.map((d) => `${d.label} ${money(d.revenue)}`).join(", ")}.`}>
+      {[0, max / 2, max].map((t) => <g key={t}><line x1={L} x2={W - 8} y1={y(t)} y2={y(t)} stroke="#202b3d" /><text x={L - 5} y={y(t) + 3} textAnchor="end" fontSize="9" fill="#8b949e">{t.toLocaleString("en-GH", { maximumFractionDigits: 0 })}</text></g>)}
+      {week.map((d, i) => {
+        const cx = L + slot * i + slot / 2;
+        const top = y(d.revenue);
+        return (
+          <g key={d.label + i}>
+            <rect x={cx - bw / 2} y={top} width={bw} height={Math.max(2, H - B - top)} rx="4" fill={d.isToday ? "#fbbf24" : "#1e3a5f"} />
+            <text x={cx} y={H - 8} textAnchor="middle" fontSize="9" fill={d.isToday ? "#e6edf3" : "#8b949e"} fontWeight={d.isToday ? 700 : 400}>{d.isToday ? "Today" : d.label}</text>
+            {(d.isToday || d.revenue === Math.max(...week.map((w) => w.revenue))) && d.revenue > 0 && <text x={cx} y={top - 3} textAnchor="middle" fontSize="9" fill="#e6edf3" fontWeight="700">{Math.round(d.revenue).toLocaleString("en-GH")}</text>}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+const STATUS_PILL: Record<string, { cls: string; text: string }> = {
+  completed: { cls: "d", text: "Delivered" },
+  processing: { cls: "s", text: "Sending" },
+  pending_approval: { cls: "w", text: "Waiting" },
+  pending: { cls: "w", text: "Pending" },
+  failed: { cls: "f", text: "Failed" },
+  rejected: { cls: "f", text: "Rejected" },
+  refunded: { cls: "d", text: "Refunded" },
+  not_on_list: { cls: "w", text: "New number" },
+};
+
+function ago(iso: string): string {
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  return m < 1 ? "just now" : m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} h` : new Date(iso).toLocaleDateString("en-GH", { day: "numeric", month: "short" });
+}
+
+export function Dashboard({ stats, onNavigate }: { stats: StatsData; animated?: boolean; onNavigate: (t: Tab, search?: string) => void }) {
+  const [today, setToday] = useState<Today | null>(null);
+  const [error, setError] = useState("");
+  const [health, setHealth] = useState<Health[] | null>(null);
+  const [storeOpen, setStoreOpen] = useState<boolean | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
-  const [apiBalance, setApiBalance] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/admin/inventor-balance").then(r => r.json()).then(d => setApiBalance(d.balance !== null ? `GH₵${Number(d.balance).toFixed(2)}` : null)).catch(() => setApiBalance(null));
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/today");
+      const d = (await res.json()) as Today & { error?: string };
+      if (!res.ok) { setError(d.error ?? "Could not load today's numbers."); return; }
+      setToday(d); setError("");
+    } catch { setError("Could not reach the server."); }
   }, []);
 
-  const totalRev = useCountUp(stats.revenue.total, 1200, animated);
-  const totalProfit = useCountUp(stats.profit.gross, 1200, animated);
-  const leaderboard = useMemo(() =>
-    [...stats.agents.all].filter(a => a.status === "approved").sort((a, b) => Number(b.total_revenue) - Number(a.total_revenue)).slice(0, 5),
-    [stats.agents.all]
-  );
+  useEffect(() => {
+    const t = setTimeout(() => void load(), 0);
+    const id = setInterval(() => { if (!document.hidden) void load(); }, 60_000);
+    return () => { clearTimeout(t); clearInterval(id); };
+  }, [load]);
+
+  useEffect(() => {
+    fetch("/api/admin/number-check").then((r) => r.json()).then((d: { health?: Health[] }) => setHealth(d.health ?? null)).catch(() => {});
+    fetch("/api/admin/store-status").then((r) => r.json()).then((d: { open?: boolean }) => setStoreOpen(d.open !== false)).catch(() => {});
+  }, []);
 
   async function handleSync() {
     setSyncing(true); setSyncMsg("");
     try {
-      const d = await fetch("/api/admin/sync-orders", { method: "POST" }).then(r => r.json());
-      setSyncMsg(d.updated > 0 ? `✓ ${d.updated} orders updated` : "✓ All up to date");
+      const d = await fetch("/api/admin/sync-orders", { method: "POST" }).then((r) => r.json());
+      setSyncMsg(d.updated > 0 ? `${d.updated} orders updated` : "All up to date");
     } catch { setSyncMsg("Sync failed"); }
-    finally { setSyncing(false); setTimeout(() => setSyncMsg(""), 3000); }
+    finally { setSyncing(false); setTimeout(() => setSyncMsg(""), 3500); }
   }
 
-  const weeklyTotal = weekly.reduce((s, d) => s + d.revenue, 0);
-  const weeklyTxns  = weekly.reduce((s, d) => s + d.count, 0);
-  const weeklyAvg   = weeklyTxns > 0 ? weeklyTotal / weeklyTxns : 0;
-  const avatarColors = ["#f59e0b", "#94a3b8", "#10b981", "#3b82f6", "#8b5cf6"];
+  const waiting = stats.orders.pendingApproval ?? today?.attention.waiting ?? 0;
+  const totalCustomers = useMemo(() => new Set(stats.orders.all.map((o) => o.phone).filter(Boolean)).size, [stats.orders.all]);
 
-  const statusStyle: Record<string, { bg: string; color: string }> = {
-    COMPLETED:  { bg: "rgba(16,185,129,0.15)",  color: "#34d399" },
-    PROCESSING: { bg: "rgba(59,130,246,0.15)",  color: "#60a5fa" },
-    PENDING:    { bg: "rgba(245,158,11,0.15)",  color: "#fbbf24" },
-    FAILED:     { bg: "rgba(248,113,113,0.15)", color: "#f87171" },
-  };
+  const needs: Array<{ tone: "amber" | "red"; text: string; go: string; tab: Tab }> = [];
+  if (waiting > 0) needs.push({ tone: "amber", text: `${waiting} order${waiting === 1 ? "" : "s"} waiting for approval`, go: "Review", tab: "approval-queue" });
+  if ((today?.attention.stuck ?? 0) > 0) needs.push({ tone: "red", text: `${today!.attention.stuck} order${today!.attention.stuck === 1 ? "" : "s"} sending for over 10 minutes`, go: "Check", tab: "processing" });
+  if ((today?.attention.failed ?? 0) > 0) needs.push({ tone: "red", text: `${today!.attention.failed} failed order${today!.attention.failed === 1 ? "" : "s"} to refund or retry`, go: "Open", tab: "failed-orders" });
+  if ((today?.attention.blockedToday ?? 0) > 0) needs.push({ tone: "amber", text: `${today!.attention.blockedToday} number${today!.attention.blockedToday === 1 ? "" : "s"} turned away by the number check today`, go: "See numbers", tab: "mtn-verification" });
 
-  const recentOrders = useMemo(() =>
-    [...stats.orders.all].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5),
-    [stats.orders.all]
-  );
+  const netTotal = today?.networks.reduce((s, n) => s + n.revenue, 0) ?? 0;
+  const maxBundle = Math.max(...(today?.topBundles.map((b) => b.count) ?? [1]), 1);
 
   return (
-    <div className="admin-overview space-y-4">
+    <div className="admin-section ad-today">
+      {error && <p className="ad-msg bad" style={{ gridArea: "sales" }}>{error} <button type="button" className="ad-copybtn" onClick={() => void load()}>Try again</button></p>}
 
-      {/* Today so far */}
-      <div className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
-        <p className="font-bold text-white mb-3 text-sm">📅 Today so far</p>
-        <div className="grid grid-cols-3 gap-2 mb-2">
-          {[
-            { label: "Orders",    val: todayStats.orders.toString(),              color: "text-white" },
-            { label: "Delivered", val: todayStats.delivered.toString(),           color: "text-green-400" },
-            { label: "Revenue",   val: `GH₵${todayStats.revenue.toFixed(2)}`,    color: "text-white", sm: true },
-          ].map(s => (
-            <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: BG }}>
-              <p className={`font-black ${s.color} ${s.sm ? "text-sm" : "text-lg"} leading-tight`}>{s.val}</p>
-              <p className="text-[10px] text-slate-500 mt-0.5">{s.label}</p>
-            </div>
-          ))}
+      <section className="ad-t-needs" aria-labelledby="needs-h">
+        <div className="ad-t-head"><h3 id="needs-h" className="ad-h3">Needs you now</h3>
+          {storeOpen !== null && <button type="button" className="ad-store" onClick={() => onNavigate("notifications")} aria-label={storeOpen ? "Store is open. Open store settings." : "Store is closed. Open store settings."}><i style={{ background: storeOpen ? "var(--ed-green)" : "var(--ed-red)" }} />{storeOpen ? "Store open" : "Store closed"}</button>}
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-xl p-3 text-center" style={{ background: BG }}>
-            <p className="font-black text-sm leading-tight" style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>GH₵{todayStats.profit.toFixed(2)}</p>
-            <p className="text-[10px] text-slate-500 mt-0.5">Profit</p>
+        {needs.length === 0 ? <p className="ed-muted" style={{ margin: 0, fontSize: 14 }}>Nothing is waiting. You are all caught up.</p> : (
+          <div>
+            {needs.map((n) => (
+              <button key={n.text} type="button" className="ad-need" onClick={() => onNavigate(n.tab)}>
+                <i style={{ background: n.tone === "red" ? "var(--ed-red)" : "var(--ed-amber)" }} /><span>{n.text}</span><b>{n.go}</b>
+              </button>
+            ))}
           </div>
-          <div className="rounded-xl p-3 text-center" style={{ background: BG }}>
-            <p className="text-lg font-black text-orange-400 leading-tight">{todayStats.viaAgents}</p>
-            <p className="text-[10px] text-slate-500 mt-0.5">Via Agents</p>
-          </div>
-        </div>
-      </div>
+        )}
+      </section>
 
-      {/* 4 stat cards */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[
-          { label: "Total Customers", value: totalCustomers.toLocaleString(),     pct: cmp.agents,   icon: "👥", grad: "linear-gradient(135deg,#1e3a5f,#1e40af)" },
-          { label: "Total Orders",    value: stats.orders.total.toLocaleString(), pct: cmp.orders,   icon: "🛒", grad: "linear-gradient(135deg,#2e1065,#4c1d95)" },
-          { label: "Total Revenue",   value: `GH₵${totalRev.toFixed(2)}`,        pct: cmp.revenue,  icon: "💰", grad: "linear-gradient(135deg,#064e3b,#065f46)" },
-          { label: "Data Sold",       value: dataSold,                            pct: cmp.completed,icon: "📡", grad: "linear-gradient(135deg,#1a2940,#0f2438)" },
-        ].map((c, i) => (
-          <div key={c.label} className="rounded-2xl p-4 border relative overflow-hidden" style={{ background: CARD, borderColor: BORDER, animation: `slideUp .3s ease both`, animationDelay: `${i * 60}ms` }}>
-            <div className="flex items-start justify-between mb-3">
-              <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl" style={{ background: c.grad }}>{c.icon}</div>
-              <PctBadge val={c.pct} />
-            </div>
-            <p className="text-xl font-black text-white leading-tight">{c.value}</p>
-            <p className="text-xs text-slate-500 mt-1">{c.label}</p>
-            <p className="text-[10px] text-blue-500 mt-1.5 font-semibold">vs last 7 days →</p>
-          </div>
-        ))}
-      </div>
+      <section className="ad-t-sales" aria-labelledby="sales-h">
+        <span id="sales-h" className="ad-lab">Sales so far today</span>
+        <span className="ad-big">{today ? money(today.today.sales) : "…"}</span>
+        {today?.vsYesterdayPct !== null && today?.vsYesterdayPct !== undefined && (
+          <span className="ad-delta" style={{ color: today.vsYesterdayPct >= 0 ? "var(--ed-green)" : "var(--ed-red)" }}>
+            <Icon name="up" small className={today.vsYesterdayPct >= 0 ? "" : "ad-flip"} />{Math.abs(today.vsYesterdayPct)}% {today.vsYesterdayPct >= 0 ? "more" : "less"} than yesterday at this time
+          </span>
+        )}
+        {today && <SalesChart hourly={today.hourly} nowHour={today.nowHour} />}
+        <div className="ad-legend"><span><i />Today</span><span><i className="dash" />Yesterday</span></div>
+      </section>
 
-      {/* Total Profit */}
-      <div className="rounded-2xl p-4 border relative overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
-        <div className="flex items-start justify-between mb-3">
-          <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl" style={{ background: "linear-gradient(135deg,#450a0a,#7f1d1d)" }}>📈</div>
-          <PctBadge val={cmp.revenue} />
-        </div>
-        <p className="text-2xl font-black text-white">GH₵{totalProfit.toFixed(2)}</p>
-        <p className="text-xs text-slate-500 mt-1">Total Profit (all time)</p>
-        <p className="text-[10px] text-blue-500 mt-1.5 font-semibold">vs last 7 days →</p>
-      </div>
+      <section className="ad-t-mini" aria-label="Today in numbers">
+        <div><small>Orders</small><b>{today?.today.orders ?? "…"}</b></div>
+        <div><small>Delivered</small><b>{today?.today.delivered ?? "…"}</b></div>
+        <div><small>Profit</small><b>{today ? money(today.today.profit) : "…"}</b></div>
+        <div><small>Customers</small><b>{totalCustomers.toLocaleString()}</b></div>
+      </section>
 
-      {/* Last delivery time — same real placed-to-completed number shown on the public homepage */}
-      {lastDelivery && (
-        <div className="rounded-2xl p-4 border relative overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl" style={{ background: "linear-gradient(135deg,#064e3b,#065f46)" }}>⚡</div>
-          </div>
-          <p className="text-2xl font-black text-white">{lastDelivery.minutes < 60 ? `${lastDelivery.minutes} min` : `${Math.floor(lastDelivery.minutes / 60)}h ${lastDelivery.minutes % 60}m`}</p>
-          <p className="text-xs text-slate-500 mt-1">Last delivery time{lastDelivery.label ? ` — ${lastDelivery.label}` : ""}</p>
-        </div>
-      )}
-
-      {/* Revenue chart */}
-      <div className="rounded-2xl border" style={{ background: CARD, borderColor: BORDER }}>
-        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: BORDER }}>
-          <p className="font-bold text-white">Revenue Overview</p>
-          <span className="text-xs text-slate-400 border px-2.5 py-1 rounded-lg" style={{ borderColor: BORDER }}>This Week ▾</span>
-        </div>
-        <div className="px-3 pt-2">
-          <LineChart data={weekly} />
-        </div>
-        <div className="grid grid-cols-3 gap-px border-t" style={{ borderColor: BORDER }}>
-          {[
-            { label: "Total Revenue",        value: `GH₵${weeklyTotal.toFixed(2)}` },
-            { label: "Total Transactions",   value: weeklyTxns.toLocaleString() },
-            { label: "Average Order Value",  value: `GH₵${weeklyAvg.toFixed(2)}` },
-          ].map(s => (
-            <div key={s.label} className="px-3 py-3">
-              <p className="text-[10px] text-slate-500 mb-0.5">{s.label}</p>
-              <p className="font-black text-white text-sm">{s.value}</p>
-            </div>
+      <section className="ad-t-services" aria-labelledby="svc-h">
+        <h3 id="svc-h" className="ad-h3">Services</h3>
+        <div className="ad-lights">
+          {(health ?? []).map((h) => (
+            <div key={h.id}><b><i className={!h.keySet ? "rr" : h.reachable ? "g" : "a"} />{h.label}</b><span>{!h.keySet ? "No key set" : h.reachable ? (h.balance !== null ? `Balance ${money(h.balance)}` : "Working") : "Not answering"}</span></div>
           ))}
+          {!health && <div><b>Checking…</b><span>Asking each service</span></div>}
         </div>
-      </div>
+        <div className="ad-qa">
+          <button type="button" onClick={() => onNavigate("data-bundles")}><Icon name="plusbox" />Add bundle</button>
+          <button type="button" onClick={() => onNavigate("sms")}><Icon name="sms" />Send SMS</button>
+          <button type="button" onClick={() => onNavigate("coupons")}><Icon name="tag" />New coupon</button>
+          <button type="button" onClick={() => onNavigate("notifications")}><Icon name="store" />Close store</button>
+          <button type="button" onClick={() => void handleSync()} disabled={syncing}><Icon name="retry" />{syncing ? "Syncing…" : syncMsg || "Sync orders"}</button>
+        </div>
+      </section>
 
-      {/* Recent Orders */}
-      <div className="rounded-2xl border overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
-        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: BORDER }}>
-          <p className="font-bold text-white">Recent Orders</p>
-          <button onClick={() => onNavigate("all-orders")} className="text-xs text-blue-400 font-semibold">View All Orders</button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr style={{ background: BG, borderBottom: `1px solid ${BORDER}` }}>
-                {["ORDER ID", "CUSTOMER", "PLAN", "AMOUNT", "STATUS"].map(h => (
-                  <th key={h} className="px-3 py-2.5 text-left font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {recentOrders.map((o, i) => {
-                const nb = getNetBadge(o.network);
-                const st = statusStyle[(o.status ?? "").toUpperCase()] ?? { bg: "transparent", color: "#94a3b8" };
-                const cleanSize = (o.bundle_size ?? "").replace(/^(mtn|telecel|at ishare|airteltigo|airtel)\s+/i, "").trim();
-                const shortRef = `#${(o.reference ?? "").replace(/[^A-Z0-9]/gi, "").slice(-6).toUpperCase()}`;
-                return (
-                  <tr key={i} className="border-b" style={{ borderColor: BORDER }}>
-                    <td className="px-3 py-2.5 font-mono font-bold" style={{ color: "#60a5fa" }}>{shortRef}</td>
-                    <td className="px-3 py-2.5 text-white font-medium max-w-28 truncate font-mono">
-                      {o.customer_name && o.customer_name.toLowerCase() !== "customer" && o.customer_name !== o.phone
-                        ? o.customer_name
-                        : o.phone || "—"}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded mr-1" style={{ background: nb.bg, color: nb.color }}>{nb.label}</span>
-                      <span className="text-slate-400">{cleanSize}</span>
-                    </td>
-                    <td className="px-3 py-2.5 font-black text-white whitespace-nowrap">GH₵{Number(o.amount).toFixed(2)}</td>
-                    <td className="px-3 py-2.5">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: st.bg, color: st.color }}>
-                        {(o.status ?? "").toLowerCase()}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <section className="ad-t-week" aria-labelledby="week-h">
+        <div className="ad-t-head"><h3 id="week-h" className="ad-h3">Last 7 days</h3><span className="ed-muted ed-num" style={{ fontSize: 12 }}>{today ? `${money(today.weekTotals.revenue)} from ${today.weekTotals.orders} orders` : ""}</span></div>
+        {today && <WeekChart week={today.week} />}
+        {today && <p className="ed-muted" style={{ margin: 0, fontSize: 12 }}>Average order {money(today.weekTotals.average)}</p>}
+      </section>
 
-      {/* Top Bundles */}
-      <div className="rounded-2xl border overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
-        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: BORDER }}>
-          <p className="font-bold text-white">Top Data Bundles</p>
-          <button onClick={() => onNavigate("data-bundles")} className="text-xs text-blue-400 font-semibold">View All</button>
-        </div>
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b" style={{ background: BG, borderColor: BORDER }}>
-              {["BUNDLE", "NETWORK", "SOLD", "%"].map(h => (
-                <th key={h} className="px-4 py-2.5 text-left font-bold text-slate-500 text-[10px] uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {bundles.map((b, i) => {
-              const [size, net] = b.label.split(" – ");
-              const nb = getNetBadge(net ?? "");
-              return (
-                <tr key={i} className="border-b" style={{ borderColor: BORDER }}>
-                  <td className="px-4 py-3 font-bold text-white">{size}</td>
-                  <td className="px-4 py-3">
-                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: nb.bg, color: nb.color }}>{net === "OTHERS" ? "Others" : nb.label}</span>
-                  </td>
-                  <td className="px-4 py-3 font-bold text-white">{b.count}</td>
-                  <td className="px-4 py-3 text-slate-400">{b.pct.toFixed(1)}%</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        <div className="px-4 py-3 border-t" style={{ borderColor: BORDER }}>
-          <p className="text-xs text-slate-500">Total completed: <span className="font-bold text-white">{bundleTotal}</span></p>
-        </div>
-      </div>
-
-      {/* Revenue Breakdown */}
-      <div className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
-        <div className="flex items-center justify-between mb-4">
-          <p className="font-bold text-white">Revenue Breakdown</p>
-          <button onClick={() => onNavigate("transactions")} className="text-xs text-blue-400 font-semibold">View Report</button>
-        </div>
-        <div className="space-y-4">
-          {revBreakdown.slice(0, 5).map((r, i) => (
-            <div key={i}>
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full shrink-0" style={{ background: r.dot }} />
-                  <span className="text-sm font-semibold text-white">{r.label}</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-sm font-black text-white">GH₵{r.revenue.toFixed(2)}</span>
-                  <span className="text-xs text-slate-500 ml-2">{r.pct.toFixed(1)}%</span>
-                </div>
-              </div>
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "#1e3050" }}>
-                <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(r.pct, 100)}%`, background: r.dot }} />
-              </div>
+      <section className="ad-t-nets" aria-labelledby="net-h">
+        <h3 id="net-h" className="ad-h3">Sales by network today</h3>
+        {today && netTotal > 0 ? (
+          <>
+            <div className="ad-split" role="img" aria-label={today.networks.map((n) => `${n.net} ${money(n.revenue)}`).join(", ")}>
+              {today.networks.map((n) => <span key={n.net} style={{ width: `${(n.revenue / netTotal) * 100}%`, background: NETWORK_META[parseNetwork(n.net)].color }} />)}
             </div>
-          ))}
-          {revBreakdown.length === 0 && <p className="text-sm text-slate-600 text-center py-4">No revenue data yet</p>}
-        </div>
-      </div>
-
-      {/* Agent Leaderboard */}
-      <div className="rounded-2xl border overflow-hidden" style={{ background: CARD, borderColor: BORDER }}>
-        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: BORDER }}>
-          <p className="font-bold text-white">Agent Leaderboard</p>
-          <button onClick={() => onNavigate("leaderboard")} className="text-xs text-blue-400 font-semibold">View All</button>
-        </div>
-        {leaderboard.length === 0
-          ? <p className="text-center text-slate-600 py-8 text-sm">No agents yet</p>
-          : leaderboard.map((a, i) => (
-            <div key={a.id} className="flex items-center gap-3 px-4 py-3 border-b last:border-0" style={{ borderColor: BORDER }}>
-              <span className="text-sm font-black w-5 text-center" style={{ color: i === 0 ? "#f59e0b" : i === 2 ? "#cd7f32" : "#64748b" }}>{i + 1}</span>
-              <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-black text-white shrink-0" style={{ background: avatarColors[i % avatarColors.length] }}>
-                {(a.name ?? "?").charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">{a.name}</p>
-                <p className="text-xs text-slate-500">{a.total_sales} sales</p>
-              </div>
-              <p className="text-sm font-black text-white">GH₵{Number(a.total_revenue).toFixed(0)}</p>
+            <div className="ad-splitleg">
+              {today.networks.map((n) => <span key={n.net}><i style={{ background: NETWORK_META[parseNetwork(n.net)].color }} /><b>{NETWORK_META[parseNetwork(n.net)].label}</b> {money(n.revenue)}</span>)}
             </div>
-          ))}
-      </div>
+          </>
+        ) : <p className="ed-muted" style={{ margin: 0, fontSize: 13 }}>No sales yet today.</p>}
+      </section>
 
-      {/* Quick Actions */}
-      <div className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
-        <p className="font-bold text-white mb-3">Quick Actions</p>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: "Add Bundle",    emoji: "📦", action: () => onNavigate("data-bundles"),    bg: "#0d1f3c", color: "#60a5fa" },
-            { label: "Sync Orders",   emoji: "🔄", action: handleSync,                          bg: "#1a0d3c", color: "#c084fc" },
-            { label: "Add Agent",     emoji: "👤", action: () => onNavigate("agent-applications"), bg: "#0d2e1a", color: "#4ade80" },
-            { label: "Notification",  emoji: "📢", action: () => onNavigate("notifications"),   bg: "#2a1a00", color: "#fb923c" },
-            { label: "View Reports",  emoji: "📊", action: () => onNavigate("analytics"),       bg: "#2a0d0d", color: "#f87171" },
-            { label: "API Settings",  emoji: "🔌", action: () => onNavigate("apikeys"),         bg: "#111827", color: "#6b7280" },
-          ].map(qa => (
-            <button key={qa.label} onClick={qa.action}
-              className="flex flex-col items-center gap-2.5 py-5 px-3 rounded-2xl text-center transition-all hover:opacity-90"
-              style={{ background: qa.bg, border: `1px solid ${qa.color}22` }}>
-              <span className="text-2xl">{qa.emoji}</span>
-              <span className="text-xs font-bold" style={{ color: qa.color }}>{qa.label}</span>
+      <section className="ad-t-bundles" aria-labelledby="bun-h">
+        <h3 id="bun-h" className="ad-h3">Best sellers today</h3>
+        {today?.topBundles.length ? today.topBundles.map((b) => (
+          <div key={b.label} className="ad-rank"><b>{b.label}</b><span>{b.count} sold</span><em style={{ ["--w" as string]: `${(b.count / maxBundle) * 100}%` }} /></div>
+        )) : <p className="ed-muted" style={{ margin: 0, fontSize: 13 }}>Nothing sold yet today.</p>}
+      </section>
+
+
+      <section className="ad-t-latest" aria-labelledby="late-h">
+        <div className="ad-t-head"><h3 id="late-h" className="ad-h3">Latest orders</h3><button type="button" className="ad-link" onClick={() => onNavigate("all-orders")}>See all</button></div>
+        {(today?.latest ?? []).map((o) => {
+          const pill = STATUS_PILL[o.status.toLowerCase()] ?? { cls: "w", text: o.status };
+          return (
+            <button key={o.reference} type="button" className="ad-feed" onClick={() => onNavigate("all-orders", o.reference)}>
+              <span><b>{o.label}</b>{o.phone ? spaced(o.phone) : ""}</span>
+              <span className={`ad-pst ${pill.cls}`}>{pill.text}</span>
+              <span className="ed-num">{ago(o.created_at)}</span>
             </button>
-          ))}
-        </div>
-        {syncMsg && <p className="mt-3 text-xs font-semibold text-green-400 text-center">{syncMsg}</p>}
-        {syncing && <p className="mt-3 text-xs text-slate-500 text-center">Syncing…</p>}
-      </div>
-
-      {/* System Status */}
-      <div className="rounded-2xl border p-4" style={{ background: CARD, borderColor: BORDER }}>
-        <div className="flex items-center justify-between mb-3">
-          <p className="font-bold text-white">System Status</p>
-          <button onClick={() => onNavigate("network-providers")} className="text-xs text-blue-400 font-semibold">Manage Providers →</button>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { icon: "📡", label: "Inventor API",  value: apiBalance ?? "Checking…", ok: apiBalance !== null },
-            { icon: "✈️", label: "Telegram Bot",  value: "Live ✓",                  ok: true },
-            { icon: "🗄️", label: "Database",      value: "Live ✓",                  ok: true },
-            { icon: "⏰", label: "Cron Jobs",      value: "Live ✓",                  ok: true },
-          ].map(s => (
-            <div key={s.label} className="rounded-xl p-3" style={{ background: BG, border: `1px solid ${BORDER}` }}>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-base">{s.icon}</span>
-                <span className="text-xs text-slate-400">{s.label}</span>
-              </div>
-              <p className="text-sm font-black" style={{ color: s.ok ? "#4ade80" : "#94a3b8" }}>{s.value}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
+          );
+        })}
+        {today && today.latest.length === 0 && <p className="ed-muted" style={{ margin: 0, fontSize: 13 }}>No orders yet.</p>}
+      </section>
     </div>
   );
 }
+
+export type { IconName };

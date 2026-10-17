@@ -19,12 +19,10 @@ interface Scheduled {
 const BG = "#0b1120", CARD = "#111827", BORDER = "#1f2937";
 
 const DEFAULT_TEMPLATES = [
-  { id: "t1", label: "Low Balance Alert",   text: "Hi {name}, your Elite Data wallet is low. Top up now to keep selling! Visit your agent dashboard." },
-  { id: "t2", label: "New Bundle",          text: "Hi {name}, new data bundles are live on Elite Data! Log in to see the latest prices and start selling." },
-  { id: "t3", label: "Payment Received",    text: "Hi {name}, your wallet has been topped up on Elite Data. Your new balance is ready — start selling!" },
-  { id: "t4", label: "Promotion",           text: "Hi {name}, exciting offers this week on Elite Data! Log in to your agent dashboard and take advantage now." },
-  { id: "t5", label: "System Update",       text: "Hi {name}, Elite Data has been improved! New features are live. Log in to your dashboard to explore." },
-  { id: "t6", label: "Order Confirmed",     text: "Hi {name}, your data bundle order has been confirmed and delivered. Thank you for using Elite Data!" },
+  { id: "t2", label: "New Bundle",       text: "Hi {name}, new data bundles are live on Elite Data! Visit elitedata1.com to see the latest prices." },
+  { id: "t4", label: "Promotion",        text: "Hi {name}, exciting offers this week on Elite Data! Visit elitedata1.com and grab a bundle today." },
+  { id: "t5", label: "System Update",    text: "Hi {name}, Elite Data has been improved with a faster, easier way to buy data. Visit elitedata1.com to try it." },
+  { id: "t6", label: "Order Confirmed",  text: "Hi {name}, your data bundle order has been confirmed and delivered. Thank you for using Elite Data!" },
 ];
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -37,12 +35,12 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   );
 }
 
-export default function SMSAdmin({ agents }: { agents: Agent[] }) {
+export default function SMSAdmin() {
   const [activeTab, setActiveTab] = useState<"compose" | "templates" | "reports" | "schedule">("compose");
   const [mode, setMode] = useState<"bulk" | "individual">("bulk");
 
   // Bulk
-  const [audience, setAudience] = useState<"all" | "custom_price" | "commission" | "selected" | "customers">("all");
+  const [audience, setAudience] = useState<"all" | "custom_price" | "commission" | "selected" | "customers">("customers");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkMsg, setBulkMsg] = useState("");
   const [bulkSending, setBulkSending] = useState(false);
@@ -73,7 +71,7 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
   const [schedMsg, setSchedMsg] = useState("");
   const [schedDate, setSchedDate] = useState("");
   const [schedTime, setSchedTime] = useState("");
-  const [schedAudience, setSchedAudience] = useState<"all" | "customers">("all");
+  const [schedAudience, setSchedAudience] = useState<"all" | "customers">("customers");
   const [schedText, setSchedText] = useState("");
   const [schedSaving, setSchedSaving] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -83,7 +81,8 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
     senderId?: string | null; error?: string;
   } | null>(null);
 
-  const approvedAgents = useMemo(() => agents.filter(a => a.status === "approved"), [agents]);
+  // There are no agents any more; the lists below stay empty and only customers can be messaged.
+  const approvedAgents = useMemo<Agent[]>(() => [], []);
 
   async function runDiagnose() {
     setDiagnosing(true);
@@ -264,14 +263,8 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-black text-white">SMS Broadcast</h1>
-          <p className="text-sm text-slate-500">Send messages to agents and customers via MessagePilot</p>
+          <p className="text-sm text-slate-500">Send messages to customers via MessagePilot</p>
         </div>
-        {/* Quick Send All button */}
-        <button onClick={() => { setMode("bulk"); setAudience("all"); setActiveTab("compose"); }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black text-white"
-          style={{ background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }}>
-          📢 Send to All Agents
-        </button>
       </div>
 
       {/* ── Diagnose panel ── */}
@@ -428,40 +421,6 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
                     <span className="text-xs">{customersLoading ? "…" : customerPhones?.length ?? "load"}</span>
                   </button>
                 </div>
-                <div className="space-y-2">
-                  {([
-                    ["all", `All Agents (${approvedAgents.length})`],
-                    ["custom_price", `Price Mode (${approvedAgents.filter(a => a.agent_type === "custom_price").length})`],
-                    ["commission", `Commission (${approvedAgents.filter(a => a.agent_type !== "custom_price").length})`],
-                    ["selected", `Select Manually (${selected.size})`],
-                  ] as const).map(([val, label]) => (
-                    <label key={val} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-all"
-                      style={audience === val ? { background: "rgba(59,130,246,0.1)", borderColor: "rgba(59,130,246,0.4)" } : { background: BG, borderColor: BORDER }}>
-                      <input type="radio" checked={audience === val} onChange={() => setAudience(val)} className="accent-blue-500" />
-                      <span className="text-sm font-semibold" style={{ color: audience === val ? "#60a5fa" : "#6b7280" }}>{label}</span>
-                    </label>
-                  ))}
-                </div>
-
-                {audience === "selected" && (
-                  <div className="mt-3">
-                    <div className="flex gap-2 mb-2">
-                      <button onClick={() => setSelected(new Set(approvedAgents.map(a => a.id)))} className="flex-1 py-1.5 rounded-lg text-xs font-bold text-blue-400 border" style={{ borderColor: BORDER }}>All</button>
-                      <button onClick={() => setSelected(new Set())} className="flex-1 py-1.5 rounded-lg text-xs font-bold text-red-400 border" style={{ borderColor: BORDER }}>Clear</button>
-                    </div>
-                    <div className="max-h-48 overflow-y-auto space-y-1">
-                      {approvedAgents.map(a => (
-                        <label key={a.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-white/5">
-                          <input type="checkbox" checked={selected.has(a.id)} onChange={() => setSelected(p => { const n = new Set(p); n.has(a.id) ? n.delete(a.id) : n.add(a.id); return n; })} className="accent-blue-500" />
-                          <div>
-                            <p className="text-xs font-bold text-white">{a.name}</p>
-                            <p className="text-[10px] text-slate-500">{a.phone}</p>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -595,7 +554,6 @@ export default function SMSAdmin({ agents }: { agents: Agent[] }) {
                 <select value={schedAudience} onChange={e => setSchedAudience(e.target.value as "all" | "customers")}
                   className="w-full rounded-xl px-4 py-2.5 text-sm text-white border focus:outline-none focus:border-blue-500"
                   style={{ background: BG, borderColor: BORDER }}>
-                  <option value="all">All Agents ({approvedAgents.length})</option>
                   <option value="customers">All Customers</option>
                 </select>
               </div>

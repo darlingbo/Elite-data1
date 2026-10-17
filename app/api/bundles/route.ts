@@ -1,24 +1,10 @@
-import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles as defaultBundles, sizeLabel, Bundle } from "@/lib/bundles";
 import { publicCache } from "@/lib/public-cache";
 
 export const dynamic = "force-dynamic";
 
-function getAgentPrice(
-  bundle: { id: string; network: string; sizeGB: number },
-  agentMap: Map<string, number>
-): number | undefined {
-  if (agentMap.has(bundle.id)) return agentMap.get(bundle.id);
-  const netPrefix = bundle.network === "airteltigo" ? "at" : bundle.network;
-  const legacyId = `${netPrefix}-${bundle.sizeGB}gb`;
-  if (agentMap.has(legacyId)) return agentMap.get(legacyId);
-  return undefined;
-}
-
-export async function GET(request: NextRequest) {
-  const agentCode = request.nextUrl.searchParams.get("agent");
-
+export async function GET() {
   const { data: overrides, error } = await supabase
     .from("bundle_prices")
     .select("id, price, cost_price, active, size_label, size_gb, validity, network");
@@ -79,57 +65,13 @@ export async function GET(request: NextRequest) {
   }
 
   const netOrder: Record<string, number> = { mtn: 0, telecel: 1, airteltigo: 2 };
-  let allBundles = Array.from(bundleMap.values()).sort((a, b) => {
+  const allBundles = Array.from(bundleMap.values()).sort((a, b) => {
     const netDiff = (netOrder[a.network] ?? 9) - (netOrder[b.network] ?? 9);
     if (netDiff !== 0) return netDiff;
     return (a.sizeGB ?? 0) - (b.sizeGB ?? 0);
   });
 
-  // If agent code provided and agent is custom_price type, show their markup prices
-  if (agentCode) {
-    const { data: agent } = await supabase
-      .from("agents")
-      .select("id, agent_type, plan")
-      .eq("referral_code", agentCode.toUpperCase())
-      .eq("status", "approved")
-      .maybeSingle();
-
-    if (agent?.agent_type === "custom_price") {
-      // Get this agent's personal markup prices
-      const { data: agentPrices } = await supabase
-        .from("agent_bundle_prices")
-        .select("bundle_id, custom_price")
-        .eq("agent_id", agent.id)
-        .eq("active", true);
-      const agentMap = new Map((agentPrices ?? []).map((p: { bundle_id: string; custom_price: number }) => [p.bundle_id, Number(p.custom_price)]));
-
-      // Only show bundles the agent has explicitly priced — apply their price
-      allBundles = allBundles
-        .map((b) => {
-          const customPrice = getAgentPrice(b, agentMap);
-          return customPrice !== undefined ? { ...b, price: customPrice } : null;
-        })
-        .filter((b): b is Bundle => b !== null);
-    }
-
-    if (agent && (agent as { plan?: string }).plan === "pro") {
-      // Pro agent: show all admin bundles, but apply their custom price where set
-      const { data: agentPrices } = await supabase
-        .from("agent_bundle_prices")
-        .select("bundle_id, custom_price")
-        .eq("agent_id", agent.id)
-        .eq("active", true);
-      const agentMap = new Map((agentPrices ?? []).map((p: { bundle_id: string; custom_price: number }) => [p.bundle_id, Number(p.custom_price)]));
-
-      allBundles = allBundles.map((b) => {
-        const customPrice = getAgentPrice(b, agentMap);
-        return customPrice !== undefined ? { ...b, price: customPrice } : b;
-      });
-    }
-  }
-
   // Prices: short cache so an admin price change reaches customers within a minute.
-  // The CDN keys on the full URL, so each ?agent=CODE storefront is cached separately.
   // Don't cache a failed price lookup (we'd be serving fallback prices).
   return Response.json({ bundles: allBundles }, error ? undefined : { headers: publicCache(30) });
 }

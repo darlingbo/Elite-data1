@@ -1,76 +1,65 @@
 import { NextRequest } from "next/server";
-import { supabase } from "@/lib/supabase";
-import { inventorVerifyNumber } from "@/lib/inventor";
-import { yhangmhanyVerifyNumber, type VerifyStatus } from "@/lib/yhangmhany";
+import { rateLimitDb } from "@/lib/rate-limit";
+import { clientIp } from "@/lib/request-ip";
+import { normalizeGhPhone } from "@/lib/phone";
+import { inventorNumberStatus } from "@/lib/inventor";
 import { isNotOnListError } from "@/lib/sms";
-
-async function getSetting(key: string): Promise<string | null> {
-  try {
-    const { data } = await supabase.from("system_settings").select("value").eq("key", key).maybeSingle();
-    return data?.value ?? null;
-  } catch {
-    return null;
-  }
-}
-
-async function inventorStatus(phone: string): Promise<VerifyStatus> {
-  if (!process.env.INVENTOR_API_KEY || !process.env.INVENTOR_API_BASE_URL) return "unknown";
-  const { verified, error } = await inventorVerifyNumber(phone);
-  if (verified) return "verified";
-  return isNotOnListError(error ?? "") ? "not_verified" : "unknown";
-}
-
-const BLOCKED = {
-  verified: false,
-  error:
-    "This MTN number isn't registered to receive data yet, so we can't take payment for it. Please register the number as a data beneficiary with MTN, or use a different number.",
-};
+import {
+  checkNumber,
+  getNumberCheckSettings,
+  NOT_VERIFIED_MESSAGE,
+  UNREACHABLE_MESSAGE,
+} from "@/lib/number-check";
 
 /**
- * Checkout gate for MTN numbers. Called before the customer is sent to pay.
+ * Checkout number check. Called as soon as the customer finishes typing the
+ * data number, and again by the server right before a payment starts
+ * (see /api/yebeck/charge).
  *
- * Which list counts depends on the MTN provider mode (Admin -> Network
- * Providers):
- *   inventor   -> Inventor's beneficiary list
- *   yhangmhany -> Yhang Mhany's verify-number
- *   auto       -> verified on EITHER (blocked only if both say no)
+ * Order: the first provider chosen in Admin -> Number check, then the second
+ * only if the first does not have the number. A number on neither list is
+ * blocked. If neither provider answers, the admin's setting decides.
  *
- * A definite "not verified" BLOCKS checkout. Anything unclear (API error,
- * timeout, unexpected response) fails open, so a provider hiccup never
- * blocks a paying customer. Admin can still disable the whole check
- * (mtn_verification_enabled = "false"). `force: true` (trusted server-to-
- * server callers, e.g. Silent Echo) bypasses that toggle and always checks
- * Inventor's list, regardless of mode.
+ * Response (kept compatible with the old contract):
+ *   { verified: boolean, status, error?, verifyUrl?, skipped? }
+ *
+ * `force: true` is for trusted server-to-server callers (Silent Echo). It
+ * keeps its old meaning: ask Inventor only, ignore the admin switch, and let
+ * the number through when Inventor cannot be reached.
  */
 export async function POST(request: NextRequest) {
-  const { phone, force } = await request.json().catch(() => ({}));
-  if (!phone) return Response.json({ verified: false, error: "Phone number required." }, { status: 400 });
-  const number = String(phone).replace(/\s/g, "");
+  const ip = clientIp(request);
+  const body = await request.json().catch(() => ({})) as { phone?: unknown; force?: unknown; network?: unknown };
 
-  let mode = "inventor";
-  if (!force) {
-    const [verifyEnabled, setMode] = await Promise.all([
-      getSetting("mtn_verification_enabled"),
-      getSetting("mtn_provider"),
-    ]);
-    if (verifyEnabled === "false") return Response.json({ verified: true, skipped: true });
-    if (setMode === "yhangmhany" || setMode === "auto") mode = setMode;
+  // Browsers get 40 checks a minute each. Trusted server callers (Silent Echo) send many
+  // customers' numbers from one address, so they get their own, much larger allowance.
+  const trusted = body.force === true;
+  if (await rateLimitDb(trusted ? `number-check-server:${ip}` : `number-check:${ip}`, trusted ? 1200 : 40, 60_000)) {
+    return Response.json({ verified: false, status: "rate_limited", error: "Too many checks. Please wait a moment and try again." }, { status: 429 });
   }
 
-  if (mode === "yhangmhany") {
-    const status = await yhangmhanyVerifyNumber(number);
-    if (status === "not_verified") return Response.json(BLOCKED);
-    return Response.json(status === "verified" ? { verified: true } : { verified: true, skipped: true });
+  const number = String(body.phone ?? "").replace(/\s/g, "");
+  if (!number) return Response.json({ verified: false, status: "invalid", error: "Phone number required." }, { status: 400 });
+  if (!normalizeGhPhone(number)) return Response.json({ verified: false, status: "invalid", error: "Enter a valid 10-digit Ghana phone number." }, { status: 400 });
+
+  if (body.force === true) {
+    const status = await inventorNumberStatus(number, isNotOnListError);
+    if (status === "not_verified") {
+      return Response.json({ verified: false, status: "not_verified", error: NOT_VERIFIED_MESSAGE });
+    }
+    return Response.json(status === "verified" ? { verified: true, status: "verified" } : { verified: true, status: "skipped", skipped: true });
   }
 
-  if (mode === "auto") {
-    const [inv, ym] = await Promise.all([inventorStatus(number), yhangmhanyVerifyNumber(number)]);
-    if (inv === "verified" || ym === "verified") return Response.json({ verified: true });
-    if (inv === "not_verified" && ym === "not_verified") return Response.json(BLOCKED);
-    return Response.json({ verified: true, skipped: true }); // unclear — don't block
-  }
+  const outcome = await checkNumber(number, { network: typeof body.network === "string" ? body.network : "mtn", ip });
 
-  const inv = await inventorStatus(number);
-  if (inv === "not_verified") return Response.json(BLOCKED);
-  return Response.json(inv === "verified" ? { verified: true } : { verified: true, skipped: true });
+  if (outcome.status === "skipped") return Response.json({ verified: true, status: "skipped", skipped: true });
+  if (outcome.status === "verified") return Response.json({ verified: true, status: "verified" });
+
+  const settings = await getNumberCheckSettings();
+  if (outcome.status === "not_verified") {
+    return Response.json({ verified: false, status: "not_verified", error: NOT_VERIFIED_MESSAGE, verifyUrl: settings.verifyUrl || null });
+  }
+  // unreachable
+  if (outcome.allowed) return Response.json({ verified: true, status: "skipped", skipped: true });
+  return Response.json({ verified: false, status: "unreachable", error: UNREACHABLE_MESSAGE });
 }

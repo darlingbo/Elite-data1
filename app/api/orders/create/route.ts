@@ -5,7 +5,6 @@ import { bundles, sizeLabel, type Network } from "@/lib/bundles";
 import { sendAdminAlert, sendNewOrderAlert, fmtOrder, orderApprovalKeyboard } from "@/lib/telegram";
 import { maybeAutoApprove } from "@/lib/order-approval";
 import { getSurcharge, clearSurcharge } from "@/lib/surcharge";
-import { resolveAgentCommissionRate } from "@/lib/commission";
 import { percentageOf, roundCurrency, subtractCurrency, toMinorUnits } from "@/lib/finance";
 import { calculateExpectedOrderCharge, isSeverelyUnderpaid } from "@/lib/payment-validation";
 
@@ -240,9 +239,9 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { name, email, phone, bundleId, paystackRef, agentCode, applyReferralCredit, referralVia, fastDelivery, refundPhone, refundNetwork, promoCode, surcharge: clientSurcharge } = body;
+  const { name, email, phone, bundleId, paymentRef, applyReferralCredit, referralVia, fastDelivery, refundPhone, refundNetwork, promoCode, surcharge: clientSurcharge } = body;
 
-  if (!name || !email || !phone || !bundleId || !paystackRef) {
+  if (!name || !email || !phone || !bundleId || !paymentRef) {
     return Response.json({ error: "Missing required fields." }, { status: 400 });
   }
 
@@ -253,25 +252,14 @@ export async function POST(request: NextRequest) {
   }
   const { meta: bundleMeta, pricing, isMashup } = bundleInfo;
 
-  // ─── OPTIMISATION 3: run idempotency check + agent lookup + referral
-  //     credit lookup all at the same time instead of one-by-one ──────────
-  const [existingResult, agentResult, creditResult, commissionGlobalResult, promoResult] = await Promise.all([
-    // Idempotency — don't process the same Paystack ref twice
+  // Run the idempotency check, referral credit lookup and promo lookup at the same time.
+  const [existingResult, creditResult, promoResult] = await Promise.all([
+    // Idempotency — don't process the same payment ref twice
     supabase
       .from("orders")
       .select("reference, status")
-      .eq("reference", paystackRef)
+      .eq("reference", paymentRef)
       .maybeSingle(),
-
-    // Agent lookup (only if agentCode supplied, otherwise resolve to null)
-    agentCode
-      ? supabase
-          .from("agents")
-          .select("id, name, status, agent_type, plan, telegram_chat_id")
-          .eq("referral_code", agentCode.toUpperCase())
-          .eq("status", "approved")
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
 
     // Referral credit (only if requested)
     applyReferralCredit && phone
@@ -284,13 +272,6 @@ export async function POST(request: NextRequest) {
           .limit(1)
           .maybeSingle()
       : Promise.resolve({ data: null }),
-
-    // Global commission setting
-    supabase
-      .from("commission_settings")
-      .select("agent_pct")
-      .eq("id", "global")
-      .maybeSingle(),
 
     promoCode
       ? supabase
@@ -312,21 +293,6 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Resolve agent
-  let agentId: string | null = null;
-  let agentName: string | undefined;
-  let agentType: string = "commission";
-  let agentPlan: string = "free";
-  let agentTelegramChatId: string | null = null;
-  const agent = agentResult.data;
-  if (agent) {
-    agentId = agent.id;
-    agentName = agent.name;
-    agentType = (agent as { agent_type?: string }).agent_type ?? "commission";
-    agentPlan = (agent as { plan?: string }).plan ?? "free";
-    agentTelegramChatId = (agent as { telegram_chat_id?: string | null }).telegram_chat_id ?? null;
-  }
-
   // Referral credit
   let creditAmount = 0;
   let referralCreditId: string | null = null;
@@ -336,112 +302,24 @@ export async function POST(request: NextRequest) {
     referralCreditId = credit.id;
   }
 
-  // adminTierPrice = what the agent pays per sale (deducted from wallet for free plan, or used for profit calc)
-  // pro plan → custom_tier_prices (or admin price fallback); free plan custom_price → admin price × 0.96
-  let adminTierPrice = pricing.costPrice; // fallback
-  let customerSellingPrice = pricing.price;
-  if (agentId && agentType === "custom_price") {
-    const [tierResult, agentPriceResult, adminPriceResult] = await Promise.all([
-      agentPlan === "pro"
-        ? supabase.from("custom_tier_prices").select("price").eq("bundle_id", bundleId).maybeSingle()
-        : Promise.resolve({ data: null }),
-      supabase
-        .from("agent_bundle_prices")
-        .select("custom_price")
-        .eq("agent_id", agentId)
-        .eq("bundle_id", bundleId)
-        .eq("active", true)
-        .maybeSingle(),
-      supabase.from("bundle_prices").select("price, active").eq("id", bundleId).maybeSingle(),
-    ]);
+  const customerSellingPrice = pricing.price;
 
-    // Resolve admin selling price (what customer pays admin)
-    const adminSellingPrice = (adminPriceResult.data?.active !== false && adminPriceResult.data?.price != null)
-      ? Number(adminPriceResult.data.price)
-      : bundles.find(b => b.id === bundleId)?.price ?? pricing.price;
-    const customSellingPrice = Number(agentPriceResult.data?.custom_price);
-    customerSellingPrice = Number.isFinite(customSellingPrice) && customSellingPrice > 0
-      ? customSellingPrice
-      : adminSellingPrice;
-
-    if (agentPlan === "pro") {
-      // Pro plan: tier price if set, otherwise admin selling price
-      adminTierPrice = tierResult.data?.price ? Number(tierResult.data.price) : adminSellingPrice;
-    } else {
-      // Free plan: admin selling price minus 4%
-      adminTierPrice = percentageOf(adminSellingPrice, 0.96);
-    }
-
-  }
-
+  // Payment is Mobile Money through Yebeck only. The reference must belong to a
+  // payment attempt we created, and Yebeck (not the browser) says what was paid.
   let txnStatus: string | undefined;
   let txnAmount = 0;
-  let txnCurrency = "GHS";
-  let psData: Record<string, unknown> = {};
-  let isYebeck = /^(?:ybk|yebeck)-/i.test(String(paystackRef));
+  const txnCurrency = "GHS";
 
-  if (!isYebeck) {
-    // Check if it's stored as a Yebeck payment attempt first
-    const { getPaymentAttempt } = await import("@/lib/payment-attempt");
-    const existingAttempt = await getPaymentAttempt(String(paystackRef));
-    if (existingAttempt) isYebeck = true;
-  }
-
-  if (isYebeck) {
-    try {
-      const { verifyYebeckPayment } = await import("@/lib/payment-attempt");
-      const ybk = await verifyYebeckPayment(String(paystackRef));
-      txnStatus = ybk.status === "success" ? "success" : ybk.status;
-      txnAmount = ybk.attempt.amount_pesewas;
-      txnCurrency = "GHS";
-    } catch (err) {
-      return Response.json(
-        { error: `Could not verify Yebeck payment: ${err instanceof Error ? err.message : String(err)}` },
-        { status: 502 }
-      );
-    }
-  } else {
-    // Verify Paystack payment
-    if (!process.env.PAYSTACK_SECRET_KEY) {
-      return Response.json(
-        { error: "PAYSTACK_SECRET_KEY is not set in Vercel environment variables. Add it and redeploy." },
-        { status: 500 }
-      );
-    }
-
-    try {
-      const psCtrl = new AbortController();
-      const psTimer = setTimeout(() => psCtrl.abort(), 8_000);
-      const psRes = await fetch(
-        `https://api.paystack.co/transaction/verify/${encodeURIComponent(paystackRef)}`,
-        { headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }, signal: psCtrl.signal }
-      );
-      clearTimeout(psTimer);
-      psData = await psRes.json();
-    } catch (err) {
-      return Response.json(
-        { error: `Could not reach Paystack API: ${err instanceof Error ? err.message : String(err)}` },
-        { status: 502 }
-      );
-    }
-
-    txnStatus = (psData.data as Record<string, unknown>)?.status as string | undefined;
-    txnAmount = Number((psData.data as Record<string, unknown>)?.amount ?? 0);
-    txnCurrency = String((psData.data as Record<string, unknown>)?.currency ?? "").toUpperCase();
-
-    const txnMetadata = ((psData.data as Record<string, unknown>)?.metadata ?? {}) as Record<string, unknown>;
-    const txnFields = (txnMetadata.custom_fields ?? []) as Array<Record<string, unknown>>;
-    const txnField = (key: string) => String(txnFields.find(field => field.variable_name === key)?.value ?? "");
-    const paidPhone = txnField("phone").replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0");
-    const paidBundleId = txnField("bundle_id");
-    const requestedPhone = phone.replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0");
-
-    if (paidPhone && (paidPhone !== requestedPhone || paidBundleId !== String(bundleId))) {
-      await sendAdminAlert(
-        `PAYMENT METADATA MISMATCH\nRef: ${paystackRef}\nThe paid phone or bundle does not match the submitted order. No order was created.`,
-      ).catch(() => {});
-      return Response.json({ error: "The payment details do not match this order." }, { status: 409 });
-    }
+  try {
+    const { verifyYebeckPayment } = await import("@/lib/payment-attempt");
+    const ybk = await verifyYebeckPayment(String(paymentRef), "data_order");
+    txnStatus = ybk.status === "success" ? "success" : ybk.status;
+    txnAmount = ybk.attempt.amount_pesewas;
+  } catch (err) {
+    return Response.json(
+      { error: `Could not verify Yebeck payment: ${err instanceof Error ? err.message : String(err)}` },
+      { status: 502 }
+    );
   }
 
   // Hard floor: no bundle can ever cost less than GH₵1.00 — catches zero-priced DB entries
@@ -456,7 +334,7 @@ export async function POST(request: NextRequest) {
   const normalize = (p: string) => String(p).trim().replace(/\s/g, "").replace(/^\+233/, "0").replace(/^233/, "0");
 
   if (blocklist.some((b: string) => normalize(b) === normalize(normalizedPhone))) {
-    await sendAdminAlert(`🚫 BLOCKED ORDER ATTEMPT\nPhone: ${phone}\nBundle: ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\nRef: ${paystackRef}`).catch(() => {});
+    await sendAdminAlert(`🚫 BLOCKED ORDER ATTEMPT\nPhone: ${phone}\nBundle: ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\nRef: ${paymentRef}`).catch(() => {});
     return Response.json({ error: "👀 I SEE WHAT YOU ARE DOING" }, { status: 403 });
   }
 
@@ -499,8 +377,8 @@ export async function POST(request: NextRequest) {
     );
     // Save a FRAUD order so we have a record of it
     void supabase.from("orders").insert({
-      reference: paystackRef,
-      paystack_reference: paystackRef,
+      reference: paymentRef,
+      paystack_reference: paymentRef,
       customer_name: name,
       customer_email: email,
       phone,
@@ -514,10 +392,10 @@ export async function POST(request: NextRequest) {
       status: "FRAUD",
     });
     await sendAdminAlert(
-      `🕵️ <b>FRAUD TRAP TRIGGERED</b>\nPhone: <code>${phone}</code>\nName: ${name}\nPaid: GH₵${(txnAmount / 100).toFixed(2)} (expected GH₵${expectedCharge.toFixed(2)})\nBundle: ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\nRef: <code>${paystackRef}</code>\n✅ Auto-blocked. No data delivered.`
+      `🕵️ <b>FRAUD TRAP TRIGGERED</b>\nPhone: <code>${phone}</code>\nName: ${name}\nPaid: GH₵${(txnAmount / 100).toFixed(2)} (expected GH₵${expectedCharge.toFixed(2)})\nBundle: ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\nRef: <code>${paymentRef}</code>\n✅ Auto-blocked. No data delivered.`
     ).catch(() => {});
     // Return fake success — they think it worked
-    return Response.json({ success: true, reference: paystackRef, fraudTrap: true });
+    return Response.json({ success: true, reference: paymentRef, fraudTrap: true });
   }
 
   // Require the complete server-calculated checkout amount. Provider, not the
@@ -543,37 +421,18 @@ export async function POST(request: NextRequest) {
         { key: "phone_blocklist", value: JSON.stringify(updatedList), updated_at: new Date().toISOString() },
         { onConflict: "key" }
       );
-      await sendAdminAlert(`🚫 AUTO-BLOCKED: ${phone}\nPaid only GH₵${(txnAmount / 100).toFixed(2)} for ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\nRef: ${paystackRef}`).catch(() => {});
+      await sendAdminAlert(`🚫 AUTO-BLOCKED: ${phone}\nPaid only GH₵${(txnAmount / 100).toFixed(2)} for ${bundleMeta.network.toUpperCase()} ${bundleMeta.size}\nRef: ${paymentRef}`).catch(() => {});
       return Response.json({ error: "👀 I SEE WHAT YOU ARE DOING" }, { status: 403 });
     }
 
-    await sendAdminAlert(`PAYMENT VERIFY FAILED\nRef: ${paystackRef}\nReason: ${reason}`).catch(() => {});
+    await sendAdminAlert(`PAYMENT VERIFY FAILED\nRef: ${paymentRef}\nReason: ${reason}`).catch(() => {});
     return Response.json(
       { error: `Payment verification failed — ${reason}. Contact support on WhatsApp.` },
       { status: 400 }
     );
   }
 
-  // For free-plan price-mode agents: verify wallet has enough to cover cost before proceeding.
-  // Pro plan agents don't use a wallet — customer pays Paystack directly.
-  if (agentId && agentType === "custom_price" && agentPlan === "free") {
-    const { data: walletAgent } = await supabase
-      .from("agents")
-      .select("wallet_balance")
-      .eq("id", agentId)
-      .maybeSingle();
-    if (walletAgent && Number(walletAgent.wallet_balance) < adminTierPrice) {
-      await sendAdminAlert(
-        `⚠️ PRICE-MODE AGENT WALLET INSUFFICIENT\nRef: ${paystackRef}\nAgent: ${agentName ?? agentId}\nWallet: GH₵${Number(walletAgent.wallet_balance).toFixed(2)}\nAmount needed: GH₵${adminTierPrice.toFixed(2)}\n\nCustomer was charged but order NOT delivered. Manual refund required.`
-      ).catch(() => {});
-      return Response.json(
-        { error: "The agent's account does not have enough credit to fulfill this order. Please contact them. A refund will be issued." },
-        { status: 402 }
-      );
-    }
-  }
-
-  // Use Paystack as source of truth for the charged amount.
+  // Use the provider's figure as the source of truth for the charged amount.
   // Strip fast delivery fee before commission calc — it goes entirely to admin.
   const chargedAmount = roundCurrency(txnAmount / 100);
   const fastDeliveryFee = fastDelivery === true ? 0.50 : 0;
@@ -582,39 +441,18 @@ export async function POST(request: NextRequest) {
     (chargedForCommission + creditAmount) / (1 + PLATFORM_FEE_RATE)
   );
 
-  // Resolve commission split — global default then per-agent override
-  // If commission_settings table is missing or the global row is absent, fall back to 80%
-  // (silent fallback keeps orders flowing; admin should check the Commissions tab)
-  const storedPct = commissionGlobalResult.data?.agent_pct;
-  const agentSplitRate = agentId
-    ? await resolveAgentCommissionRate(agentId)
-    : (storedPct != null ? Number(storedPct) / 100 : 0.8);
-
-  let agentCommission: number;
-  let adminCommission: number;
-  if (!agentId) {
-    agentCommission = 0;
-    adminCommission = Math.max(0, subtractCurrency(effectivePriceFromPayment, pricing.costPrice));
-  } else if (agentType === "custom_price") {
-    // Both free and pro plan: agent profit = charged minus their buy price (adminTierPrice)
-    agentCommission = roundCurrency(Math.max(0, chargedForCommission - adminTierPrice));
-    adminCommission = roundCurrency(Math.max(0, adminTierPrice - pricing.costPrice) + fastDeliveryFee);
-  } else {
-    // commission type: old percentage split — do not change
-    const profit = Math.max(0, effectivePriceFromPayment - pricing.costPrice);
-    agentCommission = roundCurrency(profit * agentSplitRate);
-    // Fast delivery fee goes entirely to admin, not split with agent
-    adminCommission = roundCurrency(profit * (1 - agentSplitRate) + fastDeliveryFee);
-  }
+  // No agents: all of the profit is the shop's.
+  const agentCommission = 0;
+  const adminCommission = roundCurrency(Math.max(0, subtractCurrency(effectivePriceFromPayment, pricing.costPrice)) + fastDeliveryFee);
   const profit = roundCurrency(agentCommission + adminCommission);
 
   const cleanName = typeof name === "string" ? name.trim() : "";
   const effectiveCustomerName = (!cleanName || cleanName.toLowerCase() === "customer") ? phone : cleanName;
 
   const saved = await saveOrder({
-    reference: paystackRef,
-    paystack_reference: paystackRef,
-    payment_method: isYebeck ? "yebeck" : "paystack",
+    reference: paymentRef,
+    paystack_reference: paymentRef,
+    payment_method: "yebeck",
     customer_name: effectiveCustomerName,
     customer_email: email,
     phone,
@@ -625,7 +463,6 @@ export async function POST(request: NextRequest) {
     cost_price: pricing.costPrice,
     admin_commission: adminCommission,
     agent_commission: agentCommission,
-    agent_id: agentId,
     refund_phone: refundPhone ?? null,
     refund_network: refundNetwork ?? null,
     status: "pending_approval",
@@ -633,11 +470,11 @@ export async function POST(request: NextRequest) {
 
   // Warn silently when fallback save was used (order still saved but with partial data)
   if (saved.partial) {
-    sendAdminAlert(`⚠️ ORDER PARTIAL SAVE\nRef: ${paystackRef}\nPhone: ${phone}\nBundle: ${bundleId}\n${saved.partial}\n\nOrder saved with reduced fields — delivery continuing.`).catch(() => {});
+    sendAdminAlert(`⚠️ ORDER PARTIAL SAVE\nRef: ${paymentRef}\nPhone: ${phone}\nBundle: ${bundleId}\n${saved.partial}\n\nOrder saved with reduced fields — delivery continuing.`).catch(() => {});
   }
 
   if (saved.error) {
-    const dbErrMsg = `ORDER SAVE FAILED\nRef: ${paystackRef}\nPhone: ${phone}\nBundle: ${bundleId}\nError: ${saved.message}`;
+    const dbErrMsg = `ORDER SAVE FAILED\nRef: ${paymentRef}\nPhone: ${phone}\nBundle: ${bundleId}\nError: ${saved.message}`;
     await sendAdminAlert(dbErrMsg).catch(() => {});
     return Response.json(
       { error: `Order could not be saved: ${saved.message}. Screenshot this and contact support on WhatsApp.` },
@@ -647,8 +484,8 @@ export async function POST(request: NextRequest) {
 
   // Append every new order to the permanent refund log immediately
   appendToRefundLog({
-    id: paystackRef,
-    reference: paystackRef,
+    id: paymentRef,
+    reference: paymentRef,
     customer_name: name,
     customer_phone: phone,
     network: bundleMeta.network,
@@ -658,27 +495,25 @@ export async function POST(request: NextRequest) {
     refund_name: null,
   }).catch(() => {});
 
-  const sourceLabel = agentName
-    ? `Agent sale by ${agentName} (agent storefront/page)`
-    : "Guest / direct customer checkout";
+  const sourceLabel = "Guest / direct customer checkout";
   const orderText =
     (isMashup ? "🟡 <b>MASHUP — DELIVER MANUALLY AFTER APPROVING</b>\n" : "") +
     (fastDelivery ? "⚡ <b>FAST DELIVERY</b>\n" : "") +
     `🔔 <b>NEW ORDER — APPROVE TO DELIVER</b>\n\n` +
-    fmtOrder({ ref: paystackRef, network: bundleMeta.network, size: bundleMeta.size, phone, amount: chargedAmount, profit, agentName, sourceLabel });
+    fmtOrder({ ref: paymentRef, network: bundleMeta.network, size: bundleMeta.size, phone, amount: chargedAmount, profit, sourceLabel });
 
-  await sendNewOrderAlert(orderText, orderApprovalKeyboard(paystackRef)).catch(() => {});
+  await sendNewOrderAlert(orderText, orderApprovalKeyboard(paymentRef)).catch(() => {});
 
   // Mark referral credit as used — MUST be awaited so the same credit can't be reused
   if (referralCreditId) {
     const { error: creditErr } = await supabase
       .from("referral_credits")
-      .update({ used: true, used_at: new Date().toISOString(), used_on_reference: paystackRef })
+      .update({ used: true, used_at: new Date().toISOString(), used_on_reference: paymentRef })
       .eq("id", referralCreditId)
       .eq("used", false);
     if (creditErr) {
       sendAdminAlert(
-        `⚠️ REFERRAL CREDIT NOT MARKED USED\nRef: ${paystackRef}\nPhone: ${phone}\nCredit ID: ${referralCreditId}\nError: ${creditErr.message}\n\nGo to Supabase → referral_credits → set this ID to used=true manually.`
+        `⚠️ REFERRAL CREDIT NOT MARKED USED\nRef: ${paymentRef}\nPhone: ${phone}\nCredit ID: ${referralCreditId}\nError: ${creditErr.message}\n\nGo to Supabase → referral_credits → set this ID to used=true manually.`
       ).catch(() => {});
     }
   }
@@ -740,7 +575,7 @@ export async function POST(request: NextRequest) {
   }
 
   // All orders — including Mashup — are held for admin approval.
-  processLoyalty(phone, bundleMeta.network, paystackRef).catch(() => {});
-  const autoApproval = await maybeAutoApprove(paystackRef);
-  return Response.json({ success: true, reference: paystackRef, pendingApproval: !autoApproval.ok, autoApproved: autoApproval.ok });
+  processLoyalty(phone, bundleMeta.network, paymentRef).catch(() => {});
+  const autoApproval = await maybeAutoApprove(paymentRef);
+  return Response.json({ success: true, reference: paymentRef, pendingApproval: !autoApproval.ok, autoApproved: autoApproval.ok });
 }

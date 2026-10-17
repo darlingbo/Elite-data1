@@ -1,8 +1,12 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { percentageOf, roundCurrency } from "@/lib/finance";
+import { tooMany } from "@/lib/public-limit";
 
 export async function POST(req: NextRequest) {
+  const blocked = await tooMany(req, "validate-coupon", 20, 600000);
+  if (blocked) return blocked;
+
   const { code, amount } = await req.json() as { code: string; amount: number };
   if (!code?.trim()) return Response.json({ error: "No code entered" }, { status: 400 });
 

@@ -13,7 +13,7 @@ const runsProxy = (path: string) => matcher.test(path);
 
 describe("proxy matcher", () => {
   it("runs for pages", () => {
-    for (const p of ["/", "/buy", "/vouchers", "/track", "/order/ELT-123", "/store/ABC123", "/admin", "/admin/login", "/agent/dashboard", "/subadmin"]) {
+    for (const p of ["/", "/buy", "/vouchers", "/track", "/order/ELT-123", "/admin", "/admin/login"]) {
       expect(runsProxy(p), p).toBe(true);
     }
   });
@@ -22,7 +22,7 @@ describe("proxy matcher", () => {
     for (const p of [
       "/api/orders/create", "/api/orders/ELT-123", "/api/orders/by-phone", "/api/vouchers/create",
       "/api/admin/store-status", "/api/admin/orders/approve", "/api/yebeck/charge", "/api/yebeck/status",
-      "/api/webhooks/paystack", "/api/telegram/webhook", "/api/cron/backup", "/api/health", "/api/agents/dashboard",
+      "/api/yebeck/webhook", "/api/telegram/webhook", "/api/cron/backup", "/api/health",
     ]) {
       expect(runsProxy(p), p).toBe(true);
     }

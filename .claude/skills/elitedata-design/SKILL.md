@@ -104,7 +104,7 @@ Best value: replace with `border-emerald-400`.
 ### Primary button
 ```tsx
 <button className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl transition-colors text-sm">
-  Pay GH₵X.XX via Paystack
+  Pay GH₵X.XX with Mobile Money
 </button>
 ```
 

@@ -301,7 +301,7 @@ export function buildFinanceAnalytics(
       recordedAdminProfit: isCompleted(order) ? money(order.admin_commission) : 0,
       agentCommission: money(order.agent_commission),
       agent: order.agent_id ? agentNames.get(order.agent_id) ?? "Agent" : "Direct",
-      paymentMethod: order.payment_method || (order.reference.startsWith("AGTWALLET-") ? "agent_wallet" : "paystack"),
+      paymentMethod: order.payment_method || (order.reference.startsWith("AGTWALLET-") ? "agent_wallet" : "yebeck"),
       status: statusOf(order),
       date: order.created_at,
     }));

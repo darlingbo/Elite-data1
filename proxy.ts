@@ -29,13 +29,6 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  if (pathname.startsWith("/subadmin") && pathname !== "/subadmin/login") {
-    const session = request.cookies.get("sub_admin_session");
-    if (!session?.value) {
-      return NextResponse.redirect(new URL("/subadmin/login", request.url));
-    }
-  }
-
   // Generate a unique nonce for this request so modern browsers enforce
   // the nonce-based CSP and ignore the 'unsafe-inline' fallback
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
@@ -43,10 +36,10 @@ export async function proxy(request: NextRequest) {
   const csp = [
     "default-src 'self'",
     // 'unsafe-inline' is ignored by nonce-aware browsers; kept only for legacy fallback
-    `script-src 'self' 'nonce-${nonce}' 'unsafe-inline' https://js.paystack.co`,
+    `script-src 'self' 'nonce-${nonce}' 'unsafe-inline'`,
     "style-src 'self' 'unsafe-inline'",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.paystack.co https://api.yebeck.com",
-    "frame-src https://checkout.paystack.com",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.yebeck.com",
+    "frame-src 'none'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
     "object-src 'none'",
@@ -60,7 +53,7 @@ export async function proxy(request: NextRequest) {
   reqHeaders.set("x-pathname", pathname);
 
   // Admin "Close Store" switch: while closed, shopping pages show the closed
-  // screen (503 so search engines treat it as temporary). Admin, agent areas,
+  // screen (503 so search engines treat it as temporary). Admin,
   // order tracking, APIs and webhooks are untouched — see lib/store-closed.ts.
   if (isStoreGatedPath(pathname) && !(await getStoreStatus()).open) {
     reqHeaders.set("x-store-closed", "1");

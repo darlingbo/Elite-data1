@@ -153,7 +153,7 @@ console.log("Balance:", bal.balance, "GHS");
 // 2. List bundles (shows api_price — what gets deducted from your wallet)
 const { bundles } = await fetch(\`\${BASE}/api/v1/bundles\`, { headers: HEADS }).then(r => r.json());
 
-// 3. Purchase (no Paystack needed — wallet is deducted automatically)
+// 3. Purchase (wallet is deducted automatically)
 const order = await fetch(\`\${BASE}/api/v1/purchase\`, {
   method: "POST", headers: HEADS,
   body: JSON.stringify({
@@ -177,7 +177,7 @@ const status = await fetch(\`\${BASE}/api/v1/orders/\${order.reference}\`, { hea
       <div>
         <h2 style={{ color: "#f1f5f9", fontWeight: 900, fontSize: 22, margin: 0 }}>Developer API</h2>
         <p style={{ color: "#64748b", fontSize: 14, marginTop: 4 }}>
-          Wallet-based API — developers top up, then buy data bundles without Paystack.
+          Wallet-based API — developers top up through you, then buy data bundles from their wallet.
         </p>
       </div>
 

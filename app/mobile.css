@@ -462,7 +462,7 @@ button, a, input, select, textarea {
   }
 
   body.public-site a[aria-label="Chat on WhatsApp"] {
-    bottom: calc(148px + env(safe-area-inset-bottom)) !important;
-    right: 10px !important;
+    bottom: calc(80px + env(safe-area-inset-bottom)) !important;
+    right: 16px !important;
   }
 }

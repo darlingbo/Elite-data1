@@ -1,51 +1,45 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
+import { verifyAdminSessionValue } from "@/lib/adminAuth";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Anyone (uptime monitors included) gets a plain healthy or degraded answer.
+ * The setup details (which keys are present, database errors) are for a signed-in
+ * admin only. No part of any key is ever returned.
+ */
 export async function GET() {
-  const serviceKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SERVICE_KEY ||
-    "";
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-
   let dbOk = false;
   let dbError: string | null = null;
   let bundleCount = 0;
 
   try {
-    const { data, error } = await supabase
-      .from("bundle_prices")
-      .select("id, price, network, active")
-      .limit(10);
-    if (error) {
-      dbError = `${error.code || ""} ${error.message}`;
-    } else {
-      dbOk = true;
-      bundleCount = data?.length ?? 0;
-    }
+    const { data, error } = await supabase.from("bundle_prices").select("id").limit(10);
+    if (error) dbError = `${error.code || ""} ${error.message}`.trim();
+    else { dbOk = true; bundleCount = data?.length ?? 0; }
   } catch (err: unknown) {
     dbError = err instanceof Error ? err.message : String(err);
   }
 
+  const status = dbOk ? "healthy" : "degraded";
+  const store = await cookies();
+  const isAdmin = await verifyAdminSessionValue(store.get("admin_session")?.value);
+  if (!isAdmin) return NextResponse.json({ status }, { status: dbOk ? 200 : 503 });
+
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || "";
   return NextResponse.json({
-    status: dbOk ? "healthy" : "degraded",
-    database: {
-      connected: dbOk,
-      error: dbError,
-      bundleSampleCount: bundleCount,
-    },
+    status,
+    database: { connected: dbOk, error: dbError, bundleSampleCount: bundleCount },
     env: {
-      supabaseUrlConfigured: Boolean(url),
-      supabaseOrigin: url ? new URL(url).origin : "(none)",
+      supabaseUrlConfigured: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
       serviceKeyConfigured: Boolean(serviceKey),
-      serviceKeyPrefix: serviceKey ? `${serviceKey.slice(0, 7)}...` : "(none)",
-      serviceKeySuffix: serviceKey ? `...${serviceKey.slice(-4)}` : "(none)",
-      serviceKeyLength: serviceKey.length,
-      anonKeyConfigured: Boolean(anonKey),
+      anonKeyConfigured: Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
       adminPasswordConfigured: Boolean(process.env.ADMIN_PASSWORD),
+      inventorKeyConfigured: Boolean(process.env.INVENTOR_API_KEY),
+      yhangMhanyKeyConfigured: Boolean(process.env.YHANGMHANY_API_KEY),
+      yebeckKeyConfigured: Boolean(process.env.YEBECK_API_KEY),
     },
   });
 }

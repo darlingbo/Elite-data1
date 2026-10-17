@@ -82,12 +82,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .site-shell :is(button, a) { transition-duration: 180ms; }
 .site-shell ::selection { color: #111827; background: var(--elite-yellow); }
 
+/* "to" must be transform: none. A leftover translateY(0) makes the page wrapper the
+   containing block for position: fixed children, which pushes fixed bars off screen. */
 @keyframes elite-rise {
   from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; transform: none; }
 }
 
 .site-shell main > * { animation: elite-rise 420ms ease-out both; }
+.site-shell main > .ed-page, .site-shell main > .ed-paper { animation: none; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

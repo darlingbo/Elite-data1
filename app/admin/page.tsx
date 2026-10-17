@@ -1,69 +1,59 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { Tab, OrderStatus, StatsData, Order } from "./_components/shared/types";
 import { BG, BORDER } from "./_components/shared/constants";
 import { Spinner } from "./_components/shared/Spinner";
 import { Ic } from "./_components/shared/Icons";
+import Icon from "@/components/ed/Icon";
 import { Sidebar } from "./_components/Sidebar";
 import { ChangePasswordModal } from "./_components/ChangePasswordModal";
 import { CompensateView } from "./_components/CompensateView";
 import { SettingsView } from "./_components/SettingsView";
-import { AgentsView } from "./_components/AgentsView";
-import { LeaderboardView } from "./_components/LeaderboardView";
 import { OrdersView } from "./_components/OrdersView";
 import { Dashboard } from "./_components/OverviewDashboard";
 
 const PricesView         = dynamic(() => import("./_components/PricesView"),          { loading: () => <Spinner /> });
-const AgentPricesAdmin   = dynamic(() => import("./_components/AgentPricesAdmin"),    { loading: () => <Spinner /> });
 const PnLView            = dynamic(() => import("./_components/PnLView"),             { loading: () => <Spinner /> });
 const ApiKeysAdmin       = dynamic(() => import("./_components/ApiKeysAdmin"),        { loading: () => <Spinner /> });
 const AnnouncementsAdmin = dynamic(() => import("./_components/AnnouncementsAdmin"),  { loading: () => <Spinner /> });
 const PromoBannerAdmin   = dynamic(() => import("./_components/PromoBannerAdmin"),    { loading: () => <Spinner /> });
-const ManualOrdersAdmin  = dynamic(() => import("./_components/ManualOrdersAdmin"),   { loading: () => <Spinner /> });
-const CommissionAdmin    = dynamic(() => import("./_components/CommissionAdmin"),      { loading: () => <Spinner /> });
-const AgentWalletsAdmin  = dynamic(() => import("./_components/AgentWalletsAdmin"),   { loading: () => <Spinner /> });
 const SMSAdmin           = dynamic(() => import("./_components/SMSAdmin"),            { loading: () => <Spinner /> });
 const CustomersAdmin     = dynamic(() => import("./_components/CustomersAdmin"),      { loading: () => <Spinner /> });
 const MashupBundlesAdmin = dynamic(() => import("./_components/MashupBundlesAdmin"),  { loading: () => <Spinner /> });
 const NetworkProvidersAdmin = dynamic(() => import("./_components/NetworkProvidersAdmin"), { loading: () => <Spinner /> });
 const CouponsAdmin       = dynamic(() => import("./_components/CouponsAdmin"),        { loading: () => <Spinner /> });
-const WithdrawalsAdmin   = dynamic(() => import("./_components/WithdrawalsAdmin"),    { loading: () => <Spinner /> });
 const AnalyticsAdmin     = dynamic(() => import("./_components/AnalyticsAdmin"),      { loading: () => <Spinner /> });
-const PaystackSplitAdmin = dynamic(() => import("./_components/PaystackSplitAdmin"),  { loading: () => <Spinner /> });
 const RefundNumbers      = dynamic(() => import("./_components/RefundNumbers"),       { loading: () => <Spinner /> });
 const OperationsCenter   = dynamic(() => import("./_components/OperationsCenter"),   { loading: () => <Spinner /> });
 const FinancialReconciliation = dynamic(() => import("./_components/FinancialReconciliation"), { loading: () => <Spinner /> });
 const AiHubView          = dynamic(() => import("./_components/AiHubView"),           { loading: () => <Spinner /> });
 const ResultCheckerAdmin = dynamic(() => import("./_components/ResultCheckerAdmin"), { loading: () => <Spinner /> });
-const MtnVerificationAdmin = dynamic(() => import("./_components/MtnVerificationAdmin"), { loading: () => <Spinner /> });
+const NumberCheckAdmin   = dynamic(() => import("./_components/NumberCheckAdmin"),   { loading: () => <Spinner /> });
 
 const tabToOrderFilter: Record<string, OrderStatus> = {
   "all-orders": "ALL", "pending-orders": "PENDING", "processing": "PROCESSING",
   "completed": "COMPLETED", "failed-orders": "FAILED", "approval-queue": "PENDING_APPROVAL",
 };
 const isOrderTab = (t: Tab) => t in tabToOrderFilter;
-const isAgentTab = (t: Tab) => t === "all-agents" || t === "agent-applications";
 
 const pageTitle: Record<Tab, string> = {
-  "overview": "Dashboard", "all-orders": "All Orders", "approval-queue": "Approval Queue",
+  "overview": "Today", "all-orders": "All Orders", "approval-queue": "Approval Queue",
   "pending-orders": "Pending Orders", "processing": "Processing", "completed": "Completed",
-  "failed-orders": "Failed Orders", "data-bundles": "Data Bundles", "bundle-prices": "Agent Prices",
-  "all-agents": "All Agents", "agent-applications": "Agent Applications", "agent-wallets": "Agent Wallets",
-  "leaderboard": "Referrals & Leaderboard", "referrals": "Referrals & Leaderboard",
-  "transactions": "Finance Analytics", "commissions": "Commissions", "manual": "Manual Orders",
+  "failed-orders": "Failed Orders", "data-bundles": "Data Bundles",
+  "transactions": "Finance Analytics",
   "refund-numbers": "Refunds", "compensate": "Compensate",
   "announcements": "Notifications", "notifications": "Notifications", "promo": "Promo Banner",
   "sms": "SMS Messaging", "apikeys": "API Keys", "settings": "Settings",
   "customers": "Customers", "mashup-bundles": "Mashup Bundles", "network-providers": "Network Providers",
-  "coupons": "Coupons", "withdrawals": "Withdrawal Requests", "agent-ranks": "Agent Ranks",
-  "analytics": "Analytics", "developer-api": "Developer API", "paystack-split": "Paystack Split Payments",
+  "coupons": "Coupons",
+  "analytics": "Analytics", "developer-api": "Developer API",
   "operations": "Operations & Audit",
   "reconciliation": "Financial Reconciliation",
   "ai-hub": "AI Assistant",
   "result-checker": "Result Checker Requests",
-  "mtn-verification": "MTN Verification",
+  "mtn-verification": "Number check",
 };
 
 const pageSubtitle: Partial<Record<Tab, string>> = {
@@ -74,11 +64,8 @@ const pageSubtitle: Partial<Record<Tab, string>> = {
   reconciliation: "Compare payments, delivery, refunds, commission, cost, and profit",
   "ai-hub": "Ask questions, analyze the business, and create content safely",
   "result-checker": "Check paid BECE and WASSCE results and send them to customers on WhatsApp",
-  "mtn-verification": "See which MTN numbers are registered as beneficiaries, so their data delivers instantly",
-  transactions: "Server-validated revenue, profit, customers, agents, and transaction intelligence",
-  commissions: "Manage private commission rules safely",
-  withdrawals: "Review and approve agent payout requests",
-  "agent-wallets": "Adjust balances with a complete transaction record",
+  "mtn-verification": "Checks the receiving number before payment. A number on neither list cannot pay",
+  transactions: "Server-validated revenue, profit, customers, and transaction intelligence",
 };
 
 export default function AdminDashboard() {
@@ -90,8 +77,18 @@ export default function AdminDashboard() {
   const [animated, setAnimated] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showChangePw, setShowChangePw] = useState(false);
+  // A phone number or reference typed into the menu search opens the order list filtered by it.
+  const [orderSearch, setOrderSearch] = useState<{ q: string; key: number } | null>(null);
+  const [soundOn, setSoundOn] = useState(true);
+  const lastApprovalCount = useRef<number | null>(null);
 
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
+
+  function goTo(t: Tab, search?: string) {
+    setTab(t);
+    setOrderSearch(search ? { q: search, key: Date.now() } : null);
+  }
+  function findOrder(q: string) { goTo("all-orders", q); }
 
   const fetchStats = useCallback(async () => {
     setLoadingStats(true);
@@ -128,6 +125,43 @@ export default function AdminDashboard() {
     return () => clearInterval(id);
   }, [fetchStats]);
 
+  // New order alert: a short beep and a buzz when more orders are waiting than before.
+  useEffect(() => {
+    const t = setTimeout(() => { try { setSoundOn(localStorage.getItem("ed_admin_sound") !== "off"); } catch { /* private mode */ } }, 0);
+    return () => clearTimeout(t);
+  }, []);
+  const waitingNow = stats?.orders.pendingApproval ?? null;
+  useEffect(() => {
+    if (waitingNow === null) return;
+    const before = lastApprovalCount.current;
+    lastApprovalCount.current = waitingNow;
+    document.title = waitingNow > 0 ? `(${waitingNow}) Elite Data admin` : "Elite Data admin";
+    if (before === null || waitingNow <= before || !soundOn) return;
+    try { navigator.vibrate?.([180, 90, 180]); } catch { /* not supported */ }
+    try {
+      const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const tone = (freq: number, at: number) => {
+        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+        osc.type = "sine"; osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime + at);
+        gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + at + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.28);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + at); osc.stop(ctx.currentTime + at + 0.3);
+      };
+      tone(880, 0); tone(1175, 0.18);
+      setTimeout(() => void ctx.close(), 900);
+    } catch { /* the browser blocked sound until the page is tapped */ }
+  }, [waitingNow, soundOn]);
+
+  function toggleSound() {
+    const next = !soundOn;
+    setSoundOn(next);
+    try { localStorage.setItem("ed_admin_sound", next ? "on" : "off"); } catch { /* private mode */ }
+  }
+
   useEffect(() => {
     if (tab !== "approval-queue") return;
     void fetchPendingApproval();
@@ -161,10 +195,10 @@ export default function AdminDashboard() {
       <Sidebar
         tab={tab} setTab={setTab}
         pendingOrders={stats?.orders.pending ?? 0}
-        pendingAgents={stats?.agents.pending ?? 0}
         pendingApproval={stats?.orders.pendingApproval ?? 0}
         onLogout={handleLogout}
         onChangePassword={() => setShowChangePw(true)}
+        onFindOrder={findOrder}
         mobileOpen={mobileSidebarOpen}
         onMobileClose={() => setMobileSidebarOpen(false)}
       />
@@ -185,9 +219,10 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button type="button" aria-label={soundOn ? "Turn the new order sound off" : "Turn the new order sound on"} aria-pressed={soundOn} onClick={toggleSound} className="p-2.5 rounded-xl border text-xs font-bold transition-colors" style={{ borderColor: BORDER, color: soundOn ? "#fbbf24" : "#64748b" }}>{soundOn ? "Sound on" : "Sound off"}</button>
             <div className="relative">
               <button aria-label="Open operations alerts" onClick={() => setTab("operations")} className="p-2.5 rounded-xl border text-slate-400 hover:text-white hover:bg-white/10 transition-colors" style={{ borderColor: BORDER }}><Ic.bell /></button>
-              {((stats?.agents.pending ?? 0) + (stats?.orders.pendingApproval ?? 0)) > 0 && <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 flex items-center justify-center bg-amber-400 text-[9px] font-black text-slate-950 rounded-full ring-2 ring-[#070b14]">{(stats?.agents.pending ?? 0) + (stats?.orders.pendingApproval ?? 0)}</span>}
+              {(stats?.orders.pendingApproval ?? 0) > 0 && <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 flex items-center justify-center bg-amber-400 text-[9px] font-black text-slate-950 rounded-full ring-2 ring-[#070b14]">{stats?.orders.pendingApproval ?? 0}</span>}
             </div>
             <div className="hidden sm:flex items-center gap-2.5 border rounded-xl px-3 py-1.5" style={{ background: "rgba(15,23,42,0.7)", borderColor: BORDER }}>
               <div className="w-7 h-7 rounded-lg flex items-center justify-center font-black text-white text-xs" style={{ background: "linear-gradient(145deg,#2563eb,#0ea5e9)" }}>A</div>
@@ -199,9 +234,8 @@ export default function AdminDashboard() {
           </div>
         </header>
 
-        <div className="admin-page-heading px-4 sm:px-6 py-5 sm:py-6 border-b flex items-center justify-between gap-4" style={{ borderColor: BORDER }}>
+        <div hidden={tab === "overview"} className="admin-page-heading px-4 sm:px-6 py-5 sm:py-6 border-b flex items-center justify-between gap-4" style={{ borderColor: BORDER }}>
           <div>
-            <p className="mb-1 text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Elite Data Admin</p>
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white leading-none">{pageTitle[tab] ?? "Dashboard"}</h1>
             <p className="text-xs sm:text-sm mt-2" style={{ color: "#738099" }}>{pageSubtitle[tab] ?? "Manage your Elite Data business"}</p>
           </div>
@@ -213,7 +247,7 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        {stats && stats.orders.pendingApproval > 0 && tab !== "approval-queue" && (
+        {stats && stats.orders.pendingApproval > 0 && tab !== "approval-queue" && tab !== "overview" && (
           <button onClick={() => setTab("approval-queue")} className="w-full flex items-center gap-3 px-4 sm:px-6 py-2.5 text-left transition-opacity hover:opacity-90" style={{ background: "rgba(245,158,11,0.12)", borderBottom: "1px solid rgba(245,158,11,0.3)" }}>
             <span className="w-2 h-2 rounded-full flex-shrink-0 animate-pulse" style={{ background: "#f59e0b" }} />
             <span className="text-sm font-bold" style={{ color: "#fbbf24" }}>
@@ -237,31 +271,23 @@ export default function AdminDashboard() {
             </div>
           ) : stats ? (
             <>
-              {tab === "overview"          && <Dashboard stats={stats} animated={animated} onNavigate={setTab} />}
-              {isOrderTab(tab)             && <OrdersView key={tab} orders={tab === "approval-queue" ? pendingOrders : stats.orders.all} onRefresh={tab === "approval-queue" ? fetchPendingApproval : fetchStats} defaultFilter={tabToOrderFilter[tab]} />}
+              {tab === "overview"          && <Dashboard stats={stats} animated={animated} onNavigate={goTo} />}
+              {isOrderTab(tab)             && <OrdersView key={`${tab}-${orderSearch?.key ?? 0}`} initialSearch={orderSearch?.q ?? ""} orders={tab === "approval-queue" ? pendingOrders : stats.orders.all} onRefresh={tab === "approval-queue" ? fetchPendingApproval : fetchStats} defaultFilter={tabToOrderFilter[tab]} />}
               {tab === "data-bundles"      && <PricesView />}
-              {tab === "bundle-prices"     && <AgentPricesAdmin allAgents={stats.agents.all} />}
-              {isAgentTab(tab)             && <AgentsView key={tab === "agent-applications" ? "pending" : "approved"} stats={stats} onRefresh={fetchStats} defaultTab={tab === "agent-applications" ? "pending" : "approved"} />}
-              {tab === "agent-wallets"     && <AgentWalletsAdmin />}
-              {(tab === "leaderboard" || tab === "referrals" || tab === "agent-ranks") && <LeaderboardView stats={stats} />}
               {tab === "transactions"      && <PnLView />}
-              {tab === "commissions"       && <CommissionAdmin />}
-              {tab === "manual"            && <ManualOrdersAdmin />}
               {tab === "refund-numbers"    && <RefundNumbers />}
-              {tab === "mtn-verification"  && <MtnVerificationAdmin />}
+              {tab === "mtn-verification"  && <NumberCheckAdmin />}
               {tab === "compensate"        && <CompensateView />}
               {(tab === "announcements" || tab === "notifications") && <AnnouncementsAdmin />}
               {tab === "promo"             && <PromoBannerAdmin />}
-              {tab === "sms"               && <SMSAdmin agents={stats.agents.all} />}
+              {tab === "sms"               && <SMSAdmin />}
               {(tab === "apikeys" || tab === "developer-api") && <ApiKeysAdmin />}
               {tab === "settings"          && <SettingsView onChangePassword={() => setShowChangePw(true)} />}
               {tab === "customers"         && <CustomersAdmin />}
               {tab === "mashup-bundles"    && <MashupBundlesAdmin />}
               {tab === "network-providers" && <NetworkProvidersAdmin />}
               {tab === "coupons"           && <CouponsAdmin />}
-              {tab === "withdrawals"       && <WithdrawalsAdmin />}
               {tab === "analytics"         && <AnalyticsAdmin orders={stats.orders.all as never} />}
-              {tab === "paystack-split"    && <PaystackSplitAdmin />}
               {tab === "operations"        && <OperationsCenter />}
               {tab === "reconciliation"    && <FinancialReconciliation />}
               {tab === "ai-hub"            && <AiHubView />}
@@ -271,40 +297,19 @@ export default function AdminDashboard() {
         </main>
       </div>
 
-      <nav className="admin-mobile-nav md:hidden" style={{ position: "fixed", bottom: 14, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 50, pointerEvents: "none" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 10px", borderRadius: 999, background: "rgba(6,12,28,0.97)", boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.07)", backdropFilter: "blur(24px)", pointerEvents: "all" }}>
-          {([
-            { id: "overview" as Tab,     label: "Home",    badge: 0,                          svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> },
-            { id: "all-orders" as Tab,   label: "Orders",  badge: stats?.orders.pending ?? 0, svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg> },
-            { id: "all-agents" as Tab,   label: "Agents",  badge: stats?.agents.pending ?? 0, svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg> },
-            { id: "transactions" as Tab, label: "Finance", badge: 0,                          svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg> },
-            { id: "__more__" as Tab,     label: "More",    badge: 0,                          svg: <svg width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg> },
-          ] as { id: Tab; label: string; svg: React.ReactNode; badge: number }[]).map(item => {
-            const isMore = item.id === ("__more__" as Tab);
-            const active = !isMore && tab === item.id;
-            return (
-              <button key={item.id}
-                onClick={() => isMore ? setMobileSidebarOpen(true) : setTab(item.id)}
-                style={{
-                  position: "relative", display: "flex", alignItems: "center", gap: 7,
-                  height: 44, padding: active ? "0 14px 0 6px" : "0 6px",
-                  borderRadius: 999, background: active ? "rgba(59,130,246,0.18)" : "transparent",
-                  boxShadow: active ? "0 0 18px rgba(59,130,246,0.25)" : "none",
-                  border: "none", cursor: "pointer", overflow: "hidden", flexShrink: 0,
-                  color: active ? "#fff" : "#4b5563",
-                  transition: "background .35s ease, box-shadow .35s ease, padding .4s cubic-bezier(.22,1,.36,1)",
-                }}>
-                <span style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: active ? "rgba(255,255,255,0.18)" : "transparent", transition: "background .3s ease" }}>
-                  {item.svg}
-                </span>
-                <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", maxWidth: active ? 72 : 0, opacity: active ? 1 : 0, overflow: "hidden", transform: active ? "translateX(0)" : "translateX(-6px)", transition: "max-width .45s cubic-bezier(.22,1,.36,1), opacity .25s ease, transform .35s ease" }}>
-                  {item.label}
-                </span>
-                {item.badge > 0 && <span style={{ position: "absolute", top: 4, right: active ? 8 : 2, minWidth: 16, height: 16, borderRadius: 999, background: "#f97316", color: "#fff", fontSize: 9, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>{item.badge}</span>}
-              </button>
-            );
-          })}
-        </div>
+      <nav className="ad-bn md:hidden" aria-label="Admin navigation">
+        {([
+          { id: "overview" as Tab, label: "Today", icon: "grid" as const, badge: 0 },
+          { id: "approval-queue" as Tab, label: "Approvals", icon: "check" as const, badge: stats?.orders.pendingApproval ?? 0 },
+          { id: "all-orders" as Tab, label: "Orders", icon: "list" as const, badge: 0 },
+          { id: "transactions" as Tab, label: "Money", icon: "money" as const, badge: 0 },
+        ]).map(item => (
+          <button key={item.id} type="button" onClick={() => goTo(item.id)} className={tab === item.id ? "on" : ""} aria-current={tab === item.id ? "page" : undefined}>
+            <span style={{ position: "relative", display: "inline-flex" }}><Icon name={item.icon} />{item.badge > 0 && <em>{item.badge}</em>}</span>
+            <span>{item.label}</span>
+          </button>
+        ))}
+        <button type="button" onClick={() => setMobileSidebarOpen(true)} aria-label="Open the full menu"><Icon name="menu" /><span>Menu</span></button>
       </nav>
 
       <style>{`

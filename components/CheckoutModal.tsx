@@ -1,26 +1,34 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import { Bundle, networkConfig } from "@/lib/bundles";
 import { normalizeGhPhone, detectGhProvider } from "@/lib/phone";
 import { ALTERNATE_STORE_LABEL, ALTERNATE_STORE_URL, DEFAULT_CLOSED_MESSAGE } from "@/lib/store-closed";
+import { MOMO_NETWORKS, type MomoNetwork } from "@/lib/ed-networks";
+import { spacedPhone } from "@/lib/client/order-draft";
+import Icon from "@/components/ed/Icon";
+
+/**
+ * The Pay step.
+ *
+ * Mobile Money is the only way to pay. The customer chooses their own Mobile Money
+ * network and types their own Mobile Money number. Nothing is filled in for them:
+ * the person paying is often not the person receiving the data.
+ */
 
 interface Props {
   bundle: Bundle;
-  agentCode?: string;
+  /** The number the data goes to, already checked on the number step. */
+  recipient: string;
+  /** True when the number step accepted `recipient`. */
+  verified: boolean;
   referralVia?: string;
+  /** Where "Change" on the data number goes. */
+  changeNumberHref: string;
   onClose: () => void;
-  displayMode?: "modal" | "page";
-}
-
-declare global {
-  interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    PaystackPop: any;
-  }
 }
 
 const PLATFORM_FEE_RATE = 0.02;
-const FAST_DELIVERY_FEE = 0.50;
 
 type LoyaltyData = {
   count: number;
@@ -29,55 +37,12 @@ type LoyaltyData = {
   rewardEarned: boolean;
 };
 
-type SuccessState = {
-  reference: string;
-  loyalty?: LoyaltyData;
-};
+type SuccessState = { reference: string; loyalty?: LoyaltyData };
+type FailedState = { reference: string; network: string; bundleSize: string };
+type PendingApprovalState = { reference: string };
+type NumberBlock = { message: string; verifyUrl: string | null };
 
-type FailedState = {
-  reference: string;
-  network: string;
-  bundleSize: string;
-};
-
-type PendingApprovalState = {
-  reference: string;
-};
-
-type PaymentMethod = "mobile_money" | "card" | "bank";
-type CheckoutStep = "details" | "confirm" | "method";
-
-const PAYMENT_METHODS: Array<{
-  id: PaymentMethod;
-  label: string;
-  description: string;
-  icon: string;
-  channels: string[];
-}> = [
-  {
-    id: "mobile_money",
-    label: "Mobile Money",
-    description: "MTN MoMo, Telecel Cash or AT Money",
-    icon: "📱",
-    channels: ["mobile_money"],
-  },
-  {
-    id: "card",
-    label: "Debit or Credit Card",
-    description: "Visa or Mastercard",
-    icon: "💳",
-    channels: ["card"],
-  },
-  {
-    id: "bank",
-    label: "Bank Payment",
-    description: "Pay from a supported bank account",
-    icon: "🏦",
-    channels: ["bank", "bank_transfer"],
-  },
-];
-
-// ── Beneficiary list (localStorage) ─────────────────────────────────────────
+// ── Saved numbers (this phone only) ─────────────────────────────────────────
 type Beneficiary = { label: string; phone: string };
 const BEN_KEY = "elite_beneficiaries";
 
@@ -93,49 +58,14 @@ function useBeneficiaries() {
 
   function save(phone: string, label: string) {
     const cleaned = phone.replace(/\s/g, "");
-    setList(prev => {
-      const next = [{ label: label.trim() || cleaned, phone: cleaned }, ...prev.filter(b => b.phone !== cleaned)].slice(0, 10);
+    setList((prev) => {
+      const next = [{ label: label.trim() || cleaned, phone: cleaned }, ...prev.filter((b) => b.phone !== cleaned)].slice(0, 10);
       try { localStorage.setItem(BEN_KEY, JSON.stringify(next)); } catch { /* ignore */ }
       return next;
     });
   }
 
-  function remove(phone: string) {
-    setList(prev => {
-      const next = prev.filter(b => b.phone !== phone);
-      try { localStorage.setItem(BEN_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }
-
-  return { list, save, remove };
-}
-
-function usePaystackReady() {
-  // Lazy init: if Paystack script was already loaded (e.g. cached), start as ready
-  const [ready, setReady] = useState(() =>
-    typeof window !== "undefined" && !!window.PaystackPop
-  );
-
-  useEffect(() => {
-    if (ready) return; // Already ready — nothing to do
-
-    const existing = document.querySelector('script[src*="paystack"]');
-    if (!existing) {
-      const script = document.createElement("script");
-      script.src = "https://js.paystack.co/v1/inline.js";
-      script.async = true;
-      script.onload = () => setReady(true);
-      document.body.appendChild(script);
-    } else {
-      const check = setInterval(() => {
-        if (window.PaystackPop) { setReady(true); clearInterval(check); }
-      }, 100);
-      return () => clearInterval(check);
-    }
-  }, [ready]);
-
-  return ready;
+  return { list, save };
 }
 
 function timeLeft(isoString: string): string {
@@ -150,51 +80,49 @@ function copyToClipboard(text: string, onDone: () => void) {
   navigator.clipboard?.writeText(text).then(onDone).catch(onDone);
 }
 
-export default function CheckoutModal({ bundle, agentCode, referralVia, onClose, displayMode = "modal" }: Props) {
-  const [phone, setPhone] = useState("");
-  const [name, setName] = useState("Customer");
+const money = (n: number) => `GH₵${n.toFixed(2)}`;
+
+export default function CheckoutModal({ bundle, recipient, verified, referralVia, changeNumberHref, onClose }: Props) {
+  const phone = recipient;
+  const [name] = useState("Customer");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<SuccessState | null>(null);
   const [fraudTrap, setFraudTrap] = useState(false);
   const [failedOrder, setFailedOrder] = useState<FailedState | null>(null);
   const [pendingApproval, setPendingApproval] = useState<PendingApprovalState | null>(null);
-  const [waPhone, setWaPhone] = useState("");
-  const [waNote, setWaNote] = useState("");
-  const [waSending, setWaSending] = useState(false);
-  const [waSubmitted, setWaSubmitted] = useState(false);
+  const [refundName, setRefundName] = useState("");
+  const [refundPhone, setRefundPhone] = useState("");
+  const [refundSending, setRefundSending] = useState(false);
+  const [refundSubmitted, setRefundSubmitted] = useState(false);
   const [referralCredit, setReferralCredit] = useState(0);
-  const [creditChecked, setCreditChecked] = useState(false);
-  const [milestoneCode, setMilestoneCode] = useState<string | null>(null);
-  const [referralUsesLeft, setReferralUsesLeft] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
-  const [promoCode, setPromoCode] = useState("");
-  const [fastDelivery, setFastDelivery] = useState(false);
-  const [promoApplying, setPromoApplying] = useState(false);
-  const [promoResult, setPromoResult] = useState<{ discount: number; code: string; id: string; label: string } | null>(null);
-  const [promoError, setPromoError] = useState("");
   const [surcharge, setSurcharge] = useState(0);
-  const [agentSubaccountCode, setAgentSubaccountCode] = useState<string | null>(null);
-  const [, setVerifying] = useState(false);
-  const [manualDeliveryWarning, setManualDeliveryWarning] = useState("");
   const [saveLabel, setSaveLabel] = useState("");
   const [beneficiarySaved, setBeneficiarySaved] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("mobile_money");
-  const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("details");
   const [momoPhone, setMomoPhone] = useState("");
-  const [momoNetwork, setMomoNetwork] = useState<"mtn" | "telecel" | "at">("mtn");
+  const [momoNetwork, setMomoNetwork] = useState<MomoNetwork | null>(null);
+  const [confirmNetwork, setConfirmNetwork] = useState(false);
   const [momoPending, setMomoPending] = useState(false);
   const [momoMessage, setMomoMessage] = useState("");
+  const [numberBlock, setNumberBlock] = useState<NumberBlock | null>(null);
   const [telecelNoticeEnabled, setTelecelNoticeEnabled] = useState(false);
   // Set when the admin has closed the store after this page was loaded.
   const [closedNotice, setClosedNotice] = useState<string | null>(null);
-  const paystackReady = usePaystackReady();
-  const { list: beneficiaries, save: saveBeneficiary, remove: removeBeneficiary } = useBeneficiaries();
+  const { list: beneficiaries, save: saveBeneficiary } = useBeneficiaries();
   const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollStopRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (pollStopRef.current) { clearTimeout(pollStopRef.current); pollStopRef.current = null; }
+  }, []);
+  useEffect(() => stopPolling, [stopPolling]);
 
   // Admin-controlled: when on, Telecel Mobile Money customers are told to
   // WhatsApp the admin and send the money to the admin instead of paying here.
-  const telecelBlocked = telecelNoticeEnabled && paymentMethod === "mobile_money" && momoNetwork === "telecel";
+  const telecelBlocked = telecelNoticeEnabled && momoNetwork === "telecel";
   useEffect(() => {
     fetch("/api/admin/store-status")
       .then((r) => r.json())
@@ -208,79 +136,43 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
   const net = networkConfig[bundle.network];
   const feeAmount = parseFloat((bundle.price * PLATFORM_FEE_RATE).toFixed(2));
   const baseTotal = parseFloat((bundle.price + feeAmount).toFixed(2));
-  const promoDiscount = promoResult?.discount ?? 0;
-  const totalAmount = parseFloat(Math.max(baseTotal - referralCredit - promoDiscount + surcharge + (fastDelivery ? FAST_DELIVERY_FEE : 0), 0).toFixed(2));
+  const totalAmount = parseFloat(Math.max(baseTotal - referralCredit + surcharge, 0).toFixed(2));
 
-  async function applyPromo() {
-    if (!promoCode.trim()) return;
-    setPromoApplying(true); setPromoError(""); setPromoResult(null);
-    try {
-      const r = await fetch("/api/validate-coupon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: promoCode.trim(), amount: baseTotal }) });
-      const d = await r.json();
-      if (!r.ok || !d.valid) { setPromoError(d.error ?? "Invalid code"); }
-      else {
-        setPromoResult({ discount: d.discount, code: d.code, id: d.id, label: d.discount_type === "percent" ? `${d.discount_value}% off` : `GH₵${d.discount_value} off` });
-      }
-    } catch { setPromoError("Could not check code. Try again."); }
-    finally { setPromoApplying(false); }
-  }
-
-  // Keep promoResult accessible inside the phone effect without adding it to deps
-  const promoResultRef = useRef(promoResult);
-  useEffect(() => { promoResultRef.current = promoResult; });
-
-  // Check referral credits + surcharge when phone is entered
+  // Referral credit and any pending surcharge belong to the number that gets the data.
   useEffect(() => {
     const cleaned = phone.replace(/\s/g, "");
-    const valid = /^0[2-5][0-9]{8}$/.test(cleaned);
     if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current);
-
-    // All setState calls go inside setTimeout so they're never synchronous in the effect body
     phoneCheckTimer.current = setTimeout(() => {
-      if (!valid) {
-        setReferralCredit(0);
-        setCreditChecked(false);
-        setSurcharge(0);
-        return;
-      }
+      if (!/^0[2-5][0-9]{8}$/.test(cleaned)) { setReferralCredit(0); setSurcharge(0); return; }
       Promise.all([
-        fetch(`/api/referral/check?phone=${encodeURIComponent(cleaned)}`).then(r => r.json()).catch(() => ({})),
-        fetch(`/api/orders/pending-surcharge?phone=${encodeURIComponent(cleaned)}`).then(r => r.json()).catch(() => ({ surcharge: 0 })),
+        fetch(`/api/referral/check?phone=${encodeURIComponent(cleaned)}`).then((r) => r.json()).catch(() => ({})),
+        fetch(`/api/orders/pending-surcharge?phone=${encodeURIComponent(cleaned)}`).then((r) => r.json()).catch(() => ({ surcharge: 0 })),
       ]).then(([data, sc]) => {
         setReferralCredit(data.credits ?? 0);
-        setCreditChecked(true);
-        setReferralUsesLeft(data.usesLeft ?? null);
         setSurcharge(sc.surcharge ?? 0);
-        if (data.milestoneCode && !promoResultRef.current) {
-          setPromoCode(data.milestoneCode);
-          setMilestoneCode(data.milestoneCode);
-        }
       });
-    }, valid ? 600 : 0);
-
+    }, 400);
     return () => { if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current); };
   }, [phone]);
 
-  function validatePhone(p: string) {
-    return /^0[2-5][0-9]{8}$/.test(p.replace(/\s/g, ""));
-  }
+  // What the customer typed, and what that number's prefix says about its network.
+  const momoClean = normalizeGhPhone(momoPhone);
+  const detected = momoClean ? detectGhProvider(momoClean) : null;
+  const networkLooksWrong = !!(momoNetwork && detected && detected !== momoNetwork);
+  const networkLabel = (id: MomoNetwork | null) => MOMO_NETWORKS.find((n) => n.id === id)?.label ?? "";
 
-  function showConfirmation() {
-    setError("");
-    if (!validatePhone(phone)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
-    if (!momoPhone) {
-      const norm = normalizeGhPhone(phone) ?? phone.replace(/\s/g, "");
-      setMomoPhone(norm);
-      const det = detectGhProvider(norm);
-      if (det) setMomoNetwork(det);
-    }
-    setCheckoutStep("confirm");
-  }
+  const canPay =
+    !loading &&
+    !!momoNetwork &&
+    !!momoClean &&
+    (!networkLooksWrong || confirmNetwork) &&
+    !telecelBlocked &&
+    !closedNotice &&
+    !!phone;
 
   async function completePaidOrder(reference: string) {
     const autoEmail = `${phone.replace(/\s/g, "")}@elitedata1.com`;
-    const cleanName = name.trim();
-    const customerName = (!cleanName || cleanName === "Customer") ? phone.trim() : cleanName;
+    const customerName = phone.trim();
     const response = await fetch("/api/orders/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -289,13 +181,12 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
         email: autoEmail,
         phone,
         bundleId: bundle.id,
-        paystackRef: reference,
-        agentCode: agentCode ?? null,
+        paymentRef: reference,
         referralVia: referralVia ?? null,
         applyReferralCredit: referralCredit > 0,
-        fastDelivery,
-        promoCode: promoResult?.code ?? null,
-        promoDiscount: promoDiscount > 0 ? promoDiscount : null,
+        fastDelivery: false,
+        promoCode: null,
+        promoDiscount: null,
         surcharge: surcharge > 0 ? surcharge : null,
       }),
     });
@@ -305,241 +196,114 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
       setError(data.error || "Something went wrong. Please contact support.");
       return;
     }
-    if (data.fraudTrap) {
-      setFraudTrap(true);
-      return;
-    }
-    if (promoResult?.id) {
-      fetch("/api/use-coupon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: promoResult.id }) }).catch(() => {});
-    }
-    if (data.pendingApproval) {
-      setPendingApproval({ reference: data.reference });
-    } else if (data.failed) {
-      setFailedOrder({ reference: data.reference, network: data.network, bundleSize: data.bundleSize });
-    } else {
-      setSuccess({ reference: data.reference, loyalty: data.loyalty });
-    }
+    if (data.fraudTrap) { setFraudTrap(true); return; }
+    if (data.pendingApproval) setPendingApproval({ reference: data.reference });
+    else if (data.failed) setFailedOrder({ reference: data.reference, network: data.network, bundleSize: data.bundleSize });
+    else setSuccess({ reference: data.reference, loyalty: data.loyalty });
   }
 
   async function handlePay() {
     setError("");
-    if (telecelBlocked || closedNotice) return;
-    if (!validatePhone(phone)) return setError("Enter a valid Ghana phone number (e.g. 0241234567).");
-    const cleanName = name.trim();
-    const customerName = (!cleanName || cleanName === "Customer") ? phone.trim() : cleanName;
-
-    if (paymentMethod !== "mobile_money") {
-      if (!paystackReady) return setError("Payment is still loading. Please try again in a moment.");
-      const key = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
-      if (!key) {
-        setError("Card/Bank payment is temporarily unavailable. Please pay with Mobile Money.");
-        return;
-      }
-    }
+    setNumberBlock(null);
+    if (!canPay || !momoNetwork || !momoClean) return;
 
     setLoading(true);
 
-    // Check if this phone is blocked before doing anything else
+    // Is the data number blocked? Checked before anything else.
     try {
       const br = await fetch("/api/check-phone", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: phone.replace(/\s/g, "") }),
       });
-      const bd = await br.json() as { blocked: boolean };
+      const bd = (await br.json()) as { blocked: boolean };
       if (bd.blocked) {
         setLoading(false);
-        setError("👀 I SEE WHAT YOU ARE DOING");
+        setError("This number cannot be used for orders. Please contact support.");
         return;
       }
     } catch {
-      // Network error — let backend guard catch it
+      // Network error: the server checks again.
     }
 
-    // For MTN bundles: verify the number is on the Inventor beneficiary list before opening Paystack.
-    // This catches ineligible numbers before the customer is charged.
-    if (bundle.network === "mtn") {
-      setVerifying(true);
-      try {
-        const vr = await fetch("/api/verify-mtn-number", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: phone.replace(/\s/g, "") }),
-        });
-        const vd = await vr.json() as { verified: boolean; error?: string; pendingManual?: boolean; warning?: string };
-        if (!vd.verified) {
-          setLoading(false);
-          setVerifying(false);
-          setError(vd.error ?? "This MTN number is not eligible for data purchase. Please check the number and try again.");
-          return;
-        }
-        if (vd.pendingManual && vd.warning) {
-          setManualDeliveryWarning(vd.warning);
-        }
-      } catch {
-        // Network error — let Inventor reject at purchase time if needed
-      }
-      setVerifying(false);
-    }
+    setMomoPending(true);
+    setMomoMessage("Sending the payment request to your phone…");
 
-    // For price-mode agent storefronts, check wallet balance before charging the customer
-    if (agentCode) {
-      try {
-        const check = await fetch(
-          `/api/agents/can-fulfill?agentCode=${encodeURIComponent(agentCode)}&bundleId=${encodeURIComponent(bundle.id)}`
-        );
-        const checkData = await check.json();
-        if (checkData.subaccountCode) setAgentSubaccountCode(checkData.subaccountCode);
-        if (!checkData.canFulfill) {
-          setLoading(false);
-          setError("This agent does not have enough wallet credit to fulfill this order right now. Please contact them to top up their account.");
-          return;
-        }
-      } catch {
-        // Network error on pre-check — let the backend guard catch it
-      }
-    }
-
-    if (paymentMethod === "mobile_money") {
-      const cleanMomoPhone = normalizeGhPhone(momoPhone || phone);
-      if (!cleanMomoPhone) {
-        setLoading(false);
-        setError("Please enter a valid 10-digit Ghana Mobile Money phone number.");
-        return;
-      }
-
-      setMomoPending(true);
-      setMomoMessage("Initiating payment request to your phone…");
-
-      try {
-        const ybkRes = await fetch("/api/yebeck/charge", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            amount: totalAmount,
-            phone: cleanMomoPhone,
-            network: momoNetwork,
-            type: "data_order",
-            name: customerName,
-            metadata: {
-              customer_name: customerName,
-              bundle_id: bundle.id,
-              recipient_phone: phone,
-              agent_code: agentCode ?? "",
-            },
-          }),
-        });
-
-        const ybkData = await ybkRes.json();
-        if (!ybkRes.ok || !ybkData.ok) {
-          setLoading(false);
-          setMomoPending(false);
-          setError(ybkData.message || "Could not start Mobile Money prompt. Please try again.");
-          return;
-        }
-
-        const ybkRef = ybkData.reference;
-        setMomoMessage(ybkData.message || "Prompt sent! Approve the transaction on your phone.");
-
-        // Fast poll every 1.5 - 2s
-        const pollInterval = setInterval(async () => {
-          try {
-            const statusRes = await fetch(`/api/yebeck/status?reference=${encodeURIComponent(ybkRef)}`);
-            const statusData = await statusRes.json();
-            if (statusData.status === "success") {
-              clearInterval(pollInterval);
-              setMomoPending(false);
-              setMomoMessage("Payment approved! Creating order…");
-              await completePaidOrder(ybkRef);
-            } else if (statusData.status === "failed") {
-              clearInterval(pollInterval);
-              setLoading(false);
-              setMomoPending(false);
-              setError("Payment was declined or cancelled on your phone. Please try again.");
-            } else {
-              setMomoMessage("Waiting for approval on your phone… Check your handset prompt.");
-            }
-          } catch {
-            // Keep polling
-          }
-        }, 1800);
-
-        // Stop polling after 3 minutes
-        setTimeout(() => {
-          clearInterval(pollInterval);
-          if (momoPending) {
-            setLoading(false);
-            setMomoPending(false);
-            setError("Payment timed out. If you already approved it, please check your orders or contact support.");
-          }
-        }, 180000);
-
-        return;
-      } catch (err) {
+    try {
+      const res = await fetch("/api/yebeck/charge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: totalAmount,
+          phone: momoClean,
+          network: momoNetwork,
+          confirmNetwork: networkLooksWrong && confirmNetwork,
+          type: "data_order",
+          name: phone,
+          metadata: {
+            customer_name: phone,
+            bundle_id: bundle.id,
+            recipient_phone: phone,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
         setLoading(false);
         setMomoPending(false);
-        setError(`Mobile Money request failed: ${err instanceof Error ? err.message : String(err)}`);
+        if (data.code === "number_not_verified") {
+          setNumberBlock({ message: data.message, verifyUrl: data.verifyUrl ?? null });
+        } else {
+          setError(data.message || "We could not start the Mobile Money prompt. Please try again.");
+        }
         return;
       }
-    }
 
-    const autoEmail = `${phone.replace(/\s/g, "")}@elitedata1.com`;
-    const selectedPaymentMethod = PAYMENT_METHODS.find(method => method.id === paymentMethod) ?? PAYMENT_METHODS[0];
+      const ref = data.reference as string;
+      setMomoMessage(data.message || "Prompt sent. Approve it on your phone.");
 
-    const paystackKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
-    if (!paystackKey) {
-      setLoading(false);
-      setError("Card/Bank payment is unavailable. Please choose Mobile Money.");
-      return;
-    }
-
-    // Card and bank go through Paystack popup
-    try {
-      const handler = window.PaystackPop.setup({
-        key: paystackKey,
-        email: autoEmail,
-        amount: Math.round(totalAmount * 100),
-        currency: "GHS",
-        channels: selectedPaymentMethod.channels,
-        ref: `ED-${Math.floor(100000 + Math.random() * 900000)}`,
-        ...(agentSubaccountCode ? { subaccount: agentSubaccountCode, bearer: "account" } : {}),
-        metadata: {
-          custom_fields: [
-            { display_name: "Customer Name", variable_name: "name", value: customerName },
-            { display_name: "Phone Number", variable_name: "phone", value: phone },
-            { display_name: "Bundle", variable_name: "bundle", value: `${net.name} ${bundle.size}` },
-            { display_name: "Bundle ID", variable_name: "bundle_id", value: bundle.id },
-            { display_name: "Agent Code", variable_name: "agent_code", value: agentCode ?? "" },
-            { display_name: "Promo Code", variable_name: "promo_code", value: promoResult?.code ?? "" },
-            { display_name: "Referral Credit", variable_name: "apply_referral_credit", value: referralCredit > 0 ? "1" : "0" },
-            { display_name: "Fast Delivery", variable_name: "fast_delivery", value: fastDelivery ? "1" : "0" },
-          ],
-        },
-        callback: function(response: { reference: string }) {
-          completePaidOrder(response.reference).catch(() => {
+      // Check every 1.8 seconds, for up to 3 minutes.
+      stopPolling();
+      pollRef.current = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/yebeck/status?reference=${encodeURIComponent(ref)}`);
+          const statusData = await statusRes.json();
+          if (statusData.status === "success") {
+            stopPolling();
+            setMomoPending(false);
+            setMomoMessage("Payment approved. Creating your order…");
+            await completePaidOrder(ref);
+          } else if (statusData.status === "failed") {
+            stopPolling();
             setLoading(false);
-            setError("Network error. Please contact support on WhatsApp.");
-          });
-        },
-        onClose: () => {
-          setLoading(false);
-        },
-      });
-
-      handler.openIframe();
-    } catch (err) {
+            setMomoPending(false);
+            setError("The payment was declined or cancelled on your phone. Please try again.");
+          } else {
+            setMomoMessage("Waiting for your approval. Check the prompt on your phone.");
+          }
+        } catch {
+          // keep polling
+        }
+      }, 1800);
+      pollStopRef.current = setTimeout(() => {
+        stopPolling();
+        setLoading(false);
+        setMomoPending(false);
+        setError("The payment timed out. If you already approved it, track your order or contact support.");
+      }, 180000);
+    } catch {
       setLoading(false);
-      setError(`Secure payment error: ${err instanceof Error ? err.message : String(err)}`);
+      setMomoPending(false);
+      setError("We could not start the Mobile Money request. Check your connection and try again.");
     }
   }
 
   if (fraudTrap) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
-        <div className="bg-black rounded-2xl shadow-2xl w-full max-w-sm p-8 text-center border border-red-900">
-          <div className="text-6xl mb-4">👀</div>
-          <h2 className="text-2xl font-black text-red-500 mb-3">I SEE WHAT YOU ARE DOING</h2>
-          <p className="text-gray-400 text-sm">Your account has been flagged.</p>
+      <div className="ed-overlay" style={{ alignItems: "center", background: "rgba(0,0,0,.85)" }}>
+        <div className="ed-sheet dk" style={{ borderRadius: 20, textAlign: "center", padding: 28 }}>
+          <h2 className="ed-h2" style={{ color: "var(--ed-red)" }}>This order was stopped</h2>
+          <p className="ed-muted" style={{ margin: 0 }}>Your order was flagged. Please contact support if you think this is a mistake.</p>
         </div>
       </div>
     );
@@ -548,472 +312,237 @@ export default function CheckoutModal({ bundle, agentCode, referralVia, onClose,
   if (failedOrder) {
     const shortRef = failedOrder.reference.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase();
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-          <div className="p-6 text-center border-b border-gray-100">
-            <div className="text-5xl mb-3">❌</div>
-            <h2 className="text-xl font-black text-gray-900 mb-1">Order Failed</h2>
-            <p className="text-sm text-gray-500">We could not deliver your {failedOrder.network.toUpperCase()} {failedOrder.bundleSize}. Please enter your Mobile Money details below and we will refund you.</p>
-          </div>
-
-          <div className="p-6 space-y-4">
-            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-              <p className="text-xs text-red-700 font-semibold mb-1">Order Reference</p>
-              <p className="font-mono font-bold text-red-900 text-sm">{shortRef}</p>
-            </div>
-
-            {!waSubmitted ? (
-              <>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Mobile Money Name</label>
-                  <input
-                    type="text"
-                    placeholder="Name on your MoMo account"
-                    value={waPhone}
-                    onChange={e => setWaPhone(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Mobile Money Number</label>
-                  <input
-                    type="tel"
-                    placeholder="e.g. 0241234567"
-                    value={waNote}
-                    onChange={e => setWaNote(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-                  />
-                </div>
-
-                <button
-                  onClick={async () => {
-                    if (!waPhone.trim() || !waNote.trim()) return;
-                    setWaSending(true);
-                    await fetch("/api/orders/manual-request", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        reference: failedOrder.reference,
-                        customerPhone: phone,
-                        customerName: name,
-                        network: failedOrder.network,
-                        bundleSize: failedOrder.bundleSize,
-                        refundName: waPhone.trim(),
-                        refundPhone: waNote.trim(),
-                      }),
-                    }).catch(() => {});
-                    setWaSending(false);
-                    setWaSubmitted(true);
-                  }}
-                  disabled={waSending || !waPhone.trim() || !waNote.trim()}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl text-sm disabled:opacity-50"
-                >
-                  {waSending ? "Submitting…" : "Submit Refund Request"}
-                </button>
-              </>
-            ) : (
-              <div className="text-center py-4 space-y-2">
-                <div className="text-4xl mb-2">✅</div>
-                <p className="font-bold text-gray-800">Refund request received!</p>
-                <p className="text-sm text-gray-500">Your refund will be processed within the next <strong>12 hours</strong>.</p>
-                <p className="text-sm text-gray-500">If you do not receive it, please contact our help line.</p>
+      <div className="ed-overlay">
+        <div className="ed-sheet">
+          <div className="ed-grab" />
+          <h2 className="ed-h2" style={{ fontSize: 24 }}>We could not deliver your order</h2>
+          <p style={{ margin: 0, fontSize: 14, color: "var(--ed-g500)" }}>
+            We could not deliver your {failedOrder.network.toUpperCase()} {failedOrder.bundleSize}. Enter your Mobile Money details below and we will refund you.
+          </p>
+          <div className="ed-note bad"><b>Order reference</b><br /><span className="ed-num">{shortRef}</span></div>
+          {!refundSubmitted ? (
+            <>
+              <div>
+                <label htmlFor="refund_name" className="lt">Name on your Mobile Money account</label>
+                <input id="refund_name" className="ed-input" style={{ fontSize: 16 }} type="text" value={refundName} onChange={(e) => setRefundName(e.target.value)} placeholder="Your full name" />
               </div>
-            )}
-
-            <button onClick={onClose} className="w-full border border-gray-200 text-gray-500 font-semibold py-2.5 rounded-xl text-sm hover:bg-gray-50">
-              Close
-            </button>
-          </div>
+              <div>
+                <label htmlFor="refund_phone" className="lt">Mobile Money number for the refund</label>
+                <input id="refund_phone" className="ed-input" type="tel" inputMode="tel" value={refundPhone} onChange={(e) => setRefundPhone(e.target.value)} placeholder="024 123 4567" />
+              </div>
+              <button
+                type="button"
+                className={`ed-btn tall block b${refundSending || !refundName.trim() || !refundPhone.trim() ? " dis paper" : ""}`}
+                disabled={refundSending || !refundName.trim() || !refundPhone.trim()}
+                onClick={async () => {
+                  setRefundSending(true);
+                  await fetch("/api/orders/manual-request", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      reference: failedOrder.reference,
+                      customerPhone: phone,
+                      customerName: name,
+                      network: failedOrder.network,
+                      bundleSize: failedOrder.bundleSize,
+                      refundName: refundName.trim(),
+                      refundPhone: refundPhone.trim(),
+                    }),
+                  }).catch(() => {});
+                  setRefundSending(false);
+                  setRefundSubmitted(true);
+                }}
+              >
+                {refundSending ? "Sending…" : "Request my refund"}
+              </button>
+            </>
+          ) : (
+            <div className="ed-note ok"><b>Refund request received.</b><br />Your refund will be processed within 12 hours. If it does not arrive, please contact our help line.</div>
+          )}
+          <button type="button" className="ed-btn o block" style={{ color: "var(--ed-g500)", borderColor: "var(--ed-g200)" }} onClick={onClose}>Close</button>
         </div>
       </div>
     );
   }
 
-  if (pendingApproval) {
+  if (pendingApproval || success) {
+    const reference = (pendingApproval ?? success)!.reference;
+    const loyalty = success?.loyalty;
+    const referralLink = typeof window !== "undefined" ? `${window.location.origin}/buy?via=${phone.replace(/\s/g, "")}` : "";
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
-          <div className="p-6 text-center">
-            <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <svg className="w-7 h-7 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-black text-gray-800 mb-2">Order Placed! ✅</h2>
-            <p className="text-gray-500 text-sm mb-4">
-              Payment confirmed. Your <span className="font-bold">{net.name} {bundle.size}</span> bundle is being processed and will be delivered to <span className="font-bold">{phone}</span> shortly.
-            </p>
-            {/* Payment Receipt */}
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4 text-left space-y-2">
-              <div className="flex justify-between items-center border-b border-gray-200 pb-2">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Payment Receipt</span>
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">PAID</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Order Reference</span>
-                <span className="font-mono font-bold text-gray-800 break-all">{pendingApproval.reference}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Recipient Phone</span>
-                <span className="font-bold text-gray-800">{phone}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Bundle</span>
-                <span className="font-bold text-gray-800">{net.name} {bundle.size}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Payment Gateway</span>
-                <span className="font-semibold text-gray-700">{paymentMethod === "mobile_money" ? "Mobile Money (Yebeck)" : "Paystack"}</span>
-              </div>
-              <div className="flex justify-between text-xs border-t border-gray-200 pt-1.5 font-bold">
-                <span className="text-gray-700">Amount Paid</span>
-                <span className="text-emerald-600 text-sm">GH₵{totalAmount.toFixed(2)}</span>
-              </div>
-            </div>
-            <div className="flex gap-2 mb-3">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="flex-1 border border-gray-300 text-gray-700 font-bold py-2 rounded-xl text-xs hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
-              >
-                <span>🖨️</span> Print Receipt
-              </button>
-              <a
-                href={`/track?ref=${encodeURIComponent(pendingApproval.reference)}`}
-                className="flex-1 bg-blue-600 text-white font-bold py-2 rounded-xl text-xs hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
-              >
-                Track Live →
-              </a>
-            </div>
-            <p className="text-xs text-gray-400 mb-4">You will receive an SMS once your bundle is delivered.</p>
-            <button onClick={onClose} className="w-full bg-green-500 text-white font-bold py-2.5 rounded-xl text-sm hover:bg-green-600 transition-colors">
-              OK, Got it
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (success) {
-    const loyalty = success.loyalty;
-    const referralLink = typeof window !== "undefined"
-      ? `${window.location.origin}/buy?via=${phone.replace(/\s/g, "")}`
-      : "";
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-          <div className="p-6 text-center border-b border-gray-100">
-            <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <svg className="w-7 h-7 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-black text-gray-800 mb-1">Payment Confirmed!</h2>
-            <p className="text-gray-500 text-sm">
-              Your <span className="font-bold">{net.name} {bundle.size}</span> bundle is being delivered to{" "}
-              <span className="font-bold">{phone}</span>.
+      <div className="ed-overlay">
+        <div className="ed-sheet">
+          <div className="ed-grab" />
+          <div style={{ textAlign: "center" }}>
+            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#dcfce7", color: "#166534", display: "grid", placeItems: "center", margin: "4px auto 10px" }}><Icon name="check" /></div>
+            <h2 className="ed-h2" style={{ fontSize: 26 }}>{pendingApproval ? "Order placed" : "Payment confirmed"}</h2>
+            <p style={{ margin: "6px 0 0", fontSize: 14, color: "var(--ed-g500)" }}>
+              Your <b>{net.name} {bundle.size}</b> bundle is on its way to <b className="ed-num">{spacedPhone(phone)}</b>. You will get an SMS when it lands.
             </p>
           </div>
 
-          <div className="px-5 py-4 space-y-3">
-            {/* Payment Receipt */}
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-left space-y-2">
-              <div className="flex justify-between items-center border-b border-gray-200 pb-2">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Payment Receipt</span>
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">PAID</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Order Reference</span>
-                <span className="font-mono font-bold text-gray-800 break-all">{success.reference}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Recipient Phone</span>
-                <span className="font-bold text-gray-800">{phone}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Bundle</span>
-                <span className="font-bold text-gray-800">{net.name} {bundle.size}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Payment Gateway</span>
-                <span className="font-semibold text-gray-700">{paymentMethod === "mobile_money" ? "Mobile Money (Yebeck)" : "Paystack"}</span>
-              </div>
-              <div className="flex justify-between text-xs border-t border-gray-200 pt-1.5 font-bold">
-                <span className="text-gray-700">Amount Paid</span>
-                <span className="text-emerald-600 text-sm">GH₵{totalAmount.toFixed(2)}</span>
-              </div>
+          <div className="ed-receipt" style={{ background: "var(--ed-g50)", border: "1px solid var(--ed-g200)", borderRadius: 14, WebkitMask: "none", mask: "none", padding: 14, gap: 8 }}>
+            <div className="rt"><div className="t"><b style={{ fontSize: 16 }}>Payment receipt</b></div><span className="ed-pill good">Paid</span></div>
+            <hr />
+            <div className="ed-sum" style={{ border: 0, background: "transparent", padding: 0 }}>
+              <div className="r"><span>Order reference</span><b style={{ fontFamily: "monospace", wordBreak: "break-all" }}>{reference}</b></div>
+              <div className="r"><span>Data goes to</span><b>{spacedPhone(phone)}</b></div>
+              <div className="r"><span>Bundle</span><b>{net.name} {bundle.size}</b></div>
+              <div className="r"><span>Paid with</span><b>Mobile Money</b></div>
+              <div className="r tot"><span>Amount paid</span><b>{money(totalAmount)}</b></div>
             </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="w-full border border-gray-300 text-gray-700 font-bold py-2 rounded-xl text-xs hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
-              >
-                <span>🖨️</span> Print Receipt
-              </button>
-            </div>
-
-            {/* Save beneficiary prompt */}
-            {!beneficiarySaved && !beneficiaries.some(b => b.phone === phone.replace(/\s/g, "")) && (
-              <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-                <p className="text-xs font-bold text-blue-700 mb-2">💾 Save this number?</p>
-                <p className="text-xs text-blue-500 mb-3">
-                  Save <span className="font-semibold">{phone}</span> so you can pick it quickly next time.
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Label e.g. Mine, Mum, Dad"
-                    value={saveLabel}
-                    onChange={e => setSaveLabel(e.target.value)}
-                    maxLength={20}
-                    className="flex-1 border border-blue-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-800 bg-white"
-                  />
-                  <button
-                    onClick={() => {
-                      saveBeneficiary(phone, saveLabel || phone.replace(/\s/g, ""));
-                      setBeneficiarySaved(true);
-                    }}
-                    className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            )}
-            {beneficiarySaved && (
-              <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-2.5 text-xs font-semibold text-green-700">
-                ✓ Number saved — you can pick it next time at checkout
-              </div>
-            )}
-
-            {/* Loyalty progress */}
-            {loyalty && (
-              loyalty.rewardEarned ? (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-center">
-                  <p className="text-2xl mb-1">🎉</p>
-                  <p className="font-black text-emerald-700 text-sm">FREE 1GB EARNED!</p>
-                  <p className="text-emerald-600 text-xs mt-0.5">
-                    You bought 4 bundles today — a free 1GB {net.name} bundle is being delivered to your phone!
-                  </p>
-                </div>
-              ) : loyalty.count > 0 && loyalty.windowEndsAt ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-bold text-amber-700">🔥 Loyalty Punch Card</p>
-                    <p className="text-[10px] text-amber-500">{timeLeft(loyalty.windowEndsAt)} left</p>
-                  </div>
-                  <div className="flex gap-1.5 mb-1.5">
-                    {Array.from({ length: loyalty.total }).map((_, i) => (
-                      <div
-                        key={i}
-                        className={`flex-1 h-2 rounded-full ${i < loyalty.count ? "bg-amber-400" : "bg-amber-100"}`}
-                      />
-                    ))}
-                  </div>
-                  <p className="text-xs text-amber-600">
-                    {loyalty.count}/{loyalty.total} bundles ·{" "}
-                    {loyalty.total - loyalty.count} more in {timeLeft(loyalty.windowEndsAt)} = <span className="font-bold">FREE 1GB!</span>
-                  </p>
-                </div>
-              ) : null
-            )}
-
-            {/* Referral share */}
-            {referralLink && (
-              <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-                <p className="text-xs font-bold text-blue-700 mb-1">💰 Refer &amp; Earn GH₵1</p>
-                <p className="text-xs text-blue-600 mb-2">
-                  Share your link — earn <span className="font-bold">GH₵1 off</span> your next purchase for every friend who buys!
-                </p>
-                <div className="flex gap-2">
-                  <p className="flex-1 text-[10px] font-mono bg-white border border-blue-200 rounded-lg px-2 py-1.5 text-blue-700 truncate">
-                    {referralLink}
-                  </p>
-                  <button
-                    onClick={() => copyToClipboard(referralLink, () => { setCopied(true); setTimeout(() => setCopied(false), 2000); })}
-                    className="text-xs font-bold bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors shrink-0"
-                  >
-                    {copied ? "Copied!" : "Copy"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <a
-              href={`/track?ref=${encodeURIComponent(success.reference)}`}
-              className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors text-sm text-center"
-            >
-              Track My Order Live →
-            </a>
-            <button onClick={onClose} className="w-full text-gray-400 hover:text-gray-600 text-sm py-1 transition-colors">
-              Close
-            </button>
           </div>
+
+          {!beneficiarySaved && !beneficiaries.some((b) => b.phone === phone.replace(/\s/g, "") && b.label !== b.phone) && (
+            <div className="ed-note">
+              <b>Save this number?</b> Save {spacedPhone(phone)} so you can pick it quickly next time.
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input aria-label="Name for this number" type="text" placeholder="Name, for example Mum" value={saveLabel} onChange={(e) => setSaveLabel(e.target.value)} maxLength={20} className="ed-input" style={{ fontSize: 14, minHeight: 44 }} />
+                <button type="button" className="ed-btn b" style={{ minHeight: 44 }} onClick={() => { saveBeneficiary(phone, saveLabel || phone.replace(/\s/g, "")); setBeneficiarySaved(true); }}>Save</button>
+              </div>
+            </div>
+          )}
+          {beneficiarySaved && <div className="ed-note ok">Number saved. You can pick it next time.</div>}
+
+          {loyalty && (loyalty.rewardEarned ? (
+            <div className="ed-note ok"><b>Free 1GB earned.</b> You bought 4 bundles today, so a free 1GB {net.name} bundle is being delivered to your phone.</div>
+          ) : loyalty.count > 0 && loyalty.windowEndsAt ? (
+            <div className="ed-note warn">
+              <b>Loyalty card:</b> {loyalty.count} of {loyalty.total} bundles. {loyalty.total - loyalty.count} more in {timeLeft(loyalty.windowEndsAt)} earns a free 1GB.
+            </div>
+          ) : null)}
+
+          {referralLink && (
+            <div className="ed-note">
+              <b>Refer and earn GH₵1.</b> Share your link. You get GH₵1 off your next purchase for every friend who buys.
+              <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+                <span style={{ flex: 1, minWidth: 0, fontFamily: "monospace", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{referralLink}</span>
+                <button type="button" className="ed-btn b" style={{ minHeight: 40, fontSize: 13 }} onClick={() => copyToClipboard(referralLink, () => { setCopied(true); setTimeout(() => setCopied(false), 2000); })}>{copied ? "Copied" : "Copy"}</button>
+              </div>
+            </div>
+          )}
+
+          <a href={`/track?ref=${encodeURIComponent(reference)}`} className="ed-btn tall block y">Track my order</a>
+          <button type="button" className="ed-btn o block" style={{ color: "var(--ed-g500)", borderColor: "var(--ed-g200)" }} onClick={onClose}>Done</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={displayMode === "page" ? "w-full" : "fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"}>
-      <div className={displayMode === "page" ? "bg-white w-full overflow-hidden p-6" : "bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4"} onClick={(e) => e.stopPropagation()}>
+    <div className="ed-paper" style={{ minHeight: "100vh", paddingBottom: 130 }}>
+      <div style={{ maxWidth: 520, margin: "0 auto", padding: "16px max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left))", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="ed-sum">
+          <div className="r"><span>Bundle</span><b>{net.name} {bundle.size}, {bundle.validity || "never expires"}</b></div>
+          <div className="r">
+            <span>Data goes to</span>
+            <b>
+              {spacedPhone(phone)}
+              {verified && <span className="ok2">Verified</span>}
+              {" "}<Link href={changeNumberHref} style={{ color: "var(--ed-blue)", fontWeight: 800, fontSize: 12, marginLeft: 6 }}>Change</Link>
+            </b>
+          </div>
+          <div className="r"><span>Bundle price</span><b>{money(bundle.price)}</b></div>
+          <div className="r"><span>Processing fee (2%)</span><b>{money(feeAmount)}</b></div>
+          {referralCredit > 0 && <div className="r"><span>Referral credit</span><b>-{money(referralCredit)}</b></div>}
+          {surcharge > 0 && <div className="r"><span>Pending surcharge</span><b>{money(surcharge)}</b></div>}
+          <div className="r tot"><span>Total</span><b>{money(totalAmount)}</b></div>
+        </div>
+
+        <div role="radiogroup" aria-label="Your Mobile Money network">
+          <span className="lt">Your Mobile Money network</span>
+          <div className="ed-nets3">
+            {MOMO_NETWORKS.map((n) => (
+              <button key={n.id} type="button" role="radio" aria-checked={momoNetwork === n.id} className="ed-net3" onClick={() => { setMomoNetwork(n.id); setConfirmNetwork(false); }}>
+                <i style={{ background: n.color }} />{n.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div>
-          <h2 className="text-xl font-black text-slate-900">Confirm purchase</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            You are purchasing <span className="font-bold">{bundle.size}</span> for{" "}
-            <span className="font-bold">GH₵{bundle.price.toFixed(2)}</span>
+          <label htmlFor="momo_phone" className="lt">Your Mobile Money number</label>
+          <input
+            id="momo_phone"
+            className={`ed-input${networkLooksWrong ? " warn" : ""}`}
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            disabled={!momoNetwork}
+            value={momoPhone}
+            onChange={(e) => { setMomoPhone(e.target.value); setConfirmNetwork(false); }}
+            placeholder={momoNetwork ? "024 123 4567" : "Choose your network first"}
+          />
+          <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--ed-g500)" }}>
+            This is the number that pays. It can be a different number from the one getting the data.
           </p>
         </div>
 
-        <div>
-          <label htmlFor="recipient_phone" className="block text-sm font-bold text-slate-800">
-            🎯 Recipient {bundle.network === "airteltigo" ? "AT" : bundle.network.toUpperCase()} Phone Number (Data will be sent here)
-          </label>
-          <input
-            id="recipient_phone"
-            type="tel"
-            inputMode="tel"
-            value={phone}
-            onChange={(e) => {
-              const v = e.target.value;
-              setPhone(v);
-              if (!momoPhone || momoPhone === phone) {
-                setMomoPhone(v);
-                const det = detectGhProvider(v);
-                if (det) setMomoNetwork(det);
-              }
-            }}
-            placeholder="0599322785 or +233599322785"
-            required
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-400"
-          />
-          {(() => {
-            const clean = phone.replace(/\D/g, "");
-            if (clean.length >= 9 && bundle.network !== "mashup") {
-              const det = detectGhProvider(clean);
-              const expected = bundle.network === "airteltigo" ? "at" : bundle.network;
-              if (det && det !== expected) {
-                return (
-                  <div className="mt-1.5 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 font-semibold">
-                    ⚠️ Mismatch warning: You chose an {bundle.network.toUpperCase()} bundle, but this looks like a {det === "at" ? "AirtelTigo" : det.toUpperCase()} number. Please double-check!
-                  </div>
-                );
-              }
-            }
-            return null;
-          })()}
-        </div>
+        {networkLooksWrong && detected && momoNetwork && (
+          <div className="ed-note warn" role="alert">
+            <b>{spacedPhone(momoClean ?? "")} looks like a {networkLabel(detected)} number.</b> Choose {networkLabel(detected)}, or confirm that this number is on {networkLabel(momoNetwork)}.
+            <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, minHeight: 44, fontWeight: 700 }}>
+              <input type="checkbox" checked={confirmNetwork} onChange={(e) => setConfirmNetwork(e.target.checked)} style={{ width: 22, height: 22 }} />
+              This number is on {networkLabel(momoNetwork)}
+            </label>
+          </div>
+        )}
 
-        <div>
-          <label htmlFor="momo_phone" className="block text-sm font-semibold text-slate-700">
-            Mobile Money number to pay from
-          </label>
-          <input
-            id="momo_phone"
-            type="tel"
-            inputMode="tel"
-            value={momoPhone}
-            onChange={(e) => {
-              const v = e.target.value;
-              setMomoPhone(v);
-              const det = detectGhProvider(v);
-              if (det) setMomoNetwork(det);
-            }}
-            placeholder="0244000000"
-            required
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-400"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="momo_network" className="block text-sm font-semibold text-slate-700">
-            Mobile Money network
-          </label>
-          <select
-            id="momo_network"
-            value={momoNetwork}
-            onChange={(e) => setMomoNetwork(e.target.value as "mtn" | "telecel" | "at")}
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-400"
-          >
-            <option value="mtn">MTN</option>
-            <option value="telecel">Telecel</option>
-            <option value="at">AT</option>
-          </select>
-        </div>
+        {momoNetwork && momoClean && (!networkLooksWrong || confirmNetwork) && (
+          <div className="ed-note">The payment prompt goes to <b>{spacedPhone(momoClean)}</b>. The data goes to <b>{spacedPhone(phone)}</b>.</div>
+        )}
 
         {closedNotice && (
-          <div className="bg-amber-50 border border-amber-300 text-amber-800 text-sm px-3 py-2 rounded-lg space-y-2">
-            <p className="font-bold">We&apos;re temporarily closed</p>
-            <p className="whitespace-pre-line">{closedNotice}</p>
-            <a
-              href={ALTERNATE_STORE_URL}
-              className="block text-center w-full bg-blue-600 hover:bg-blue-700 active:opacity-75 text-white font-bold py-3 rounded-xl transition-colors text-sm"
-            >
-              Buy data at {ALTERNATE_STORE_LABEL}
-            </a>
+          <div className="ed-note warn">
+            <b>We are temporarily closed.</b>
+            <p style={{ margin: "6px 0", whiteSpace: "pre-line" }}>{closedNotice}</p>
+            <a href={ALTERNATE_STORE_URL} className="ed-btn b block">Buy data at {ALTERNATE_STORE_LABEL}</a>
           </div>
         )}
 
         {telecelBlocked && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
-            <p className="font-bold">Telecel payment: contact the admin</p>
-            <p className="mt-1">
-              Please contact the admin on WhatsApp <strong>0509794503</strong> (WhatsApp only, no calls) and send the money to the admin.
-            </p>
-            <a
-              href="https://wa.me/233509794503"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-block rounded-lg bg-green-600 px-3 py-2 font-bold text-white hover:bg-green-700"
-            >
-              Chat on WhatsApp
-            </a>
+          <div className="ed-note warn">
+            <b>Telecel payment: contact the admin.</b>
+            <p style={{ margin: "6px 0" }}>Please contact the admin on WhatsApp <b>0509794503</b> (WhatsApp only, no calls) and send the money to the admin.</p>
+            <a href="https://wa.me/233509794503" target="_blank" rel="noopener noreferrer" className="ed-btn g block">Chat on WhatsApp</a>
           </div>
         )}
 
-        <p className="text-xs text-slate-500 leading-relaxed">
-          Includes 2% processing &amp; transaction fee (applied to Mobile Money &amp; Card payments).
-        </p>
-
-        {error && (
-          <p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs font-semibold text-red-600">
-            {error}
-          </p>
+        {numberBlock && (
+          <div className="ed-note bad" role="alert">
+            <b>New number. Not verified yet.</b>
+            <p style={{ margin: "6px 0" }}>{numberBlock.message}</p>
+            {numberBlock.verifyUrl && (
+              <a className="ed-btn y block" href={numberBlock.verifyUrl} target="_blank" rel="noopener noreferrer">Submit number to be verified <Icon name="ext" small /></a>
+            )}
+            <p style={{ margin: "8px 0 0", fontSize: 12 }}>No money has been taken.</p>
+          </div>
         )}
+
+        {error && <div className="ed-note bad" role="alert">{error}</div>}
 
         {momoPending && (
-          <p className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs font-semibold text-amber-800 animate-pulse">
-            {momoMessage || "Waiting for approval on your phone…"}
-          </p>
+          <div className="ed-note warn" aria-live="polite">
+            <b>{momoMessage || "Waiting for your approval on your phone…"}</b>
+            <p style={{ margin: "8px 0 0", lineHeight: 1.6 }}>
+              Did not see the prompt? Approve it by hand:<br />
+              MTN MoMo: dial <b>*170#</b>, then My Wallet, then Approvals.<br />
+              Telecel Cash: dial <b>*110#</b>, then Pending Approvals.<br />
+              AirtelTigo Money: dial <b>*110#</b>.
+            </p>
+          </div>
         )}
+      </div>
 
-        <div className="flex gap-3 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="flex-1 rounded-xl border border-slate-300 bg-white py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 transition disabled:opacity-50"
-          >
-            Cancel
+      <div className="ed-paperbar">
+        <div className="in">
+          <button type="button" className={`ed-btn tall block ${canPay ? "b" : "dis paper"}`} disabled={!canPay} onClick={() => void handlePay()}>
+            {loading ? (momoPending ? "Waiting for your PIN…" : "Working…") : `Pay ${money(totalAmount)}`}
           </button>
-          <button
-            type="button"
-            onClick={() => void handlePay()}
-            disabled={loading || telecelBlocked || !!closedNotice || !phone.trim() || !momoPhone.trim()}
-            className="flex-1 rounded-xl bg-[#f87171] hover:bg-rose-500 py-3 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-50 shadow-xs"
-          >
-            {loading ? (momoPending ? "Waiting…" : "Processing…") : "Confirm"}
-          </button>
+          <p style={{ margin: "8px 0 0", textAlign: "center", fontSize: 12, color: "var(--ed-g500)" }}>
+            Pay with Mobile Money. Delivery starts once your payment is approved.
+          </p>
         </div>
-
-        <p className="text-center text-xs text-slate-400 pt-1">
-          A payment prompt will be sent to the number entered above.
-        </p>
       </div>
     </div>
   );
