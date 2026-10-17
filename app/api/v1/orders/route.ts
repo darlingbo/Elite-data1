@@ -1,3 +1,4 @@
+import { PLATFORM_FEE_RATE } from "@/lib/pricing";
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateApiKey } from "@/lib/apiKeyAuth";
 import { supabase } from "@/lib/supabase";
@@ -6,7 +7,6 @@ import { fmtOrder, orderApprovalKeyboard, sendNewOrderAlert } from "@/lib/telegr
 import { addCurrency, percentageOf, roundCurrency, toMinorUnits } from "@/lib/finance";
 import { maybeAutoApprove } from "@/lib/order-approval";
 
-const PLATFORM_FEE_RATE = 0.02;
 
 export async function POST(request: NextRequest) {
   const auth = await authenticateApiKey(request);

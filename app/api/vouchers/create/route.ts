@@ -1,3 +1,4 @@
+import { PLATFORM_FEE_RATE } from "@/lib/pricing";
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { sendAdminAlert, sendNewOrderAlert, orderApprovalKeyboard } from "@/lib/telegram";
@@ -6,7 +7,6 @@ import { maybeAutoApprove } from "@/lib/order-approval";
 import { roundCurrency, toMinorUnits } from "@/lib/finance";
 import { claimVoucherDiscount, getVoucherDiscountStatus } from "@/lib/voucherDiscount";
 
-const PLATFORM_FEE_RATE = 0.02;
 
 const VOUCHER_LABELS: Record<string, string> = {
   BECE:   "BECE Result Checker",
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
   const totalSell = isAssisted ? 25 : roundCurrency(effectiveSellPrice * qty);
   const totalCost = roundCurrency(vPrice.costPrice * qty);
   const chargedAmount = isAssisted ? 25 : roundCurrency(totalSell * (1 + PLATFORM_FEE_RATE));
-  // Include the 2% platform fee in admin profit so stats match what was actually collected
+  // Admin profit is what was collected minus cost, so stats match the money received
   const profit = roundCurrency(chargedAmount - totalCost);
   const expectedKobo = toMinorUnits(chargedAmount);
 

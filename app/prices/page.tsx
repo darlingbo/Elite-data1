@@ -70,7 +70,7 @@ export default function PricesPage() {
             {shown.map((b) => {
               const tag = b.id === bestId ? "Best value" : b.popular ? "Popular" : null;
               return (
-                <Link key={b.id} href={`/buy/number?network=${b.network}&bundle=${encodeURIComponent(b.id)}`} className={`ed-tile${b.id === bestId ? " best" : ""}`} style={{ textDecoration: "none" }}>
+                <Link key={b.id} href={`/checkout?bundle=${encodeURIComponent(b.id)}`} className={`ed-tile${b.id === bestId ? " best" : ""}`} style={{ textDecoration: "none" }}>
                   {tag && <span className="tag">{tag}</span>}
                   <span className="sz">{b.size}</span>
                   <span className="vd">{b.validity || "Never expires"}</span>
@@ -114,7 +114,7 @@ export default function PricesPage() {
                   <>
                     <h3>{NETWORK_META[parseNetwork(recommended.network)].label} {recommended.size} for {money(recommended.price)}</h3>
                     <p>{recommended.validity || "Never expires"}</p>
-                    <Link href={`/buy/number?network=${recommended.network}&bundle=${encodeURIComponent(recommended.id)}`} className="ed-btn y">Buy this bundle</Link>
+                    <Link href={`/checkout?bundle=${encodeURIComponent(recommended.id)}`} className="ed-btn y">Buy this bundle</Link>
                   </>
                 ) : (
                   <p>No single bundle covers this. Choose our largest bundle, or message us on WhatsApp for a custom order.</p>

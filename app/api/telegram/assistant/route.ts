@@ -1,3 +1,4 @@
+import { PLATFORM_FEE_RATE } from "@/lib/pricing";
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles, networkApiName } from "@/lib/bundles";
@@ -1287,7 +1288,7 @@ This Mobile Money payment was not successful — no delivery needed.`,
     const res = await fetch(`${SITE_URL}/api/bundles`);
     const bData = await res.json() as { bundles: BundleItem[] };
     const allB = bData.bundles ?? [];
-    const basePrice = amountPesewas / 100 / 1.02;
+    const basePrice = amountPesewas / 100 / (1 + PLATFORM_FEE_RATE);
     const netBundles = network ? allB.filter(b => b.network === network) : allB;
     matchedBundle = netBundles.reduce((prev: BundleItem | null, b) => {
       if (!prev) return b;

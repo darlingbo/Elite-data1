@@ -27,7 +27,7 @@ export default function HomePopular() {
       <h2 id="popular-heading" className="ed-h2" style={{ fontSize: 22 }}>Popular today</h2>
       <div>
         {items.map((b) => (
-          <Link key={b.id} href={`/buy/number?network=${b.network}&bundle=${encodeURIComponent(b.id)}`} className="ed-lrow">
+          <Link key={b.id} href={`/checkout?bundle=${encodeURIComponent(b.id)}`} className="ed-lrow">
             <span className="z">{b.size}</span>
             <span className="t"><b>{NETWORK_META[b.network].label}</b>{b.validity || "Never expires"}</span>
             <span className="p">GH₵{b.price.toFixed(2)}</span>

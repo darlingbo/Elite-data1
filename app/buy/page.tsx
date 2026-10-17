@@ -6,7 +6,6 @@ import { Bundle } from "@/lib/bundles";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import Icon from "@/components/ed/Icon";
 import { NETWORK_META, NETWORK_ORDER, parseNetwork, type BuyNetwork } from "@/lib/ed-networks";
-import { readDraft, spacedPhone } from "@/lib/client/order-draft";
 
 type MashupBundle = { id: string; name: string; data_value: number; data_unit: string; minutes: number; price: number };
 
@@ -32,7 +31,6 @@ function BuyContent() {
   const [sizeFilter, setSizeFilter] = useState<SizeFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [referralVia, setReferralVia] = useState<string | undefined>();
-  const [recipient, setRecipient] = useState<string | null>(null);
   const [netStatus, setNetStatus] = useState({ mtn: true, telecel: true, at: true, mashup: true });
   const [slowDelivery, setSlowDelivery] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -70,8 +68,6 @@ function BuyContent() {
         if (viaCode) { sessionStorage.setItem("referralVia", viaCode); setReferralVia(viaCode); }
         else { const s = sessionStorage.getItem("referralVia"); if (s) setReferralVia(s); }
       } catch { /* private mode */ }
-      const d = readDraft();
-      if (d.recipient) setRecipient(d.recipient);
     }, 0);
     return () => clearTimeout(t);
   }, [viaCode]);
@@ -121,12 +117,6 @@ function BuyContent() {
     router.push(`/checkout?${q.toString()}`);
   }
 
-  const changeHref = (() => {
-    const q = new URLSearchParams({ network: net });
-    if (referralVia) q.set("via", referralVia);
-    return `/buy/number?${q.toString()}`;
-  })();
-
   return (
     <div className="ed-page" style={{ ["--ed-net" as string]: meta.color, ["--ed-net-ink" as string]: meta.ink, paddingBottom: 120 }}>
       <div className="ed-band">
@@ -151,16 +141,6 @@ function BuyContent() {
         {slowDelivery && (
           <div className="ed-chk warn">Deliveries are a little slower than usual today. Your order will still arrive. Thank you for your patience.</div>
         )}
-
-        <div className="ed-lrow" style={{ minHeight: 56 }}>
-          <div className="t" style={{ flex: 1 }}>
-            Sending to
-            <b className="ed-num" style={{ fontSize: 17 }}>{recipient ? spacedPhone(recipient) : "No number yet"}</b>
-          </div>
-          <Link href={changeHref} className="ed-link" style={{ minHeight: 44, display: "inline-grid", placeItems: "center", padding: "0 4px" }}>
-            {recipient ? "Change" : "Add number"}
-          </Link>
-        </div>
 
         {net !== "mashup" && (
           <div className="ed-chips" role="group" aria-label="Filter by size" style={{ flexWrap: "nowrap", overflowX: "auto", paddingBottom: 2 }}>

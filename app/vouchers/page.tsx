@@ -1,4 +1,5 @@
 "use client";
+import { PLATFORM_FEE_RATE } from "@/lib/pricing";
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { detectGhProvider, normalizeGhPhone } from "@/lib/phone";
@@ -80,7 +81,7 @@ function VouchersPage() {
   const hasDiscount = !isAssisted && (isBulk || promoApplied);
   const effectivePrice = hasDiscount ? selected.bulkPrice : selected.price;
   const subtotal = isAssisted ? 25 : parseFloat((effectivePrice * quantity).toFixed(2));
-  const fee = isAssisted ? 0 : parseFloat((subtotal * 0.02).toFixed(2));
+  const fee = isAssisted ? 0 : parseFloat((subtotal * PLATFORM_FEE_RATE).toFixed(2));
   const total = parseFloat((subtotal + fee).toFixed(2));
   const normalizedPhone = normalizeGhana(isAssisted ? whatsapp : phone);
   const phoneValid = /^0[2-5][0-9]{8}$/.test(normalizedPhone);
@@ -336,7 +337,7 @@ function VouchersPage() {
           <div className="ed-sum">
             <div className="r"><span>Order</span><b>{isAssisted ? `${selected.label} result check` : `${selected.label} x ${quantity}`}</b></div>
             {hasDiscount && <div className="r"><span>Discount</span><b>-{money((selected.price - effectivePrice) * quantity)}</b></div>}
-            {!isAssisted && <div className="r"><span>Processing fee (2%)</span><b>{money(fee)}</b></div>}
+            {!isAssisted && fee > 0 && <div className="r"><span>Processing fee</span><b>{money(fee)}</b></div>}
             <div className="r tot"><span>Total</span><b>{money(total)}</b></div>
           </div>
 

@@ -1,6 +1,9 @@
 import type { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { tooMany } from "@/lib/public-limit";
+import { completePaidDataOrder } from "@/lib/complete-paid-order";
+
+export const maxDuration = 60;
 
 async function getInventorStatus(reference: string): Promise<{
   status: string | null;
@@ -81,6 +84,21 @@ export async function GET(
       .eq("reference", reference)
       .maybeSingle();
     if (!minimal.error && minimal.data) data = minimal.data as Record<string, unknown>;
+  }
+
+  // A customer who paid by Mobile Money but whose order was never created (closed the page, lost
+  // signal) can track by the payment reference: if the payment really went through, the order is
+  // created now and shown straight away.
+  if (!data && /^ybk-/i.test(reference)) {
+    const done = await completePaidDataOrder(reference).catch(() => null);
+    if (done?.state === "done") {
+      const again = await supabase
+        .from("orders")
+        .select("reference, status, phone, network, bundle_size, amount, created_at")
+        .eq("reference", reference)
+        .maybeSingle();
+      if (!again.error && again.data) data = again.data as Record<string, unknown>;
+    }
   }
 
   if (!data) {

@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { calculateExpectedOrderCharge, isSeverelyUnderpaid } from "@/lib/payment-validation";
 
 describe("order payment validation", () => {
-  it("requires the complete server price plus the platform fee", () => {
-    expect(calculateExpectedOrderCharge({ sellingPrice: 4.70 })).toBe(4.79);
+  it("charges exactly the bundle price: there is no processing fee", () => {
+    expect(calculateExpectedOrderCharge({ sellingPrice: 4.70 })).toBe(4.70);
+    expect(calculateExpectedOrderCharge({ sellingPrice: 5 })).toBe(5);
   });
 
   it("applies only server-verified credits and fees", () => {
@@ -13,10 +14,10 @@ describe("order payment validation", () => {
       promoDiscount: 0.50,
       surcharge: 0.25,
       fastDelivery: true,
-    })).toBe(9.45);
+    })).toBe(9.25);
   });
 
   it("classifies a two-pesewa payment as severe underpayment", () => {
-    expect(isSeverelyUnderpaid(2, 4.79)).toBe(true);
+    expect(isSeverelyUnderpaid(2, 4.7)).toBe(true);
   });
 });

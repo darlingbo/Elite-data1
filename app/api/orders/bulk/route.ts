@@ -1,3 +1,4 @@
+import { PLATFORM_FEE_RATE } from "@/lib/pricing";
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { bundles } from "@/lib/bundles";
@@ -5,7 +6,6 @@ import { sendAdminAlert, sendNewOrderAlert } from "@/lib/telegram";
 import { maybeAutoApprove } from "@/lib/order-approval";
 import { addCurrency, fromMinorUnits, multiplyCurrency, percentageOf, roundCurrency, toMinorUnits } from "@/lib/finance";
 
-const PLATFORM_FEE_RATE = 0.02;
 const MAX_PHONES = 50;
 
 export async function POST(request: NextRequest) {

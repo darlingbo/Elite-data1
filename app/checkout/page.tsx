@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import CheckoutModal from "@/components/CheckoutModal";
 import Icon from "@/components/ed/Icon";
 import type { Bundle } from "@/lib/bundles";
-import { readDraft, type OrderDraft } from "@/lib/client/order-draft";
+import { readDraft, readRecents } from "@/lib/client/order-draft";
 
 type MashupBundle = { id: string; name: string; data_value: number; data_unit: string; minutes: number; price: number };
 
@@ -17,7 +17,7 @@ function CheckoutContent() {
   const referralVia = params.get("via") ?? undefined;
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [isMashup, setIsMashup] = useState(false);
-  const [draft, setDraft] = useState<OrderDraft | null>(null);
+  const [initialRecipient, setInitialRecipient] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -27,7 +27,8 @@ function CheckoutContent() {
       fetch(bundleUrl).then((response) => response.json()),
       fetch("/api/mashup-bundles").then((response) => response.json()).catch(() => ({ bundles: [] })),
     ]).then(([standard, mashup]: [{ bundles?: Bundle[] }, { bundles?: MashupBundle[] }]) => {
-      setDraft(readDraft());
+      // The number box starts empty unless this phone has bought before: then it offers the last one.
+      setInitialRecipient(readDraft().recipient ?? readRecents()[0]?.phone ?? "");
       const standardMatch = (standard.bundles ?? []).find((item) => item.id === bundleId);
       if (standardMatch) { setBundle(standardMatch); return; }
       const mashupMatch = (mashup.bundles ?? []).find((item) => item.id === bundleId);
@@ -48,21 +49,7 @@ function CheckoutContent() {
     }).catch(() => setError("Checkout could not load. Please try again."));
   }, [bundleId]);
 
-  const baseQuery = (extra: Record<string, string> = {}) => {
-    const q = new URLSearchParams(extra);
-    if (referralVia) q.set("via", referralVia);
-    return q.toString();
-  };
-  const buyHref = "/buy";
-  const expectedNetwork = bundle ? (isMashup ? "mashup" : bundle.network) : null;
-  const numberHref = expectedNetwork ? `/buy/number?${baseQuery({ network: expectedNetwork, bundle: bundleId })}` : "/buy/number";
-
-  // The number step comes first. If this visit has no checked number for this network,
-  // send the customer there, then straight back here.
-  const needsNumber = !!bundle && !!draft && (!draft.recipient || draft.network !== expectedNetwork);
-  useEffect(() => {
-    if (needsNumber) router.replace(numberHref);
-  }, [needsNumber, numberHref, router]);
+  const buyHref = bundle ? `/buy?network=${isMashup ? "mashup" : bundle.network}` : "/buy";
 
   if (error) {
     return (
@@ -76,7 +63,7 @@ function CheckoutContent() {
     );
   }
 
-  if (!bundle || !draft || needsNumber || !draft.recipient) {
+  if (!bundle || initialRecipient === null) {
     return <div className="ed-page" style={{ display: "grid", placeItems: "center" }}><span className="ed-spin" style={{ width: 32, height: 32, color: "var(--ed-yellow)" }} /></div>;
   }
 
@@ -90,10 +77,9 @@ function CheckoutContent() {
       </div>
       <CheckoutModal
         bundle={bundle}
-        recipient={draft.recipient}
-        verified={draft.verifiedFor === draft.recipient}
+        isMashup={isMashup}
+        initialRecipient={initialRecipient}
         referralVia={referralVia}
-        changeNumberHref={numberHref}
         onClose={() => router.push(buyHref)}
       />
     </div>

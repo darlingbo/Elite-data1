@@ -1,4 +1,5 @@
 "use client";
+import { PLATFORM_FEE_RATE } from "@/lib/pricing";
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import Link from "next/link";
 import type { Bundle } from "@/lib/bundles";
@@ -6,7 +7,6 @@ import { detectGhProvider, normalizeGhPhone } from "@/lib/phone";
 import { MOMO_NETWORKS, NETWORK_META, type BuyNetwork, type MomoNetwork } from "@/lib/ed-networks";
 import Icon from "@/components/ed/Icon";
 
-const PLATFORM_FEE_RATE = 0.02;
 const money = (n: number) => `GH₵${n.toFixed(2)}`;
 const spaced = (p: string) => p.replace(/\s/g, "").replace(/^(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3");
 
@@ -210,7 +210,7 @@ function BusinessContent() {
               <div className="r"><span>Bundle</span><b>{meta.label} {selectedBundle.size}</b></div>
               <div className="r"><span>Numbers</span><b>{uniquePhones.length}</b></div>
               <div className="r"><span>Price per number</span><b>{money(selectedBundle.price)}</b></div>
-              <div className="r"><span>Processing fee (2%)</span><b>{money(platformFee)}</b></div>
+              {platformFee > 0 && <div className="r"><span>Processing fee</span><b>{money(platformFee)}</b></div>}
               {companyName && <div className="r"><span>Company</span><b>{companyName}</b></div>}
               <div className="r"><span>Contact</span><b>{spaced(cleanContact ?? contactPhone)}</b></div>
               <div className="r tot"><span>Total</span><b>{money(grandTotal)}</b></div>

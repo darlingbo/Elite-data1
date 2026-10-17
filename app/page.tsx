@@ -86,7 +86,7 @@ export default async function Home() {
 
         <div className="ed-bars">
           {networks.map((n) => (
-            <Link key={n.id} href={`/buy/number?network=${n.id}`} className={`ed-bar ${n.id}`}>
+            <Link key={n.id} href={`/buy?network=${n.id}`} className={`ed-bar ${n.id}`}>
               <span className="go"><Icon name="arrow" /></span>
               <span className="name">{n.label}</span>
               <span className="tag">{n.tagline}</span>

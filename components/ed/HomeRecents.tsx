@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { readRecents, spacedPhone, writeDraft, type RecentNumber } from "@/lib/client/order-draft";
 import { parseNetwork } from "@/lib/ed-networks";
 
-/** Numbers this phone bought for before. One tap goes straight to the number step. */
+/** Numbers this phone bought for before. One tap goes to that network's bundles; the number is filled in at the next step. */
 export default function HomeRecents() {
   const router = useRouter();
   const [recents, setRecents] = useState<RecentNumber[]>([]);
@@ -19,7 +19,7 @@ export default function HomeRecents() {
   function go(r: RecentNumber) {
     const network = parseNetwork(r.network);
     writeDraft({ network, recipient: r.phone });
-    router.push(`/buy/number?network=${network}`);
+    router.push(`/buy?network=${network}`);
   }
 
   return (

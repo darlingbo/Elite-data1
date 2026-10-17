@@ -1,3 +1,4 @@
+import { PLATFORM_FEE_RATE } from "@/lib/pricing";
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { networkApiName } from "@/lib/bundles";
@@ -206,7 +207,7 @@ async function cmdRecover(chatId: string, reference: string) {
     const res = await fetch(`${SITE_URL}/api/bundles`);
     const data = await res.json() as { bundles: Array<{ id: string; network: string; price: number }> };
     const bundles = data.bundles ?? [];
-    const basePrice = amountPesewas / 100 / 1.02;
+    const basePrice = amountPesewas / 100 / (1 + PLATFORM_FEE_RATE);
     const netBundles = network ? bundles.filter(b => b.network === network) : bundles;
     const best = netBundles.reduce((prev: { id: string; network: string; price: number } | null, b) => {
       if (!prev) return b;

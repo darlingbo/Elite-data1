@@ -108,9 +108,21 @@ export function matchesYebeckCollectionAmount(
   return feePesewas > 0 && amountPesewas - feePesewas === expectedPesewas;
 }
 
+// Words Yebeck (or the network behind it) may use. Matching is case-insensitive and ignores
+// spaces, dashes and underscores, so "SUCCESS", "Successful" and "success_" all count as paid.
+const PAID_WORDS = new Set(["successful", "success", "succeeded", "successfull", "completed", "complete", "paid", "approved", "settled", "confirmed"]);
+const FAILED_WORDS = new Set(["failed", "failure", "reversed", "cancelled", "canceled", "declined", "rejected", "expired", "timeout", "timedout", "error", "denied"]);
+
 export function normalizeCollectionStatus(status: string): "success" | "pending" | "failed" {
-  if (status === "successful") return "success";
-  if (status === "failed" || status === "reversed") return "failed";
+  const word = String(status ?? "").toLowerCase().replace(/[\s_-]+/g, "");
+  if (PAID_WORDS.has(word)) return "success";
+  if (FAILED_WORDS.has(word)) return "failed";
   return "pending";
+}
+
+/** True when the word is one we know. Anything else is treated as "still waiting" and logged. */
+export function isKnownCollectionStatus(status: string): boolean {
+  const word = String(status ?? "").toLowerCase().replace(/[\s_-]+/g, "");
+  return PAID_WORDS.has(word) || FAILED_WORDS.has(word) || word === "pending" || word === "processing" || word === "initiated" || word === "queued";
 }
 

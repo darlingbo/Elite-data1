@@ -299,7 +299,7 @@ function TrackContent() {
               <button type="button" className="ed-btn o" onClick={() => void shareLink()}><Icon name="copy" small />{copied ? "Link copied" : "Share link"}</button>
             </div>
             {order.network && (
-              <Link href={`/buy/number?network=${parseNetwork(order.network)}`} className="ed-btn y tall block">Buy again</Link>
+              <Link href={`/buy?network=${parseNetwork(order.network)}`} className="ed-btn y tall block">Buy again</Link>
             )}
             {canRefund && (
               <div className="ed-block">

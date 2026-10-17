@@ -1,11 +1,13 @@
 import { supabase } from "@/lib/supabase";
-import { getCollection, normalizeCollectionStatus, YebeckCollection } from "@/lib/yebeck";
+import { getCollection, isKnownCollectionStatus, normalizeCollectionStatus, YebeckCollection } from "@/lib/yebeck";
 
 export type StoredPaymentAttempt = {
   reference: string;
   provider_reference?: string;
   amount_pesewas: number;
   status: "pending" | "success" | "failed" | "unknown";
+  /** The last status word Yebeck gave, exactly as received (for diagnosis). */
+  provider_status?: string;
   payment_type: "data_order" | "voucher_order" | "bulk_order" | "topup";
   metadata: Record<string, unknown>;
   created_at: string;
@@ -104,10 +106,12 @@ export async function getPaymentAttempt(reference: string): Promise<StoredPaymen
 export async function markPaymentAttemptStatus(
   reference: string,
   status: StoredPaymentAttempt["status"],
+  providerStatus?: string,
 ): Promise<void> {
   const attempts = await getAllAttempts();
   if (!attempts[reference]) return;
   attempts[reference].status = status;
+  if (providerStatus !== undefined) attempts[reference].provider_status = providerStatus;
   attempts[reference].updated_at = new Date().toISOString();
   await saveAllAttempts(attempts);
 }
@@ -137,10 +141,15 @@ export async function verifyYebeckPayment(reference: string, expectedType?: Stor
   const lookupRef = attempt.provider_reference || attempt.reference;
   const collection = await getCollection(lookupRef);
   const normalizedStatus = normalizeCollectionStatus(collection.status);
+  if (!isKnownCollectionStatus(collection.status)) {
+    // A word we have not seen. It is treated as "still waiting", so say what it was.
+    console.warn("[yebeck] unknown collection status", { reference: attempt.reference, status: String(collection.status) });
+  }
 
-  if (normalizedStatus !== attempt.status) {
-    await markPaymentAttemptStatus(attempt.reference, normalizedStatus);
+  if (normalizedStatus !== attempt.status || attempt.provider_status !== collection.status) {
+    await markPaymentAttemptStatus(attempt.reference, normalizedStatus, String(collection.status ?? ""));
     attempt.status = normalizedStatus;
+    attempt.provider_status = String(collection.status ?? "");
   }
 
   return { attempt, status: normalizedStatus, collection };

@@ -1,4 +1,5 @@
 import { percentageOf, roundCurrency } from "@/lib/finance";
+import { PLATFORM_FEE_RATE } from "@/lib/pricing";
 
 export function calculateExpectedOrderCharge(input: {
   sellingPrice: number;
@@ -7,7 +8,7 @@ export function calculateExpectedOrderCharge(input: {
   surcharge?: number;
   fastDelivery?: boolean;
 }): number {
-  const base = roundCurrency(input.sellingPrice * 1.02);
+  const base = roundCurrency(input.sellingPrice * (1 + PLATFORM_FEE_RATE));
   return roundCurrency(Math.max(
     base - roundCurrency(input.referralCredit ?? 0) - roundCurrency(input.promoDiscount ?? 0) +
       roundCurrency(input.surcharge ?? 0) + (input.fastDelivery ? 0.50 : 0),

@@ -4,8 +4,10 @@ import Link from "next/link";
 import { Bundle, networkConfig } from "@/lib/bundles";
 import { normalizeGhPhone, detectGhProvider } from "@/lib/phone";
 import { ALTERNATE_STORE_LABEL, ALTERNATE_STORE_URL, DEFAULT_CLOSED_MESSAGE } from "@/lib/store-closed";
+import { PLATFORM_FEE_RATE } from "@/lib/pricing";
 import { MOMO_NETWORKS, type MomoNetwork } from "@/lib/ed-networks";
-import { spacedPhone } from "@/lib/client/order-draft";
+import { addRecent, spacedPhone } from "@/lib/client/order-draft";
+import { useNumberCheck } from "@/lib/client/use-number-check";
 import Icon from "@/components/ed/Icon";
 
 /**
@@ -18,17 +20,14 @@ import Icon from "@/components/ed/Icon";
 
 interface Props {
   bundle: Bundle;
-  /** The number the data goes to, already checked on the number step. */
-  recipient: string;
-  /** True when the number step accepted `recipient`. */
-  verified: boolean;
+  /** True for mashup bundles (they have no beneficiary list to check). */
+  isMashup?: boolean;
+  /** A number to offer in the "who gets the data" box. Empty for a new visitor. */
+  initialRecipient?: string;
   referralVia?: string;
-  /** Where "Change" on the data number goes. */
-  changeNumberHref: string;
   onClose: () => void;
 }
 
-const PLATFORM_FEE_RATE = 0.02;
 
 type LoyaltyData = {
   count: number;
@@ -82,8 +81,11 @@ function copyToClipboard(text: string, onDone: () => void) {
 
 const money = (n: number) => `GH₵${n.toFixed(2)}`;
 
-export default function CheckoutModal({ bundle, recipient, verified, referralVia, changeNumberHref, onClose }: Props) {
-  const phone = recipient;
+export default function CheckoutModal({ bundle, isMashup, initialRecipient, referralVia, onClose }: Props) {
+  // The customer types who gets the data here. The number is checked as soon as it is complete.
+  const [recipientValue, setRecipientValue] = useState(initialRecipient ? spacedPhone(initialRecipient) : "");
+  const numberCheck = useNumberCheck(recipientValue, isMashup ? "mashup" : bundle.network);
+  const phone = numberCheck.phone ?? "";
   const [name] = useState("Customer");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -91,6 +93,9 @@ export default function CheckoutModal({ bundle, recipient, verified, referralVia
   const [fraudTrap, setFraudTrap] = useState(false);
   const [failedOrder, setFailedOrder] = useState<FailedState | null>(null);
   const [pendingApproval, setPendingApproval] = useState<PendingApprovalState | null>(null);
+  // Set when we stopped waiting but the customer may still have approved the payment.
+  const [timedOutRef, setTimedOutRef] = useState<string | null>(null);
+  const [rechecking, setRechecking] = useState(false);
   const [refundName, setRefundName] = useState("");
   const [refundPhone, setRefundPhone] = useState("");
   const [refundSending, setRefundSending] = useState(false);
@@ -168,6 +173,7 @@ export default function CheckoutModal({ bundle, recipient, verified, referralVia
     (!networkLooksWrong || confirmNetwork) &&
     !telecelBlocked &&
     !closedNotice &&
+    numberCheck.canContinue &&
     !!phone;
 
   async function completePaidOrder(reference: string) {
@@ -191,15 +197,47 @@ export default function CheckoutModal({ bundle, recipient, verified, referralVia
       }),
     });
     const data = await response.json();
+    showOrderResult(data);
+  }
+
+  /** Show the confirmation (or the problem) for an order answer from the server. */
+  function showOrderResult(data: { success?: boolean; error?: string; fraudTrap?: boolean; pendingApproval?: boolean; failed?: boolean; reference: string; network?: string; bundleSize?: string; loyalty?: LoyaltyData }) {
     setLoading(false);
+    setMomoPending(false);
+    setTimedOutRef(null);
     if (!data.success) {
-      setError(data.error || "Something went wrong. Please contact support.");
+      setError(data.error || "Your payment went through, but we could not finish the order. Please contact support with your payment reference.");
       return;
     }
     if (data.fraudTrap) { setFraudTrap(true); return; }
     if (data.pendingApproval) setPendingApproval({ reference: data.reference });
-    else if (data.failed) setFailedOrder({ reference: data.reference, network: data.network, bundleSize: data.bundleSize });
+    else if (data.failed) setFailedOrder({ reference: data.reference, network: data.network ?? "", bundleSize: data.bundleSize ?? "" });
     else setSuccess({ reference: data.reference, loyalty: data.loyalty });
+  }
+
+  /** The payment was seen as paid: the server has already made the order, or we ask it to. */
+  async function handlePaid(statusData: { order?: Record<string, unknown>; orderError?: string }, ref: string) {
+    if (statusData.order && statusData.order.success) {
+      showOrderResult(statusData.order as Parameters<typeof showOrderResult>[0]);
+      return;
+    }
+    setMomoMessage("Payment approved. Creating your order…");
+    await completePaidOrder(ref);
+  }
+
+  /** After the waiting time ran out: ask once more, because the customer may have approved late. */
+  async function checkAgain(ref: string) {
+    setRechecking(true);
+    try {
+      const statusData = await (await fetch(`/api/yebeck/status?reference=${encodeURIComponent(ref)}`)).json();
+      if (statusData.status === "success") await handlePaid(statusData, ref);
+      else if (statusData.status === "failed") { setTimedOutRef(null); setLoading(false); setError("The payment was declined or cancelled on your phone. Please try again."); }
+      else setMomoMessage("Still no approval from Mobile Money. If you approved the prompt, wait a minute and check again.");
+    } catch {
+      setMomoMessage("We could not check right now. Please try again in a moment.");
+    } finally {
+      setRechecking(false);
+    }
   }
 
   async function handlePay() {
@@ -226,6 +264,7 @@ export default function CheckoutModal({ bundle, recipient, verified, referralVia
       // Network error: the server checks again.
     }
 
+    addRecent(phone, isMashup ? "mashup" : bundle.network);
     setMomoPending(true);
     setMomoMessage("Sending the payment request to your phone…");
 
@@ -244,6 +283,8 @@ export default function CheckoutModal({ bundle, recipient, verified, referralVia
             customer_name: phone,
             bundle_id: bundle.id,
             recipient_phone: phone,
+            apply_referral_credit: referralCredit > 0,
+            referral_via: referralVia ?? "",
           },
         }),
       });
@@ -262,7 +303,7 @@ export default function CheckoutModal({ bundle, recipient, verified, referralVia
       const ref = data.reference as string;
       setMomoMessage(data.message || "Prompt sent. Approve it on your phone.");
 
-      // Check every 1.8 seconds, for up to 3 minutes.
+      // Check every 2 seconds, for up to 5 minutes.
       stopPolling();
       pollRef.current = setInterval(async () => {
         try {
@@ -271,8 +312,7 @@ export default function CheckoutModal({ bundle, recipient, verified, referralVia
           if (statusData.status === "success") {
             stopPolling();
             setMomoPending(false);
-            setMomoMessage("Payment approved. Creating your order…");
-            await completePaidOrder(ref);
+            await handlePaid(statusData, ref);
           } else if (statusData.status === "failed") {
             stopPolling();
             setLoading(false);
@@ -284,13 +324,13 @@ export default function CheckoutModal({ bundle, recipient, verified, referralVia
         } catch {
           // keep polling
         }
-      }, 1800);
+      }, 2000);
       pollStopRef.current = setTimeout(() => {
         stopPolling();
         setLoading(false);
         setMomoPending(false);
-        setError("The payment timed out. If you already approved it, track your order or contact support.");
-      }, 180000);
+        setTimedOutRef(ref);
+      }, 300000);
     } catch {
       setLoading(false);
       setMomoPending(false);
@@ -432,18 +472,47 @@ export default function CheckoutModal({ bundle, recipient, verified, referralVia
   return (
     <div className="ed-paper" style={{ minHeight: "100vh", paddingBottom: 130 }}>
       <div style={{ maxWidth: 520, margin: "0 auto", padding: "16px max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left))", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div>
+          <label htmlFor="recipient" className="lt">Number that gets the data</label>
+          <input
+            id="recipient"
+            className={`ed-input${numberCheck.state.phase === "not_verified" || numberCheck.state.phase === "unreachable" || numberCheck.state.phase === "error" ? " warn" : ""}`}
+            type="tel"
+            inputMode="tel"
+            autoComplete="off"
+            value={recipientValue}
+            onChange={(e) => setRecipientValue(e.target.value)}
+            placeholder="024 123 4567"
+            aria-describedby="recipient-status"
+          />
+          <div id="recipient-status" aria-live="polite" style={{ marginTop: 8, display: "grid", gap: 8 }}>
+            {numberCheck.state.phase === "checking" && <div className="ed-note">Checking this number…</div>}
+            {numberCheck.state.phase === "verified" && <div className="ed-note ok"><b>Verified.</b> This {net.name} number can receive data.</div>}
+            {(numberCheck.state.phase === "unreachable" || numberCheck.state.phase === "error") && (
+              <div className="ed-note warn" role="alert">
+                <b>We could not check this number.</b>
+                <p style={{ margin: "6px 0" }}>{numberCheck.state.message ?? "Please try again in a minute."}</p>
+                <button type="button" className="ed-btn b block" style={{ minHeight: 44 }} onClick={numberCheck.recheck}>Check again</button>
+              </div>
+            )}
+            {numberCheck.state.phase === "not_verified" && (
+              <div className="ed-note bad" role="alert">
+                <b>New number. Not verified yet.</b>
+                <p style={{ margin: "6px 0" }}>New numbers must be verified before they can buy data. Submit this number to be verified, then tap Check again.</p>
+                <a className="ed-btn y block" href={numberCheck.state.verifyUrl || "https://wa.me/233509794503"} target="_blank" rel="noopener noreferrer">
+                  {numberCheck.state.verifyUrl ? "Submit number to be verified" : "Ask us on WhatsApp to verify it"} <Icon name="ext" small />
+                </a>
+                <button type="button" className="ed-btn o block" style={{ minHeight: 44, marginTop: 8 }} onClick={numberCheck.recheck}>Check again</button>
+                <p style={{ margin: "8px 0 0", fontSize: 12 }}>No money has been taken.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="ed-sum">
           <div className="r"><span>Bundle</span><b>{net.name} {bundle.size}, {bundle.validity || "never expires"}</b></div>
-          <div className="r">
-            <span>Data goes to</span>
-            <b>
-              {spacedPhone(phone)}
-              {verified && <span className="ok2">Verified</span>}
-              {" "}<Link href={changeNumberHref} style={{ color: "var(--ed-blue)", fontWeight: 800, fontSize: 12, marginLeft: 6 }}>Change</Link>
-            </b>
-          </div>
           <div className="r"><span>Bundle price</span><b>{money(bundle.price)}</b></div>
-          <div className="r"><span>Processing fee (2%)</span><b>{money(feeAmount)}</b></div>
+          {feeAmount > 0 && <div className="r"><span>Processing fee</span><b>{money(feeAmount)}</b></div>}
           {referralCredit > 0 && <div className="r"><span>Referral credit</span><b>-{money(referralCredit)}</b></div>}
           {surcharge > 0 && <div className="r"><span>Pending surcharge</span><b>{money(surcharge)}</b></div>}
           <div className="r tot"><span>Total</span><b>{money(totalAmount)}</b></div>
@@ -505,6 +574,17 @@ export default function CheckoutModal({ bundle, recipient, verified, referralVia
             <b>Telecel payment: contact the admin.</b>
             <p style={{ margin: "6px 0" }}>Please contact the admin on WhatsApp <b>0509794503</b> (WhatsApp only, no calls) and send the money to the admin.</p>
             <a href="https://wa.me/233509794503" target="_blank" rel="noopener noreferrer" className="ed-btn g block">Chat on WhatsApp</a>
+          </div>
+        )}
+
+        {timedOutRef && (
+          <div className="ed-note warn" role="alert">
+            <b>We have not seen your approval yet.</b>
+            <p style={{ margin: "6px 0" }}>If you approved the prompt, your payment is safe. Tap the button to check again, or look it up on the Track page with this reference: <b className="ed-num">{timedOutRef}</b></p>
+            <button type="button" className="ed-btn y block" style={{ minHeight: 48 }} disabled={rechecking} onClick={() => void checkAgain(timedOutRef)}>
+              {rechecking ? "Checking…" : "I approved it, check again"}
+            </button>
+            <a className="ed-btn o block" style={{ minHeight: 44, marginTop: 8 }} href={`/track?ref=${encodeURIComponent(timedOutRef)}`}>Track this payment</a>
           </div>
         )}
 
