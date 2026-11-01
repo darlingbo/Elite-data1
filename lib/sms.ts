@@ -1,7 +1,7 @@
 /**
  * Send an SMS to a customer via MessagePilot (same provider already used for
- * voucher codes below, just a different Sender ID for general order/admin
- * messages — "ELITEGHA" — vs. the voucher-only one).
+ * voucher codes below. General order/admin messages now use the same Sender ID
+ * as vouchers — "ELITEVCHIR" — because "ELITEGHA" messages were not being delivered).
  * Normalises Ghana numbers (024XXXXXXX → +233XXXXXXXX).
  * Fire-and-forget safe — never throws, always resolves.
  */
@@ -18,11 +18,12 @@ export function messagePilotApiKey(value = process.env.MESSAGEPILOT_API_KEY): st
   return (value ?? "").trim();
 }
 
-/** General (non-voucher) Sender ID — "ELITEGHA". Falls back to the literal
- * value if MESSAGEPILOT_SENDER_ID isn't set in env, so this works immediately
- * without an extra Vercel var. Override via env if the registered ID changes. */
+/** General (non-voucher) Sender ID — "ELITEVCHIR", the same one vouchers use.
+ * Falls back to the literal value if MESSAGEPILOT_SENDER_ID isn't set in env,
+ * so this works immediately without an extra Vercel var. The env var wins when
+ * set, so keep it in step with this default. */
 export function messagePilotSenderId(): string {
-  return (process.env.MESSAGEPILOT_SENDER_ID ?? "ELITEGHA").trim();
+  return (process.env.MESSAGEPILOT_SENDER_ID ?? "ELITEVCHIR").trim();
 }
 
 export function sendCustomerSMS(phone: string, message: string): Promise<SmsSendResult> {
@@ -86,7 +87,7 @@ export async function sendVoucherSMS(
 }
 
 /** Send to one or more recipients through MessagePilot's general Sender ID
- * (ELITEGHA) in a single call. Exported so the admin bulk-SMS route
+ * (ELITEVCHIR) in a single call. Exported so the admin bulk-SMS route
  * (app/api/admin/sms/send) can use it directly instead of looping one-by-one. */
 export async function sendMessagePilotSms(
   phones: string[],
