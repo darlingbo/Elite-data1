@@ -286,7 +286,7 @@ export default function SMSAdmin() {
             {!diagResult.configured && (
               <div className="p-3 rounded-xl" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)" }}>
                 <p className="text-sm font-bold text-red-400">❌ {diagResult.error as string}</p>
-                <p className="text-xs text-slate-400 mt-1">Add MESSAGEPILOT_API_KEY in Vercel Production, then redeploy. (Sender ID defaults to ELITEVCHIR — override with MESSAGEPILOT_SENDER_ID if it changes.)</p>
+                <p className="text-xs text-slate-400 mt-1">Add MESSAGEPILOT_API_KEY in Vercel Production, then redeploy. (Sender ID defaults to ELITEGHA — override with MESSAGEPILOT_SENDER_ID if it changes.)</p>
               </div>
             )}
 
@@ -303,7 +303,7 @@ export default function SMSAdmin() {
               <div className="p-3 rounded-xl" style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)" }}>
                 <p className="text-sm font-bold text-green-400">✅ MESSAGEPILOT_API_KEY is set</p>
                 <p className="text-xs text-slate-400 mt-1">
-                  This only confirms the key is present, not that it&apos;s valid or that the Sender ID (<strong className="text-white">{diagResult.senderId as string || "ELITEVCHIR"}</strong>) is approved — send a Test SMS below to confirm end-to-end. Unapproved sender IDs get silently rejected by Ghana networks.
+                  This only confirms the key is present, not that it&apos;s valid or that the Sender ID (<strong className="text-white">{diagResult.senderId as string || "ELITEGHA"}</strong>) is approved — send a Test SMS below to confirm end-to-end. Unapproved sender IDs get silently rejected by Ghana networks.
                 </p>
               </div>
             )}

@@ -10,7 +10,7 @@ import { roundCurrency } from "@/lib/finance";
  * wallet-funded API key (same auth as /api/v1/purchase). Unlike data bundles,
  * this is FAST and synchronous: vouchers come from local stock
  * (voucher_inventory), not an upstream aggregator round-trip, and delivery
- * (SMS with the code, via MessagePilot's ELITEVCHIR Sender ID) happens inline
+ * (SMS with the code, via MessagePilot's ELITEGHA Sender ID) happens inline
  * before the response — no Telegram admin-approval wait, since an
  * authenticated wallet-funded API call is already a trusted source (same
  * tier as auto-approval on the data-bundle side).
