@@ -1,0 +1,3 @@
+# Keep the Worker entrypoint out of the static asset upload.
+_worker.js
+_routes.json

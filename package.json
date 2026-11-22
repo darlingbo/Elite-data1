@@ -5,11 +5,15 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cf:build": "npx @opennextjs/cloudflare build",
+    "cf:preview": "npx @opennextjs/cloudflare build && npx @opennextjs/cloudflare preview",
+    "cf:deploy": "npx @opennextjs/cloudflare build && npx @opennextjs/cloudflare deploy",
+    "cf:typegen": "npx wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "start": "next start"
   },
   "dependencies": {
     "@simplewebauthn/server": "^13.3.2",
