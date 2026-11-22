@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, migration/cloudflare]
   pull_request:
 
 # Cancel superseded runs on the same branch/PR.
@@ -33,8 +33,11 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      - name: Production build
-        run: npm run build
+      - name: Install Cloudflare adapter for migration validation
+        run: npm install --no-save @opennextjs/cloudflare@latest wrangler@latest
+
+      - name: OpenNext Cloudflare build
+        run: npm run cf:build
         env:
           # Placeholder values so `next build` can collect page data in CI.
           # Real secrets live in your hosting provider, never in the repo.
