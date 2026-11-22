@@ -47,3 +47,13 @@ jobs:
           ADMIN_SESSION_TOKEN: placeholder-admin-token
           ADMIN_PASSWORD: placeholder
           AGENT_SESSION_SECRET: placeholder-agent-secret
+
+      - name: Package isolated Cloudflare preview build
+        uses: actions/upload-artifact@v4
+        with:
+          name: elite-data1-cloudflare-preview
+          path: |
+            .open-next/**
+            wrangler.jsonc
+          if-no-files-found: error
+          retention-days: 7
