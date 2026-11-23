@@ -114,11 +114,14 @@ export default function OrderSheet({
   const canComplete = ["processing", "pending", "pending_approval", "failed", "not_on_list"].includes(statusLower);
   const canRetry = ["pending", "processing", "failed", "not_on_list"].includes(statusLower);
   const canDelete = ["failed", "pending", "pending_approval", "processing"].includes(statusLower) || notOnListExpired;
-  const canRefund = (["failed", "rejected"].includes(statusLower) || notOnListExpired) && !refunded && amount > 0;
-  const refundBlocked = ["processing", "completed"].includes(statusLower) && !refunded && amount > 0;
   // Money goes back to the number that paid. A different number the customer typed in later is shown as a warning only.
   // Orders paid from an agent wallet go back into that wallet automatically.
   const walletAuto = detail?.payment.kind === "wallet" && ref.startsWith("AGTWALLET-");
+  // Mobile Money orders can also be refunded by hand while still being sent
+  // (processing). Wallet refunds still wait for the order to fail.
+  const stillSending = ["processing", "pending"].includes(statusLower);
+  const canRefund = (["failed", "rejected"].includes(statusLower) || notOnListExpired || (stillSending && !walletAuto)) && !refunded && amount > 0;
+  const refundBlocked = (statusLower === "completed" || (stillSending && walletAuto)) && !refunded && amount > 0;
   const refundTo = detail?.payment.payerPhone || order.refund_phone || "";
 
   const finish = useCallback((text: string, ok = true, close = false) => {
@@ -244,7 +247,7 @@ export default function OrderSheet({
                   ) : canRefund ? (
                     <button type="button" className="ed-btn o" style={{ borderColor: "rgba(245,158,11,.5)", color: "var(--ed-amber)" }} onClick={() => { setMsg(null); setView("refund"); }}><Icon name="refund" small />Refund</button>
                   ) : (
-                    <div className="ed-btn lock" aria-disabled="true"><span style={{ display: "flex", alignItems: "center", gap: 6 }}><Icon name="lock" small />Refund</span><small>{refundBlocked ? (statusLower === "processing" ? "Still sending" : "Delivered") : "After reject or fail"}</small></div>
+                    <div className="ed-btn lock" aria-disabled="true"><span style={{ display: "flex", alignItems: "center", gap: 6 }}><Icon name="lock" small />Refund</span><small>{refundBlocked ? (statusLower === "completed" ? "Delivered" : "Still sending") : "After reject or fail"}</small></div>
                   )}
                 </div>
               </div>
@@ -330,6 +333,9 @@ export default function OrderSheet({
                   )}
                   {!refundTo && <p className="ad-warn">No refund number is on file. Ask the customer for one on WhatsApp before sending.</p>}
                 </>
+              )}
+              {stillSending && !walletAuto && (
+                <p className="ad-warn">This order is still being sent. Recording the refund marks it Refunded, so it is no longer counted as a sale and later delivery updates won&apos;t change it. If the data still arrives, you&apos;ll get a Telegram alert so you can recover the money.</p>
               )}
               <p className="ad-warn" style={{ background: "transparent", color: "var(--ed-muted)", padding: 0 }}>The customer gets an SMS when the refund is recorded. A refund can only be made once, and not on delivered orders.</p>
               <HoldButton tone="green" label={walletAuto ? `Hold to refund ${money(amount)} to wallet` : `Hold to record refund ${money(amount)}`} disabled={busy || !canRefund} onConfirm={() => void refund()} />

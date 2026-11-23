@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { sendCompletedOrderAlert, sendAgentNotification, sendOrderFailedAlert } from "@/lib/telegram";
 import { sendAdminDeliverySMS, sendCustomerSMS, orderFailedSMS } from "@/lib/sms";
+import { alertDeliveredAfterRefund } from "@/lib/refunded-delivery";
 
 /**
  * Inbound webhook FROM Yhang Mhany reporting an MTN order's final status.
@@ -43,6 +44,12 @@ export async function POST(request: NextRequest) {
 
   if (!target) return Response.json({ ok: true }); // unknown order — still 200 so they don't keep retrying
   if (target.status === "completed" || target.status === "failed") return Response.json({ ok: true }); // already settled
+  // Refunded by the admin (possibly while it was processing) — keep it
+  // refunded; only warn if Yhang Mhany delivered it after all.
+  if (target.status === "refunded") {
+    if (status === "DELIVERED") await alertDeliveredAfterRefund(target, "Yhang Mhany").catch(() => {});
+    return Response.json({ ok: true });
+  }
 
   const isWallet = target.reference.startsWith("AGTWALLET-");
 

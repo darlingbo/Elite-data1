@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { sendCompletedOrderAlert, sendAgentNotification, sendOrderFailedAlert, sendAdminAlert } from "@/lib/telegram";
 import { sendAdminDeliverySMS, sendCustomerSMS, isNotOnListError, orderNotOnListSMS } from "@/lib/sms";
+import { alertDeliveredAfterRefund } from "@/lib/refunded-delivery";
 
 export async function POST(request: NextRequest) {
   // Optional shared-secret check — set INVENTOR_WEBHOOK_SECRET in Vercel env vars
@@ -61,6 +62,13 @@ export async function POST(request: NextRequest) {
 
   // Already in a terminal state — no-op
   if (target.status === "completed" || target.status === "failed") {
+    return Response.json({ ok: true });
+  }
+
+  // Refunded by the admin (possibly while it was processing) — keep it
+  // refunded; only warn if the supplier delivered it after all.
+  if (target.status === "refunded") {
+    if (event === "order.completed") await alertDeliveredAfterRefund({ ...target, reference: targetRef }, "Inventor").catch(() => {});
     return Response.json({ ok: true });
   }
 

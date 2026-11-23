@@ -54,6 +54,15 @@ export async function POST(req: NextRequest) {
     .select("status,amount,customer_name,phone,refunded,refunded_at,refund_amount")
     .eq("reference", reference).maybeSingle();
   if (!before) return Response.json({ error: "Order not found" }, { status: 404 });
+  if (body.refunded) {
+    // A refund is recorded once, and never on a delivered order. Processing
+    // orders may be refunded (the admin sends the Mobile Money by hand); the
+    // delivery webhooks then keep the order "refunded".
+    if (before.refunded) return Response.json({ error: "This order has already been refunded." }, { status: 409 });
+    if (String(before.status ?? "").toLowerCase() === "completed") {
+      return Response.json({ error: "Cannot refund a completed order — the bundle was already delivered." }, { status: 409 });
+    }
+  }
   if (body.refunded) patch.refund_amount = Number(before.amount ?? 0);
   const { error } = await supabase.from("orders").update(patch).eq("reference", reference);
   if (error) return Response.json({ error: error.message }, { status: 500 });
