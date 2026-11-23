@@ -9,10 +9,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "cf:build": "npx @opennextjs/cloudflare build",
-    "cf:preview": "npx @opennextjs/cloudflare build && npx @opennextjs/cloudflare preview",
-    "cf:deploy": "npx @opennextjs/cloudflare build && npx @opennextjs/cloudflare deploy",
-    "cf:typegen": "npx wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "start": "next start"
   },
   "dependencies": {
@@ -42,10 +42,15 @@
     "eslint-config-next": "^16.2.12",
     "tailwindcss": "^4.3.3",
     "typescript": "^5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@opennextjs/cloudflare": "1.20.18",
+    "wrangler": "^4.166.0"
   },
   "overrides": {
     "postcss": "8.5.26",
-    "sharp": "$sharp"
+    "sharp": "$sharp",
+    "@opennextjs/aws": {
+      "cookie": "0.7.2"
+    }
   }
 }

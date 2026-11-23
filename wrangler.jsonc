@@ -1,15 +1,26 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "elite-data1-cloudflare-preview",
-  "main": ".open-next/worker.js",
+  "name": "elite-data1",
+  // cloudflare-worker.ts wraps the OpenNext worker and adds the cron jobs.
+  "main": "cloudflare-worker.ts",
   "compatibility_date": "2026-11-22",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "upload_source_maps": true,
+  // Minify so the Worker stays under the 3 MB (gzip) Workers Free size limit.
+  "minify": true,
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
   "observability": {
     "enabled": true
-  }
+  },
+  // Replaces the "crons" list in vercel.json (times are UTC = Ghana time).
+  // See cloudflare-worker.ts for which job runs at which hour.
+  "triggers": {
+    "crons": ["5 0 * * *", "0 * * * *"]
+  },
+  // Keep variables and secrets added in the Cloudflare dashboard or with
+  // `wrangler secret put` when this file is deployed.
+  "keep_vars": true
 }
