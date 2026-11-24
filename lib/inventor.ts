@@ -33,7 +33,9 @@ export async function inventorPurchase(
   sizeGB: number,
   reference: string,
   timeoutMs = 25_000,
-  maxRetries = 1,
+  // Never resend an order automatically: one attempt, and an unclear result
+  // is left for the admin to check and retry by hand.
+  maxRetries = 0,
 ): Promise<PurchaseResult> {
   let lastBody: Record<string, unknown> = {};
 
