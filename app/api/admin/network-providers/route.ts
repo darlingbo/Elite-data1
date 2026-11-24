@@ -3,6 +3,13 @@ import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
 import { yhangMhanyBalance } from "@/lib/yhangmhany";
+import { swiftdataBalance, isSwiftDataConfigured } from "@/lib/swiftdata";
+
+const MTN_PROVIDERS = ["inventor", "yhangmhany", "swiftdata", "auto"] as const;
+type MtnProvider = (typeof MTN_PROVIDERS)[number];
+function toMtnProvider(v: unknown): MtnProvider {
+  return MTN_PROVIDERS.includes(v as MtnProvider) ? (v as MtnProvider) : "inventor";
+}
 
 async function isAdmin() {
   const s = await cookies();
@@ -28,16 +35,19 @@ async function getInventorBalance(): Promise<number | null> {
 export async function GET() {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [inventorBalance, yhangMhanyBal, setting] = await Promise.all([
+  const [inventorBalance, yhangMhanyBal, swiftDataBal, setting] = await Promise.all([
     getInventorBalance(),
     yhangMhanyBalance(),
+    swiftdataBalance(),
     supabase.from("system_settings").select("value").eq("key", "mtn_provider").maybeSingle(),
   ]);
 
   return Response.json({
     inventorBalance,
     yhangMhanyBalance: yhangMhanyBal,
-    mtnProvider: setting.data?.value === "yhangmhany" ? "yhangmhany" : setting.data?.value === "auto" ? "auto" : "inventor",
+    swiftDataBalance: swiftDataBal,
+    swiftDataConfigured: isSwiftDataConfigured(),
+    mtnProvider: toMtnProvider(setting.data?.value),
     checkedAt: new Date().toISOString(),
   });
 }
@@ -45,7 +55,10 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json().catch(() => ({}));
-  const provider = body.mtnProvider === "yhangmhany" ? "yhangmhany" : body.mtnProvider === "auto" ? "auto" : "inventor";
+  const provider = toMtnProvider(body.mtnProvider);
+  if (provider === "swiftdata" && !isSwiftDataConfigured()) {
+    return Response.json({ error: "Add SWIFTDATA_API_KEY in Cloudflare before switching MTN to SwiftData." }, { status: 400 });
+  }
   await supabase.from("system_settings").upsert({ key: "mtn_provider", value: provider }, { onConflict: "key" });
   return Response.json({ success: true, mtnProvider: provider });
 }

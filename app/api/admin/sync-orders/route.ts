@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { supabase } from "@/lib/supabase";
+import { checkSwiftDataOrder } from "@/lib/swiftdata";
 import { verifyAdminSessionValue } from "@/lib/adminAuth";
 import { sendAdminDeliverySMS } from "@/lib/sms";
 
@@ -37,12 +38,12 @@ export async function POST(request: Request) {
   const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
   // Try full query with all columns; fall back if newer columns don't exist yet
-  type OrderRow = { reference: string; inventor_order_id: string | null; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null };
+  type OrderRow = { reference: string; inventor_order_id: string | null; provider_used?: string | null; status: string; phone: string; network: string; bundle_size: string; bundle_size_gb: number | null; created_at: string; agent_id: string | null; agent_commission: number | null; amount: number | null };
 
   let orders: OrderRow[] | null = null;
   const { data: full, error: fullErr } = await supabase
     .from("orders")
-    .select("reference, inventor_order_id, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount")
+    .select("reference, inventor_order_id, provider_used, status, phone, network, bundle_size, bundle_size_gb, created_at, agent_id, agent_commission, amount")
     .in("status", ["pending", "processing"])
     .gte("created_at", cutoff48h);
 
@@ -67,7 +68,10 @@ export async function POST(request: Request) {
 
   for (const chunk of chunks) {
     await Promise.all(chunk.map(async (order) => {
-      const invStatus = await checkInventorOrder(order.inventor_order_id || order.reference);
+      // SwiftData orders are looked up by our own reference (it's what we sent them).
+      const invStatus = order.provider_used === "swiftdata"
+        ? await checkSwiftDataOrder(order.reference)
+        : await checkInventorOrder(order.inventor_order_id || order.reference);
 
       if (invStatus === "completed") {
         const { data: completedOrder } = await supabase

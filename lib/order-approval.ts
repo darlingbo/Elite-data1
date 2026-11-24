@@ -3,6 +3,7 @@ import { networkApiName } from "@/lib/bundles";
 import { sendAgentNotification, sendAdminAlert, sendOrderFailedAlert } from "@/lib/telegram";
 import { inventorPurchase, inventorVerifyNumber, inventorVoucher } from "@/lib/inventor";
 import { yhangmhanyPurchase, yhangmhanyVerifyNumber, yhangmhanyDefinitelyDidNotTake } from "@/lib/yhangmhany";
+import { swiftdataPurchase, swiftdataVerifyNumber } from "@/lib/swiftdata";
 import { sendCustomerSMS, orderFailedSMS, isNotOnListError, orderNotOnListSMS } from "@/lib/sms";
 import { auditLog } from "@/lib/audit";
 import { assessOrderRisk, isOrderGuardEnabled } from "@/lib/order-risk";
@@ -27,9 +28,10 @@ export async function isAutoApprovalEnabled(): Promise<boolean> {
 
 /** Which provider handles new MTN orders -- set from Admin -> Network
  * Providers. Telecel/AirtelTigo always use Inventor regardless. */
-async function getMtnProvider(): Promise<"inventor" | "yhangmhany" | "auto"> {
+async function getMtnProvider(): Promise<"inventor" | "yhangmhany" | "swiftdata" | "auto"> {
   const { data } = await supabase.from("system_settings").select("value").eq("key", "mtn_provider").maybeSingle();
-  return data?.value === "yhangmhany" ? "yhangmhany" : data?.value === "auto" ? "auto" : "inventor";
+  const v = data?.value;
+  return v === "yhangmhany" || v === "swiftdata" || v === "auto" ? v : "inventor";
 }
 
 export async function approveOrder(
@@ -158,7 +160,7 @@ export async function approveOrder(
   let balanceAfter: number | null = null;
   let inventorReference: string | null = null;
   let errorBody: Record<string, unknown> = {};
-  let providerUsed: "inventor" | "yhangmhany" = "inventor";
+  let providerUsed: "inventor" | "yhangmhany" | "swiftdata" = "inventor";
   try {
     if (isVoucher) {
       const voucherTypeMatch = String(order.bundle_size ?? "").match(/^(BECE|WASSCE)/i);
@@ -246,6 +248,24 @@ export async function approveOrder(
           // A "not on the list" rejection here becomes the same 72h hold + SMS
           // via the not_on_list handling further down.
           if (!apiOk) errorBody = result.body;
+        }
+      } else if (network === "MTN" && mtnMode === "swiftdata") {
+        // SwiftData: pre-check the number, then buy with our own reference
+        // (SwiftData refuses a reference twice, so this can never double-buy).
+        // A definite "not verified" fails the order before anything is bought.
+        providerUsed = "swiftdata";
+        const sdStatus = await swiftdataVerifyNumber(order.phone);
+        if (sdStatus === "not_verified") {
+          apiOk = false;
+          errorBody = { message: "Number is not verified on SwiftData" };
+        } else {
+          const result = await swiftdataPurchase(order.phone, Number(order.bundle_size_gb ?? 1), reference);
+          apiOk = result.ok;
+          inventorReference = result.reference;
+          if (!apiOk) errorBody = result.body;
+          else if (result.reference && result.reference !== reference) {
+            await auditLog("swiftdata_reference_differs", { reference, swiftdata_reference: result.reference });
+          }
         }
       } else if (network === "MTN" && mtnMode === "yhangmhany") {
         // Pre-check with Yhang Mhany's verify-number; a definite "not
@@ -353,7 +373,10 @@ export async function approveOrder(
     ? { status: "completed", provider_used: "inventor", completed_at: new Date().toISOString() }
     : providerUsed === "yhangmhany"
       ? { status: "processing", provider_used: "yhangmhany", yhangmhany_order_id: inventorReference ?? reference }
-      : { status: "processing", provider_used: "inventor", inventor_order_id: inventorReference ?? reference };
+      : providerUsed === "swiftdata"
+        // Polled later by our own reference, which is what SwiftData stores.
+        ? { status: "processing", provider_used: "swiftdata" }
+        : { status: "processing", provider_used: "inventor", inventor_order_id: inventorReference ?? reference };
   await supabase.from("orders").update(fulfillmentUpdate).eq("reference", reference);
   await supabase.rpc("apply_agent_order_accounting", { p_reference: reference });
   await creditMasterCommission(reference);

@@ -3,11 +3,13 @@ import { useState, useEffect } from "react";
 
 const CARD = "#111827", BORDER = "#1f2937";
 
-type MtnProvider = "inventor" | "yhangmhany" | "auto";
+type MtnProvider = "inventor" | "yhangmhany" | "swiftdata" | "auto";
 
 interface ProviderData {
   inventorBalance: number | null;
   yhangMhanyBalance: number | null;
+  swiftDataBalance: number | null;
+  swiftDataConfigured: boolean;
   mtnProvider: MtnProvider;
   checkedAt: string;
 }
@@ -15,6 +17,7 @@ interface ProviderData {
 const OPTIONS: { key: MtnProvider; icon: string; label: string; accent: string; bg: string; note: string }[] = [
   { key: "inventor", icon: "🚀", label: "Inventor", accent: "#16a34a", bg: "#0c2a0c", note: "Checkout blocks numbers not on the beneficiary list. Any that slip through hold for manual delivery (up to 72h)." },
   { key: "yhangmhany", icon: "📶", label: "Yhang Mhany", accent: "#3b82f6", bg: "#0c1e3a", note: "Checkout checks the number with Yhang Mhany and blocks unverified ones. Anything that slips through fails instead of being bought." },
+  { key: "swiftdata", icon: "⚡", label: "SwiftData", accent: "#f59e0b", bg: "rgba(245,158,11,.16)", note: "Each order is checked with SwiftData first. Unverified numbers fail before anything is bought. Delivery is confirmed by the order sync." },
   { key: "auto", icon: "🤖", label: "Auto", accent: "#a855f7", bg: "#1a0c3a", note: "At delivery: Yhang Mhany first, then Inventor. If neither has the number, the order becomes a New Number (manual delivery up to 72h) and the customer gets the SMS — no refund needed." },
 ];
 
@@ -50,13 +53,19 @@ export default function NetworkProvidersAdmin() {
   async function switchProvider(provider: MtnProvider) {
     if (!data || data.mtnProvider === provider) return;
     setSwitching(true);
-    setData(prev => prev ? { ...prev, mtnProvider: provider } : prev);
-    await fetch("/api/admin/network-providers", {
+    const res = await fetch("/api/admin/network-providers", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mtnProvider: provider }),
     });
     setSwitching(false);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      setToast(`✗ ${err.error ?? "Could not switch provider"}`);
+      setTimeout(() => setToast(""), 4000);
+      return;
+    }
+    setData(prev => prev ? { ...prev, mtnProvider: provider } : prev);
     setToast(`New MTN orders now go to ${OPTIONS.find(o => o.key === provider)?.label}`);
     setTimeout(() => setToast(""), 3000);
   }
@@ -86,10 +95,12 @@ export default function NetworkProvidersAdmin() {
           Pick which provider fulfils every new MTN order. Switching takes effect immediately for orders placed after the switch — anything already in flight keeps using whichever provider it started with.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {OPTIONS.map(opt => {
             const active = current === opt.key;
-            const bal = opt.key === "inventor" ? data?.inventorBalance ?? null : data?.yhangMhanyBalance ?? null;
+            const bal = opt.key === "inventor" ? data?.inventorBalance ?? null
+              : opt.key === "swiftdata" ? data?.swiftDataBalance ?? null
+              : data?.yhangMhanyBalance ?? null;
             return (
               <button
                 key={opt.key}
@@ -128,7 +139,11 @@ export default function NetworkProvidersAdmin() {
                 ) : (
                   <div className="flex justify-between text-sm mb-2">
                     <span style={{ color: "#94a3b8" }}>Wallet Balance</span>
-                    <span className="font-black"><BalanceDisplay bal={bal} /></span>
+                    <span className="font-black">
+                      {opt.key === "swiftdata" && !data?.swiftDataConfigured
+                        ? <span style={{ color: "#fbbf24" }}>API key not set</span>
+                        : <BalanceDisplay bal={bal} />}
+                    </span>
                   </div>
                 )}
                 <p className="text-xs" style={{ color: "#64748b" }}>{opt.note}</p>
@@ -146,8 +161,10 @@ export default function NetworkProvidersAdmin() {
 
       {toast && (
         <div className="fixed bottom-6 right-6 px-4 py-2 rounded-xl font-bold text-sm shadow-lg z-50"
-          style={{ background: "#0c2a0c", color: "#4ade80", border: "1px solid #16a34a" }}>
-          ✓ {toast}
+          style={toast.startsWith("✗")
+            ? { background: "rgba(220,38,38,.16)", color: "#f87171", border: "1px solid #dc2626" }
+            : { background: "#0c2a0c", color: "#4ade80", border: "1px solid #16a34a" }}>
+          {toast.startsWith("✗") ? toast : `✓ ${toast}`}
         </div>
       )}
     </div>

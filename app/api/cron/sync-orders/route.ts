@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { checkSwiftDataOrder } from "@/lib/swiftdata";
 import { sendCompletedOrderAlert } from "@/lib/telegram";
 import { sendAdminDeliverySMS, sendCustomerSMS, orderDeliveredSMS, orderFailedSMS } from "@/lib/sms";
 
@@ -70,7 +71,10 @@ export async function GET(request: NextRequest) {
 
   for (const chunk of chunks) {
     await Promise.all(chunk.map(async (order) => {
-      const invStatus = await checkInventorOrder(order.inventor_order_id || order.reference);
+      // SwiftData orders are looked up by our own reference (it's what we sent them).
+      const invStatus = order.provider_used === "swiftdata"
+        ? await checkSwiftDataOrder(order.reference)
+        : await checkInventorOrder(order.inventor_order_id || order.reference);
 
       // Wallet purchases are auto-fulfilled — never notify admin, just handle silently
       const isWalletOrder = order.reference.startsWith("AGTWALLET-");
