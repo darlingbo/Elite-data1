@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { normalizeGhPhone } from "@/lib/phone";
 import { yhangmhanyVerifyNumber, yhangMhanyBalance } from "@/lib/yhangmhany";
 import { inventorNumberStatus, inventorBalance } from "@/lib/inventor";
+import { swiftdataVerifyNumber, swiftdataBalance, isSwiftDataConfigured } from "@/lib/swiftdata";
 import { isNotOnListError } from "@/lib/sms";
 import { auditLog } from "@/lib/audit";
 
@@ -17,7 +18,7 @@ import { auditLog } from "@/lib/audit";
  * returned to a caller and never logged.
  */
 
-export type ProviderId = "yhangmhany" | "inventor";
+export type ProviderId = "yhangmhany" | "inventor" | "swiftdata";
 export type ProviderAnswer = "verified" | "not_verified" | "unknown";
 export type CheckOrder = "yhangmhany_first" | "inventor_first";
 export type UnreachablePolicy = "block" | "allow";
@@ -73,7 +74,28 @@ export const providers: Record<ProviderId, Provider> = {
     configured: () => !!process.env.INVENTOR_API_KEY?.trim(),
     check: (phone) => inventorNumberStatus(phone, isNotOnListError),
   },
+  swiftdata: {
+    id: "swiftdata",
+    configured: isSwiftDataConfigured,
+    check: (phone) => swiftdataVerifyNumber(phone),
+  },
 };
+
+/**
+ * Which lists checkout asks, in order. When MTN orders go to SwiftData
+ * (Admin -> Network Providers), checkout asks SwiftData first and then
+ * Inventor -- the same two that delivery tries, in the same order.
+ * Otherwise the admin's Yhang Mhany / Inventor order is used.
+ */
+export async function askedProviders(order: CheckOrder): Promise<ProviderId[]> {
+  try {
+    const { data } = await supabase.from("system_settings").select("value").eq("key", "mtn_provider").maybeSingle();
+    if (data?.value === "swiftdata") return ["swiftdata", "inventor"];
+  } catch {
+    // fall back to the normal order
+  }
+  return orderedProviders(order);
+}
 
 // ── settings ────────────────────────────────────────────────────────────────
 
@@ -164,14 +186,15 @@ export function orderedProviders(order: CheckOrder): ProviderId[] {
 export async function decide(
   phone: string,
   settings: NumberCheckSettings,
-  lookup: Record<ProviderId, Provider> = providers,
+  lookup: Partial<Record<ProviderId, Provider>> = providers,
+  ids: ProviderId[] = orderedProviders(settings.order),
 ): Promise<NumberCheckOutcome> {
   const tried: ProviderId[] = [];
   const answers: ProviderAnswer[] = [];
 
-  for (const id of orderedProviders(settings.order)) {
+  for (const id of ids) {
     const provider = lookup[id];
-    if (!provider.configured()) {
+    if (!provider || !provider.configured()) {
       tried.push(id);
       answers.push("unknown");
       continue;
@@ -210,7 +233,7 @@ export async function checkNumber(rawPhone: string, options: CheckOptions = {}):
   const cached = recallPassed(phone);
   if (cached) return { status: "verified", allowed: true, provider: "cache" };
 
-  const outcome = await decide(phone, settings);
+  const outcome = await decide(phone, settings, providers, await askedProviders(settings.order));
   if (outcome.status === "verified" && outcome.provider !== "cache") {
     rememberPassed(phone, outcome.provider, settings.cacheHours);
   }
@@ -249,10 +272,11 @@ async function timed<T>(fn: () => Promise<T>): Promise<{ value: T | null; ms: nu
 }
 
 export async function providerHealth(): Promise<ProviderHealth[]> {
-  const [yhm, inv] = await Promise.all([timed(yhangMhanyBalance), timed(inventorBalance)]);
+  const [yhm, inv, sd] = await Promise.all([timed(yhangMhanyBalance), timed(inventorBalance), timed(swiftdataBalance)]);
   return [
     { id: "yhangmhany", label: "Yhang Mhany", keySet: providers.yhangmhany.configured(), reachable: providers.yhangmhany.configured() ? yhm.value !== null : null, ms: yhm.value !== null ? yhm.ms : null, balance: yhm.value },
     { id: "inventor", label: "Inventor", keySet: providers.inventor.configured(), reachable: providers.inventor.configured() ? inv.value !== null : null, ms: inv.value !== null ? inv.ms : null, balance: inv.value },
+    { id: "swiftdata", label: "SwiftData", keySet: providers.swiftdata.configured(), reachable: providers.swiftdata.configured() ? sd.value !== null : null, ms: sd.value !== null ? sd.ms : null, balance: sd.value },
   ];
 }
 
@@ -260,12 +284,12 @@ export async function providerHealth(): Promise<ProviderHealth[]> {
 
 export type TestAnswer = ProviderAnswer | "no_key";
 
-/** Ask both providers about one number, ignoring the cache and the on/off switch. */
+/** Ask every provider about one number, ignoring the cache and the on/off switch. */
 export async function testNumber(rawPhone: string): Promise<{ phone: string; answers: Record<ProviderId, TestAnswer> } | null> {
   const phone = normalizeGhPhone(String(rawPhone ?? ""));
   if (!phone) return null;
   const ask = async (id: ProviderId): Promise<TestAnswer> =>
     providers[id].configured() ? providers[id].check(phone).catch((): ProviderAnswer => "unknown") : "no_key";
-  const [yhangmhany, inventor] = await Promise.all([ask("yhangmhany"), ask("inventor")]);
-  return { phone, answers: { yhangmhany, inventor } };
+  const [yhangmhany, inventor, swiftdata] = await Promise.all([ask("yhangmhany"), ask("inventor"), ask("swiftdata")]);
+  return { phone, answers: { yhangmhany, inventor, swiftdata } };
 }

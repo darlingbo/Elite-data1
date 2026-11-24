@@ -6,6 +6,7 @@ import { auditLog } from "@/lib/audit";
 import { rateLimitDb } from "@/lib/rate-limit";
 import { clientIp } from "@/lib/request-ip";
 import {
+  askedProviders,
   getNumberCheckSettings,
   providerHealth,
   saveNumberCheckSettings,
@@ -48,7 +49,8 @@ export async function GET() {
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const blockedToday = blocked.filter((b) => new Date(b.last) >= todayStart).length;
 
-  return Response.json({ settings, health, blocked: blocked.slice(0, 100), blockedToday, checkedAt: new Date().toISOString() });
+  const asked = await askedProviders(settings.order);
+  return Response.json({ settings, health, asked, blocked: blocked.slice(0, 100), blockedToday, checkedAt: new Date().toISOString() });
 }
 
 /** Change a setting. Only the fields sent are changed. */

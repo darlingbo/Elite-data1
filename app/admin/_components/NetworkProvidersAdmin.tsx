@@ -17,7 +17,7 @@ interface ProviderData {
 const OPTIONS: { key: MtnProvider; icon: string; label: string; accent: string; bg: string; note: string }[] = [
   { key: "inventor", icon: "🚀", label: "Inventor", accent: "#16a34a", bg: "#0c2a0c", note: "Checkout blocks numbers not on the beneficiary list. Any that slip through hold for manual delivery (up to 72h)." },
   { key: "yhangmhany", icon: "📶", label: "Yhang Mhany", accent: "#3b82f6", bg: "#0c1e3a", note: "Checkout checks the number with Yhang Mhany and blocks unverified ones. Anything that slips through fails instead of being bought." },
-  { key: "swiftdata", icon: "⚡", label: "SwiftData", accent: "#f59e0b", bg: "rgba(245,158,11,.16)", note: "Each order is checked with SwiftData first. Unverified numbers fail before anything is bought. Delivery is confirmed by the order sync." },
+  { key: "swiftdata", icon: "⚡", label: "SwiftData", accent: "#f59e0b", bg: "rgba(245,158,11,.16)", note: "Like Auto, with SwiftData first: SwiftData, then Inventor. If neither has the number, the order becomes a New Number (manual delivery up to 72h) and the customer gets the SMS — no refund needed." },
   { key: "auto", icon: "🤖", label: "Auto", accent: "#a855f7", bg: "#1a0c3a", note: "At delivery: Yhang Mhany first, then Inventor. If neither has the number, the order becomes a New Number (manual delivery up to 72h) and the customer gets the SMS — no refund needed." },
 ];
 
@@ -98,9 +98,7 @@ export default function NetworkProvidersAdmin() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {OPTIONS.map(opt => {
             const active = current === opt.key;
-            const bal = opt.key === "inventor" ? data?.inventorBalance ?? null
-              : opt.key === "swiftdata" ? data?.swiftDataBalance ?? null
-              : data?.yhangMhanyBalance ?? null;
+            const bal = opt.key === "inventor" ? data?.inventorBalance ?? null : data?.yhangMhanyBalance ?? null;
             return (
               <button
                 key={opt.key}
@@ -125,25 +123,25 @@ export default function NetworkProvidersAdmin() {
                     </span>
                   )}
                 </div>
-                {opt.key === "auto" ? (
+                {opt.key === "auto" || opt.key === "swiftdata" ? (
                   <>
                     <div className="flex justify-between text-sm mb-1">
-                      <span style={{ color: "#94a3b8" }}>Inventor</span>
-                      <span className="font-black"><BalanceDisplay bal={data?.inventorBalance ?? null} /></span>
+                      <span style={{ color: "#94a3b8" }}>{opt.key === "swiftdata" ? "SwiftData" : "Yhang Mhany"}</span>
+                      <span className="font-black">
+                        {opt.key === "swiftdata" && !data?.swiftDataConfigured
+                          ? <span style={{ color: "#fbbf24" }}>API key not set</span>
+                          : <BalanceDisplay bal={opt.key === "swiftdata" ? data?.swiftDataBalance ?? null : data?.yhangMhanyBalance ?? null} />}
+                      </span>
                     </div>
                     <div className="flex justify-between text-sm mb-2">
-                      <span style={{ color: "#94a3b8" }}>Yhang Mhany</span>
-                      <span className="font-black"><BalanceDisplay bal={data?.yhangMhanyBalance ?? null} /></span>
+                      <span style={{ color: "#94a3b8" }}>Inventor</span>
+                      <span className="font-black"><BalanceDisplay bal={data?.inventorBalance ?? null} /></span>
                     </div>
                   </>
                 ) : (
                   <div className="flex justify-between text-sm mb-2">
                     <span style={{ color: "#94a3b8" }}>Wallet Balance</span>
-                    <span className="font-black">
-                      {opt.key === "swiftdata" && !data?.swiftDataConfigured
-                        ? <span style={{ color: "#fbbf24" }}>API key not set</span>
-                        : <BalanceDisplay bal={bal} />}
-                    </span>
+                    <span className="font-black"><BalanceDisplay bal={bal} /></span>
                   </div>
                 )}
                 <p className="text-xs" style={{ color: "#64748b" }}>{opt.note}</p>

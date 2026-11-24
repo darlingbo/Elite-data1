@@ -178,7 +178,9 @@ export async function approveOrder(
 
       const mtnMode = network === "MTN" ? await getMtnProvider() : "inventor";
 
-      if (network === "MTN" && mtnMode === "auto") {
+      if (network === "MTN" && (mtnMode === "auto" || mtnMode === "swiftdata")) {
+        // "swiftdata" works exactly like Auto, with SwiftData as the first
+        // provider instead of Yhang Mhany.
         // Auto: Yhang Mhany first, then Inventor. Only when NEITHER has the
         // number does the order become a "new number" (manual delivery, up to
         // 72h, customer gets the SMS, no refund) -- never a failure.
@@ -193,23 +195,48 @@ export async function approveOrder(
         let tryInventor = false;
         let fallbackReason = "";
 
-        const ymStatus = await yhangmhanyVerifyNumber(order.phone);
-        if (ymStatus === "not_verified") {
-          tryInventor = true;
-          fallbackReason = "not verified on Yhang Mhany";
+        const firstLabel = mtnMode === "swiftdata" ? "SwiftData" : "Yhang Mhany";
+        if (mtnMode === "swiftdata") {
+          // SwiftData is bought under our own reference and refuses a repeat,
+          // so it can't double-charge; a clear refusal means nothing was bought.
+          const sdStatus = await swiftdataVerifyNumber(order.phone);
+          if (sdStatus === "not_verified") {
+            tryInventor = true;
+            fallbackReason = "not verified on SwiftData";
+          } else {
+            providerUsed = "swiftdata";
+            const result = await swiftdataPurchase(order.phone, Number(order.bundle_size_gb ?? 1), reference);
+            apiOk = result.ok;
+            balanceAfter = null;
+            inventorReference = result.reference;
+            if (!apiOk) {
+              if (result.definitelyNotTaken) {
+                tryInventor = true;
+                fallbackReason = String(result.body.message ?? "SwiftData refused the order").slice(0, 100);
+              } else {
+                errorBody = result.body;
+              }
+            }
+          }
         } else {
-          providerUsed = "yhangmhany";
-          const result = await yhangmhanyPurchase(order.phone, Number(order.bundle_size_gb ?? 1));
-          apiOk = result.ok;
-          balanceAfter = null;
-          inventorReference = result.reference;
-          if (!apiOk) {
-            const msg = String((result.body.message as string) ?? (result.body.error as string) ?? "");
-            if (yhangmhanyDefinitelyDidNotTake(msg)) {
-              tryInventor = true;
-              fallbackReason = msg.slice(0, 100);
-            } else {
-              errorBody = result.body;
+          const ymStatus = await yhangmhanyVerifyNumber(order.phone);
+          if (ymStatus === "not_verified") {
+            tryInventor = true;
+            fallbackReason = "not verified on Yhang Mhany";
+          } else {
+            providerUsed = "yhangmhany";
+            const result = await yhangmhanyPurchase(order.phone, Number(order.bundle_size_gb ?? 1));
+            apiOk = result.ok;
+            balanceAfter = null;
+            inventorReference = result.reference;
+            if (!apiOk) {
+              const msg = String((result.body.message as string) ?? (result.body.error as string) ?? "");
+              if (yhangmhanyDefinitelyDidNotTake(msg)) {
+                tryInventor = true;
+                fallbackReason = msg.slice(0, 100);
+              } else {
+                errorBody = result.body;
+              }
             }
           }
         }
@@ -218,13 +245,13 @@ export async function approveOrder(
           providerUsed = "inventor";
           apiOk = false;
           inventorReference = null;
-          await auditLog("mtn_provider_fallback", { reference, from: "yhangmhany", to: "inventor", reason: fallbackReason, channel });
+          await auditLog("mtn_provider_fallback", { reference, from: mtnMode === "swiftdata" ? "swiftdata" : "yhangmhany", to: "inventor", reason: fallbackReason, channel });
 
           const verification = await inventorVerifyNumber(order.phone);
           if (!verification.verified) {
             // On neither list: a new number. Hold for manual delivery (up to
             // 72h), SMS the customer that no refund is coming, alert admin.
-            const reason = `Not on Yhang Mhany (${fallbackReason}) or Inventor (${(verification.error ?? "not on the beneficiary list").slice(0, 60)})`;
+            const reason = `Not on ${firstLabel} (${fallbackReason}) or Inventor (${(verification.error ?? "not on the beneficiary list").slice(0, 60)})`;
             await supabase
               .from("orders")
               .update({ status: "not_on_list", not_on_list_at: new Date().toISOString(), provider_used: "inventor" })
@@ -248,24 +275,6 @@ export async function approveOrder(
           // A "not on the list" rejection here becomes the same 72h hold + SMS
           // via the not_on_list handling further down.
           if (!apiOk) errorBody = result.body;
-        }
-      } else if (network === "MTN" && mtnMode === "swiftdata") {
-        // SwiftData: pre-check the number, then buy with our own reference
-        // (SwiftData refuses a reference twice, so this can never double-buy).
-        // A definite "not verified" fails the order before anything is bought.
-        providerUsed = "swiftdata";
-        const sdStatus = await swiftdataVerifyNumber(order.phone);
-        if (sdStatus === "not_verified") {
-          apiOk = false;
-          errorBody = { message: "Number is not verified on SwiftData" };
-        } else {
-          const result = await swiftdataPurchase(order.phone, Number(order.bundle_size_gb ?? 1), reference);
-          apiOk = result.ok;
-          inventorReference = result.reference;
-          if (!apiOk) errorBody = result.body;
-          else if (result.reference && result.reference !== reference) {
-            await auditLog("swiftdata_reference_differs", { reference, swiftdata_reference: result.reference });
-          }
         }
       } else if (network === "MTN" && mtnMode === "yhangmhany") {
         // Pre-check with Yhang Mhany's verify-number; a definite "not

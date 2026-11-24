@@ -6,10 +6,11 @@ import Icon from "@/components/ed/Icon";
 const MtnVerificationAdmin = dynamic(() => import("./MtnVerificationAdmin"), { loading: () => <p className="ed-muted">Loading…</p> });
 
 type Settings = { enabled: boolean; order: "yhangmhany_first" | "inventor_first"; onUnreachable: "block" | "allow"; cacheHours: 1 | 24; verifyUrl: string };
-type Health = { id: "yhangmhany" | "inventor"; label: string; keySet: boolean; reachable: boolean | null; ms: number | null; balance: number | null };
+type ProviderId = "yhangmhany" | "inventor" | "swiftdata";
+type Health = { id: ProviderId; label: string; keySet: boolean; reachable: boolean | null; ms: number | null; balance: number | null };
 type Blocked = { phone: string; tries: number; last: string; status: string };
-type Payload = { settings: Settings; health: Health[]; blocked: Blocked[]; blockedToday: number };
-type TestResult = { phone: string; answers: Record<"yhangmhany" | "inventor", "verified" | "not_verified" | "unknown" | "no_key"> };
+type Payload = { settings: Settings; health: Health[]; asked?: ProviderId[]; blocked: Blocked[]; blockedToday: number };
+type TestResult = { phone: string; answers: Partial<Record<ProviderId, "verified" | "not_verified" | "unknown" | "no_key">> };
 
 const spaced = (p: string) => p.replace(/\s/g, "").replace(/^(\d{3})(\d{3})(\d{4})$/, "$1 $2 $3");
 const when = (iso: string) => new Date(iso).toLocaleString("en-GH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -65,8 +66,10 @@ export default function NumberCheckAdmin() {
   if (!data) return <div style={{ padding: 40, display: "grid", placeItems: "center" }}><span className="ed-spin" style={{ width: 28, height: 28, color: "var(--ed-yellow)" }} /></div>;
 
   const { settings, health } = data;
-  const ordered = settings.order === "yhangmhany_first" ? ["yhangmhany", "inventor"] as const : ["inventor", "yhangmhany"] as const;
+  const ordered: ProviderId[] = data.asked ?? (settings.order === "yhangmhany_first" ? ["yhangmhany", "inventor"] : ["inventor", "yhangmhany"]);
+  const swiftdataMode = ordered[0] === "swiftdata";
   const byId = Object.fromEntries(health.map((h) => [h.id, h])) as Record<string, Health>;
+  const testAnswers = result ? ordered.map((id) => result.answers[id] ?? "unknown") : [];
   const needsVerifying = data.blocked.filter((b) => b.status === "not_verified");
 
   return (
@@ -86,6 +89,7 @@ export default function NumberCheckAdmin() {
         <div>
           {ordered.map((id, i) => {
             const h = byId[id];
+            if (!h) return null;
             return (
               <div key={id} className="ad-prov">
                 <span className="n">{i + 1}</span>
@@ -99,10 +103,13 @@ export default function NumberCheckAdmin() {
             );
           })}
         </div>
-        <p className="ed-muted" style={{ margin: 0, fontSize: 12 }}>The second list is asked only when the first does not have the number.</p>
-        <button type="button" className="ed-btn o" style={{ alignSelf: "flex-start" }} onClick={() => void save({ order: settings.order === "yhangmhany_first" ? "inventor_first" : "yhangmhany_first" }, "Order changed.")}>
+        <p className="ed-muted" style={{ margin: 0, fontSize: 12 }}>
+          The second list is asked only when the first does not have the number.
+          {swiftdataMode && " MTN orders go to SwiftData, so SwiftData is asked first, then Inventor."}
+        </p>
+        {!swiftdataMode && <button type="button" className="ed-btn o" style={{ alignSelf: "flex-start" }} onClick={() => void save({ order: settings.order === "yhangmhany_first" ? "inventor_first" : "yhangmhany_first" }, "Order changed.")}>
           <Icon name="retry" small />Swap the order
-        </button>
+        </button>}
       </section>
 
       <section className="ad-block">
@@ -136,13 +143,13 @@ export default function NumberCheckAdmin() {
         </div>
         {result && (
           <div className="ad-chips2" aria-live="polite">
-            {(["yhangmhany", "inventor"] as const).map((id) => {
-              const a = ANSWER_TEXT[result.answers[id]];
-              return <span key={id} className={a.good ? "ad-chipok" : "ad-chipwarn"} style={a.good === false ? { background: "rgba(239,68,68,.14)", color: "var(--ed-red)" } : undefined}>{byId[id].label}: {a.text}</span>;
+            {ordered.map((id) => {
+              const a = ANSWER_TEXT[result.answers[id] ?? "unknown"];
+              return <span key={id} className={a.good ? "ad-chipok" : "ad-chipwarn"} style={a.good === false ? { background: "rgba(239,68,68,.14)", color: "var(--ed-red)" } : undefined}>{byId[id]?.label ?? id}: {a.text}</span>;
             })}
           </div>
         )}
-        {result && <p className="ed-muted" style={{ margin: 0, fontSize: 12 }}>{result.answers.yhangmhany === "verified" || result.answers.inventor === "verified" ? "This number can buy data." : result.answers.yhangmhany === "not_verified" && result.answers.inventor === "not_verified" ? "Blocked at checkout. Send this number to be verified." : "Could not be confirmed. The setting above decides what happens."}</p>}
+        {result && <p className="ed-muted" style={{ margin: 0, fontSize: 12 }}>{testAnswers.includes("verified") ? "This number can buy data." : testAnswers.length > 0 && testAnswers.every((a) => a === "not_verified") ? "Blocked at checkout. Send this number to be verified." : "Could not be confirmed. The setting above decides what happens."}</p>}
       </section>
 
       <section className="ad-block">
