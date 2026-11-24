@@ -3,6 +3,7 @@ import { normalizeGhPhone } from "@/lib/phone";
 import { yhangmhanyVerifyNumber, yhangMhanyBalance } from "@/lib/yhangmhany";
 import { inventorNumberStatus, inventorBalance } from "@/lib/inventor";
 import { swiftdataVerifyNumber, swiftdataBalance, isSwiftDataConfigured } from "@/lib/swiftdata";
+import { getSmartOrder } from "@/lib/supplier-router";
 import { isNotOnListError } from "@/lib/sms";
 import { auditLog } from "@/lib/audit";
 
@@ -91,6 +92,9 @@ export async function askedProviders(order: CheckOrder): Promise<ProviderId[]> {
   try {
     const { data } = await supabase.from("system_settings").select("value").eq("key", "mtn_provider").maybeSingle();
     if (data?.value === "swiftdata") return ["swiftdata", "inventor"];
+    // Smart routing tries every supplier, so checkout asks all of them, in
+    // the same order; only a number none of them has is turned away.
+    if (data?.value === "smart") return await getSmartOrder();
   } catch {
     // fall back to the normal order
   }

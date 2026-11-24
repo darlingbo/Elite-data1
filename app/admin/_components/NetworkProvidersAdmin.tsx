@@ -3,13 +3,16 @@ import { useState, useEffect } from "react";
 
 const CARD = "#111827", BORDER = "#1f2937";
 
-type MtnProvider = "inventor" | "yhangmhany" | "swiftdata" | "auto";
+type MtnProvider = "inventor" | "yhangmhany" | "swiftdata" | "auto" | "smart";
+type SupplierId = "yhangmhany" | "swiftdata" | "inventor";
+const SUPPLIER_NAME: Record<SupplierId, string> = { yhangmhany: "Yhang Mhany", swiftdata: "SwiftData", inventor: "Inventor" };
 
 interface ProviderData {
   inventorBalance: number | null;
   yhangMhanyBalance: number | null;
   swiftDataBalance: number | null;
   swiftDataConfigured: boolean;
+  smartOrder: SupplierId[];
   mtnProvider: MtnProvider;
   checkedAt: string;
 }
@@ -18,6 +21,7 @@ const OPTIONS: { key: MtnProvider; icon: string; label: string; accent: string; 
   { key: "inventor", icon: "🚀", label: "Inventor", accent: "#16a34a", bg: "#0c2a0c", note: "Checkout blocks numbers not on the beneficiary list. Any that slip through hold for manual delivery (up to 72h)." },
   { key: "yhangmhany", icon: "📶", label: "Yhang Mhany", accent: "#3b82f6", bg: "#0c1e3a", note: "Checkout checks the number with Yhang Mhany and blocks unverified ones. Anything that slips through fails instead of being bought." },
   { key: "swiftdata", icon: "⚡", label: "SwiftData", accent: "#f59e0b", bg: "rgba(245,158,11,.16)", note: "Like Auto, with SwiftData first: SwiftData, then Inventor. If neither has the number, the order becomes a New Number (manual delivery up to 72h) and the customer gets the SMS — no refund needed." },
+  { key: "smart", icon: "🧠", label: "Smart", accent: "#22d3ee", bg: "rgba(34,211,238,.12)", note: "Tries every supplier in the order below. Skips one whose balance is below the order cost or that doesn't have the number. If all are short of money the order waits in the Approval Queue; if none has the number it becomes a New Number." },
   { key: "auto", icon: "🤖", label: "Auto", accent: "#a855f7", bg: "#1a0c3a", note: "At delivery: Yhang Mhany first, then Inventor. If neither has the number, the order becomes a New Number (manual delivery up to 72h) and the customer gets the SMS — no refund needed." },
 ];
 
@@ -70,6 +74,27 @@ export default function NetworkProvidersAdmin() {
     setTimeout(() => setToast(""), 3000);
   }
 
+  async function moveSupplier(index: number, delta: -1 | 1) {
+    if (!data) return;
+    const next = [...data.smartOrder];
+    const j = index + delta;
+    if (j < 0 || j >= next.length) return;
+    [next[index], next[j]] = [next[j], next[index]];
+    setData(prev => prev ? { ...prev, smartOrder: next } : prev);
+    await fetch("/api/admin/network-providers", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ smartOrder: next }),
+    });
+    setToast("Smart order saved");
+    setTimeout(() => setToast(""), 3000);
+  }
+
+  function balanceOf(id: SupplierId): number | null {
+    if (!data) return null;
+    return id === "inventor" ? data.inventorBalance : id === "swiftdata" ? data.swiftDataBalance : data.yhangMhanyBalance;
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center py-32">
       <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -95,7 +120,7 @@ export default function NetworkProvidersAdmin() {
           Pick which provider fulfils every new MTN order. Switching takes effect immediately for orders placed after the switch — anything already in flight keeps using whichever provider it started with.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {OPTIONS.map(opt => {
             const active = current === opt.key;
             const bal = opt.key === "inventor" ? data?.inventorBalance ?? null : data?.yhangMhanyBalance ?? null;
@@ -123,7 +148,20 @@ export default function NetworkProvidersAdmin() {
                     </span>
                   )}
                 </div>
-                {opt.key === "auto" || opt.key === "swiftdata" ? (
+                {opt.key === "smart" ? (
+                  <div className="mb-2">
+                    {(data?.smartOrder ?? []).map((id, i) => (
+                      <div key={id} className="flex justify-between text-sm mb-1">
+                        <span style={{ color: "#94a3b8" }}>{i + 1}. {SUPPLIER_NAME[id]}</span>
+                        <span className="font-black">
+                          {id === "swiftdata" && !data?.swiftDataConfigured
+                            ? <span style={{ color: "#fbbf24" }}>API key not set</span>
+                            : <BalanceDisplay bal={balanceOf(id)} />}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : opt.key === "auto" || opt.key === "swiftdata" ? (
                   <>
                     <div className="flex justify-between text-sm mb-1">
                       <span style={{ color: "#94a3b8" }}>{opt.key === "swiftdata" ? "SwiftData" : "Yhang Mhany"}</span>
@@ -148,6 +186,26 @@ export default function NetworkProvidersAdmin() {
               </button>
             );
           })}
+        </div>
+
+        <div className="mt-5 rounded-2xl border p-4" style={{ borderColor: BORDER, background: "#0d1117" }}>
+          <p className="font-bold text-white text-sm mb-1">Smart order</p>
+          <p className="text-xs mb-3" style={{ color: "#64748b" }}>
+            The order Smart tries suppliers in. Every step it takes is saved in the audit log as &quot;smart_router&quot;.
+          </p>
+          {(data?.smartOrder ?? []).map((id, i, all) => (
+            <div key={id} className="flex items-center justify-between py-1.5">
+              <span className="text-sm text-white">{i + 1}. {SUPPLIER_NAME[id]}</span>
+              <span className="flex gap-2">
+                <button type="button" aria-label={`Move ${SUPPLIER_NAME[id]} up`} disabled={i === 0} onClick={() => moveSupplier(i, -1)}
+                  className="border rounded-lg px-3 py-1 text-xs font-bold disabled:opacity-30"
+                  style={{ borderColor: "#1e3a5f", color: "#60a5fa" }}>↑</button>
+                <button type="button" aria-label={`Move ${SUPPLIER_NAME[id]} down`} disabled={i === all.length - 1} onClick={() => moveSupplier(i, 1)}
+                  className="border rounded-lg px-3 py-1 text-xs font-bold disabled:opacity-30"
+                  style={{ borderColor: "#1e3a5f", color: "#60a5fa" }}>↓</button>
+              </span>
+            </div>
+          ))}
         </div>
 
         <button onClick={load}

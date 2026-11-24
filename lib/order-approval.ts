@@ -4,6 +4,7 @@ import { sendAgentNotification, sendAdminAlert, sendOrderFailedAlert } from "@/l
 import { inventorPurchase, inventorVerifyNumber, inventorVoucher } from "@/lib/inventor";
 import { yhangmhanyPurchase, yhangmhanyVerifyNumber, yhangmhanyDefinitelyDidNotTake } from "@/lib/yhangmhany";
 import { swiftdataPurchase, swiftdataVerifyNumber } from "@/lib/swiftdata";
+import { routeMtnOrder, describeSteps, SUPPLIER_LABEL } from "@/lib/supplier-router";
 import { sendCustomerSMS, orderFailedSMS, isNotOnListError, orderNotOnListSMS } from "@/lib/sms";
 import { auditLog } from "@/lib/audit";
 import { assessOrderRisk, isOrderGuardEnabled } from "@/lib/order-risk";
@@ -28,10 +29,10 @@ export async function isAutoApprovalEnabled(): Promise<boolean> {
 
 /** Which provider handles new MTN orders -- set from Admin -> Network
  * Providers. Telecel/AirtelTigo always use Inventor regardless. */
-async function getMtnProvider(): Promise<"inventor" | "yhangmhany" | "swiftdata" | "auto"> {
+async function getMtnProvider(): Promise<"inventor" | "yhangmhany" | "swiftdata" | "auto" | "smart"> {
   const { data } = await supabase.from("system_settings").select("value").eq("key", "mtn_provider").maybeSingle();
   const v = data?.value;
-  return v === "yhangmhany" || v === "swiftdata" || v === "auto" ? v : "inventor";
+  return v === "yhangmhany" || v === "swiftdata" || v === "auto" || v === "smart" ? v : "inventor";
 }
 
 export async function approveOrder(
@@ -178,7 +179,58 @@ export async function approveOrder(
 
       const mtnMode = network === "MTN" ? await getMtnProvider() : "inventor";
 
-      if (network === "MTN" && (mtnMode === "auto" || mtnMode === "swiftdata")) {
+      if (network === "MTN" && mtnMode === "smart") {
+        // Smart: walk the suppliers in the admin's order, skipping any whose
+        // balance is below this order's cost or that doesn't have the number,
+        // and buy from the first that passes. See lib/supplier-router.ts.
+        const sizeGB = Number(order.bundle_size_gb ?? 1);
+        const cost = Number(order.cost_price) > 0 ? Number(order.cost_price) : Number(order.amount ?? 0);
+        const route = await routeMtnOrder({ reference, phone: order.phone, sizeGB, cost });
+        await auditLog("smart_router", { reference, channel, outcome: route.kind, steps: route.steps });
+
+        if (route.kind === "placed") {
+          providerUsed = route.supplier;
+          apiOk = true;
+          inventorReference = route.reference;
+          balanceAfter = route.balanceAfter;
+        } else if (route.kind === "failed") {
+          providerUsed = route.supplier;
+          apiOk = false;
+          errorBody = route.body;
+        } else if (route.kind === "needs_topup" || route.kind === "no_supplier") {
+          // Nothing was bought. Put the order back in the Approval Queue so it
+          // goes out as soon as a supplier is topped up -- never a refund.
+          await supabase
+            .from("orders")
+            .update({ status: "pending_approval", approved_at: null, approved_via: null, fulfillment_started_at: null })
+            .eq("reference", reference)
+            .eq("status", "processing");
+          const why = route.kind === "needs_topup"
+            ? "Every supplier that could take it is short of money. Top up, then approve it again."
+            : "No MTN supplier has an API key set.";
+          sendAdminAlert(
+            `\u{1F7E1} <b>ORDER WAITING — SUPPLIER TOP-UP NEEDED</b>\n<code>${reference}</code>\n${order.bundle_size} → <code>${order.phone}</code>\n${why}\n\n${describeSteps(route.steps)}`,
+          ).catch(() => {});
+          return { ok: false, message: `Back in the Approval Queue: ${why}` };
+        } else {
+          // Not on any supplier's list: a new number. Same hold as Auto.
+          const reason = `Not on any supplier's list (${route.steps.map((st) => SUPPLIER_LABEL[st.supplier]).join(", ")})`;
+          await supabase
+            .from("orders")
+            .update({ status: "not_on_list", not_on_list_at: new Date().toISOString(), provider_used: "inventor" })
+            .eq("reference", reference)
+            .eq("status", "processing");
+          await auditLog("order_not_on_list", { reference, channel, reason, stage: "smart_router" });
+          sendCustomerSMS(
+            order.phone,
+            orderNotOnListSMS(order.customer_name ?? "Customer", order.network ?? "", order.bundle_size ?? "", reference),
+          ).catch(() => {});
+          sendAdminAlert(
+            `\u{1F7E0} <b>NEW NUMBER — MANUAL DELIVERY (up to 72h)</b>\n<code>${reference}</code>\n<code>${order.phone}</code>\n${reason}\n\n${describeSteps(route.steps)}`,
+          ).catch(() => {});
+          return { ok: false, message: reason };
+        }
+      } else if (network === "MTN" && (mtnMode === "auto" || mtnMode === "swiftdata")) {
         // "swiftdata" works exactly like Auto, with SwiftData as the first
         // provider instead of Yhang Mhany.
         // Auto: Yhang Mhany first, then Inventor. Only when NEITHER has the
