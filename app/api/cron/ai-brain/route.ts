@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
 
   const state = await collectState();
   // The 07:00 daily-report job already sends the morning report.
-  const actions = (await decideActions(state)).filter((a) => a !== "daily_report");
+  const actions: AIAction[] = (await decideActions(state)).filter((a) => a !== "daily_report");
 
   if (actions.length === 0) {
     return Response.json({ status: "idle", message: "All clear — nothing to report" });
