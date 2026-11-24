@@ -14,11 +14,16 @@ function isAuthorized(req: NextRequest): boolean {
 // ── Collect live system state — READ ONLY, never modifies anything ────────────
 async function collectState() {
   const cutoff15 = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  // Runs hourly. Only orders from the last hour count as new failures, so
+  // each failure is reported once, not every hour forever. Stuck orders are
+  // only those placed in the last day.
+  const lastHour = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const lastDay = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const todayStart = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
 
   const [failedRes, stuckRes, todayRes, inventorCheck] = await Promise.all([
-    supabase.from("orders").select("reference, phone, network, bundle_size").eq("status", "failed"),
-    supabase.from("orders").select("id").in("status", ["pending", "processing"]).lt("created_at", cutoff15),
+    supabase.from("orders").select("reference, phone, network, bundle_size").eq("status", "failed").gte("created_at", lastHour),
+    supabase.from("orders").select("id").in("status", ["pending", "processing"]).lt("created_at", cutoff15).gte("created_at", lastDay),
     supabase.from("orders").select("status, amount, admin_commission").gte("created_at", todayStart),
     fetch(`${INVENTOR_BASE}/api/developer/orders?limit=1`, {
       headers: { Authorization: `Bearer ${INVENTOR_KEY}` },
@@ -120,7 +125,8 @@ export async function GET(request: NextRequest) {
   }
 
   const state = await collectState();
-  const actions = await decideActions(state);
+  // The 07:00 daily-report job already sends the morning report.
+  const actions = (await decideActions(state)).filter((a) => a !== "daily_report");
 
   if (actions.length === 0) {
     return Response.json({ status: "idle", message: "All clear — nothing to report" });

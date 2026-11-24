@@ -18,7 +18,7 @@
   // Replaces the "crons" list in vercel.json (times are UTC = Ghana time).
   // See cloudflare-worker.ts for which job runs at which hour.
   "triggers": {
-    "crons": ["5 0 * * *", "0 * * * *"]
+    "crons": ["5 0 * * *", "*/5 * * * *"]
   },
   // Keep variables and secrets added in the Cloudflare dashboard or with
   // `wrangler secret put` when this file is deployed.
